@@ -55,6 +55,14 @@ docs/                     DECISIONS.md, PROMPT_STATS.md, images (concepts + main
 - UI/UX matters more to the maintainer than code style: keep labels short, tooltips useful,
   and defaults sensible for modelling parts.
 
+## Where knowledge lives
+
+Work on this project moves between sessions and between AI assistants, so anything
+a future session needs is written into this repo and pushed. Nothing important may
+live only in a chat or in one assistant's memory. Current state and next steps go in
+this file, the reasons behind decisions and the approaches that were dropped go in
+`docs/DECISIONS.md`, and bugs and planned features go in GitHub Issues. Anything private stays in a gitignored file or outside the repo.
+
 ## Before you change things
 
 - Read [docs/DECISIONS.md](docs/DECISIONS.md): why it's built this way, what was tried, and the
