@@ -4,7 +4,7 @@ id = "crosscut"
 version = "0.1.0"
 name = "Crosscut"
 tagline = "Live capped section and slice views on top of viewport clipping"
-maintainer = "calvin-young <splicc@gmail.com>"
+maintainer = "Calvin Young <github.com/calvin-young>"
 type = "add-on"
 website = "https://github.com/calvin-young/blender-crosscut"
 
@@ -13,5 +13,6 @@ tags = ["3D View", "Modeling", "Mesh"]
 blender_version_min = "4.2.0"
 
 license = ["SPDX:GPL-3.0-or-later"]
+copyright = ["2026 Calvin Young"]
 
 # No network or file access. Everything stays inside the open .blend.

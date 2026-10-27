@@ -79,13 +79,7 @@ object are never capped, so a build-volume box does not fill the whole section.
 | Live boolean / bisect modifiers | Real geometry, renders anywhere | Slow on dense meshes, modifies the object stack |
 | CPU contour triangulation | Real cap mesh, exportable | Chaining and hole handling are fragile on messy meshes; slower to scrub |
 
-## Development
-
-See [AGENTS.md](AGENTS.md) for setup, tests and layout, [CONTRIBUTING.md](CONTRIBUTING.md) for
-how to report bugs and send changes, and [docs/DECISIONS.md](docs/DECISIONS.md) for why things
-are built this way. The roadmap will live in [Issues](../../issues).
-
-## Status and disclosure
+## Status
 
 **Experimental (0.1.0).** This first build was written without access to Blender and has known
 bugs from its first real test; a tested build is next. Expect rough edges.
@@ -95,6 +89,12 @@ review; the maintainer sets the direction, tests each build on real work and rev
 behaviour and UI/UX. See [docs/PROMPT_STATS.md](docs/PROMPT_STATS.md) for how much human
 steering went into it.
 
+## Contributing
+
+See [AGENTS.md](AGENTS.md) for setup, tests and layout, [CONTRIBUTING.md](CONTRIBUTING.md) for
+how to report bugs and send changes, and [docs/DECISIONS.md](docs/DECISIONS.md) for why things
+are built this way. Bugs and plans are in [Issues](https://github.com/calvin-young/blender-crosscut/issues).
+
 ## License
 
-GPL-3.0-or-later.
+GPL-3.0-or-later, see [LICENSE](LICENSE).
