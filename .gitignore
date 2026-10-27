@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+*.zip
+.local/
+local-notes*
+dist/
