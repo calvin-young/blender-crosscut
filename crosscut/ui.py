@@ -17,6 +17,9 @@ def _draw_main(layout, context, compact=False):
     col.separator()
     row = col.row(align=True)
     row.prop(s, "orientation", expand=True)
+    sub = row.row(align=True)
+    sub.enabled = s.mode == 'SECTION'
+    sub.operator("crosscut.flip", text="", icon='ARROW_LEFTRIGHT', depress=s.flip)
     if s.orientation == 'OBJECT':
         r = col.row(align=True)
         r.prop(s, "plane_object", text="")
@@ -33,9 +36,7 @@ def _draw_main(layout, context, compact=False):
     st.direction = -1
     st = r.operator("crosscut.step", text="", icon='TRIA_RIGHT')
     st.direction = 1
-    r = box.row(align=True)
-    r.prop(s, "step")
-    r.operator("crosscut.flip", text="", icon='ARROW_LEFTRIGHT', depress=s.flip)
+    box.prop(s, "step")
     if s.mode == 'SLICE':
         box.prop(s, "thickness")
     if not compact:
@@ -91,12 +92,15 @@ class CROSSCUT_PT_display(bpy.types.Panel):
         col = layout.column()
         col.active = s.cap_style != 'BACKFACES'
         col.prop(s, "color_source")
-        if s.color_source == 'SINGLE':
+        if s.color_source in {'SINGLE', 'AUTO'}:
             col.prop(s, "single_color")
         sub = col.column()
         sub.active = s.cap_style == 'HATCH'
         sub.prop(s, "hatch_space")
-        sub.prop(s, "hatch_pitch_px" if s.hatch_space == 'SCREEN' else "hatch_pitch")
+        if s.hatch_space == 'SCREEN':
+            sub.prop(s, "hatch_pitch_px", text="Spacing (px)")
+        else:
+            sub.prop(s, "hatch_pitch")
         sub.prop(s, "hatch_angle")
         sub.prop(s, "hatch_width")
         sub.prop(s, "hatch_vary")
@@ -107,10 +111,11 @@ class CROSSCUT_PT_display(bpy.types.Panel):
         sr.prop(s, "outline_width", text="")
         col.prop(s, "interference")
         layout.separator()
-        col = layout.column()
+        col = layout.column(heading="Show")
         col.prop(s, "show_frame")
         col.prop(s, "show_readout")
-        col.prop(s, "cap_native")
+        col = layout.column(heading="Alt+B")
+        col.prop(s, "cap_native", text="Cap Alt+B Clipping")
 
 
 class CROSSCUT_PT_targets(bpy.types.Panel):
@@ -137,7 +142,7 @@ class CROSSCUT_PT_targets(bpy.types.Panel):
             r.prop(s, "range_object", text="Object")
             r.operator("crosscut.use_bounds", text="", icon='EYEDROPPER')
         lo, hi = engine.scrub_range(s)
-        col.label(text=f"Range {lo:.3f} → {hi:.3f}")
+        col.label(text=f"Range {draw.fmt_length(context.scene, lo)} → {draw.fmt_length(context.scene, hi)}")
         layout.label(text="Wire/Bounds-display objects are never capped", icon='INFO')
 
 

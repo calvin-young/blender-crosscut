@@ -17,9 +17,15 @@ from . import engine
 
 
 def tag_redraw(_self=None, _context=None):
+    """Push the settings to every 3D view now and redraw them."""
     wm = bpy.context.window_manager
     if wm is None:
         return
+    from . import draw
+    try:
+        draw.sync_views()
+    except Exception as ex:  # noqa: BLE001 - the draw callback retries and reports
+        print("Crosscut: sync failed:", ex)
     for win in wm.windows:
         for area in win.screen.areas:
             if area.type == 'VIEW_3D':
@@ -47,7 +53,7 @@ def _set_position(self, value):
 
 
 MODES = [
-    ('OFF', "Off", "No Crosscut clipping (native Alt+B clipping still gets caps if enabled)", 'HIDE_OFF', 0),
+    ('OFF', "Off", "No Crosscut clipping (native Alt+B clipping still gets caps if enabled)", 'X', 0),
     ('SECTION', "Section", "Cut the view with a plane and keep one side (half section)", 'MOD_BOOLEAN', 1),
     ('SLICE', "Slice", "Show only a slice: the cross-section itself, or a slab of the given thickness", 'ALIGN_JUSTIFY', 2),
 ]
@@ -119,7 +125,8 @@ class CrosscutSettings(bpy.types.PropertyGroup):
     color_source: EnumProperty(
         name="Colors", default='AUTO', update=tag_redraw,
         items=[
-            ('AUTO', "Auto", "Follow the Solid shading colour (Object or Material); otherwise a per-object palette"),
+            ('AUTO', "Auto", "Follow the Solid shading colour (Object or Material); white or grey parts get "
+                             "the Cap Color so the cut stands out; other shading colours use a per-object palette"),
             ('OBJECT', "Object", "Object viewport display colour"),
             ('MATERIAL', "Material", "First material's viewport display colour"),
             ('PALETTE', "Palette", "Distinct colour per object"),
@@ -127,7 +134,7 @@ class CrosscutSettings(bpy.types.PropertyGroup):
         ],
     )
     single_color: FloatVectorProperty(
-        name="Cap Color", subtype='COLOR_GAMMA', size=3, min=0.0, max=1.0,
+        name="Cap Color", description="Cap colour for Single, and for white or grey parts in Auto", subtype='COLOR_GAMMA', size=3, min=0.0, max=1.0,
         default=(0.29, 0.47, 0.25), update=tag_redraw,
     )
     hatch_space: EnumProperty(

@@ -71,7 +71,7 @@ void main() {
 _CAP_FS = """
 float hatch_line(float x, float pitch, float width) {
     float f = x / pitch;
-    float aa = max(fwidth(f), 1e-4);
+    float aa = max(0.5 * fwidth(f), 1e-4);  // about one pixel of antialiasing
     float d = abs(fract(f + 0.5) - 0.5);
     return 1.0 - smoothstep(width * 0.5 - aa, width * 0.5 + aa, d);
 }
@@ -209,6 +209,65 @@ def _request_mode_off():
     bpy.app.timers.register(_off, first_interval=0.0)
 
 
+def _iter_views():
+    """(window, area, region, rv3d) for every 3D view region, quad views included."""
+    wm = bpy.context.window_manager
+    if wm is None:
+        return
+    for win in wm.windows:
+        for area in win.screen.areas:
+            if area.type != 'VIEW_3D':
+                continue
+            for region in area.regions:
+                if region.type == 'WINDOW' and region.data is not None:
+                    yield win, area, region, region.data
+
+
+_to_prime = set()       # rv3d pointers that need a clipping box (see _prime_views)
+
+
+def _prime(win, area, region, rv3d):
+    """Give a view a clipping box so Blender applies its clip planes.
+
+    Blender only clips a view that has a clipping bounding box (rv3d->clipbb),
+    and only Alt+B (view3d.clip_border) creates one; RNA cannot. So the first
+    time Crosscut takes over a view without existing clipping, it runs
+    clip_border once with an empty rectangle (an empty box draws no
+    clipping-region tint) and then writes its own planes back.
+    """
+    key = rv3d.as_pointer()
+    _to_prime.discard(key)
+    st = _clip_state.get(key)
+    if st is None or st.get("ours") is None:
+        return
+    planes = st["ours"].reshape(6, 4).tolist()
+    try:
+        with bpy.context.temp_override(window=win, area=area, region=region):
+            bpy.ops.view3d.clip_border(xmin=0, xmax=0, ymin=0, ymax=0, wait_for_input=False)
+    except (RuntimeError, TypeError) as ex:
+        print("Crosscut: could not enable clipping in a view:", ex)
+        return
+    rv3d.clip_planes = planes
+    rv3d.use_clip_planes = True
+    st["ours"] = _flat(rv3d.clip_planes)
+    area.tag_redraw()
+
+
+def _prime_views():
+    pending = set(_to_prime)
+    for win, area, region, rv3d in _iter_views():
+        if rv3d.as_pointer() in pending:
+            _prime(win, area, region, rv3d)
+    _to_prime.clear()
+    return None
+
+
+def _request_prime(key):
+    if not _to_prime:
+        bpy.app.timers.register(_prime_views, first_interval=0.0)
+    _to_prime.add(key)
+
+
 def sync_clip(rv3d, desired, area=None):
     """Make rv3d's clip planes match `desired` (list of planes) or hand them
     back to the user when desired is None. Returns True when Crosscut owns the
@@ -228,6 +287,7 @@ def sync_clip(rv3d, desired, area=None):
                 if area is not None:
                     area.tag_redraw()
             del _clip_state[key]
+            _to_prime.discard(key)
         return False
 
     if st is not None and st.get("ours") is not None:
@@ -235,11 +295,15 @@ def sync_clip(rv3d, desired, area=None):
             # The user pressed Alt+B (toggles clipping off, or draws a new box):
             # hand control back and switch Crosscut off.
             del _clip_state[key]
+            _to_prime.discard(key)
             _request_mode_off()
             return False
     else:
         st = {"saved": (cur_on, cur.copy()), "ours": None}
         _clip_state[key] = st
+        if not cur_on:
+            # no Alt+B box in this view, so possibly no clipping box either
+            _request_prime(key)
 
     full = _pad6(desired)
     full_flat = _flat(full)
@@ -253,50 +317,74 @@ def sync_clip(rv3d, desired, area=None):
     return True
 
 
+def sync_views():
+    """Apply the current settings to every 3D view right away, so the scene is
+    drawn with the new planes in the same frame (called from property updates
+    and operators; the draw callback only catches what these miss)."""
+    for win, area, region, rv3d in _iter_views():
+        scene = win.scene
+        s = getattr(scene, "crosscut", None)
+        if s is None:
+            continue
+        planes = engine.compute_planes(s)
+        sync_clip(rv3d, planes[0] if planes else None, area)
+        if rv3d.as_pointer() in _to_prime:
+            _prime(win, area, region, rv3d)  # now, so the next frame is already clipped
+
+
 def release_all_views():
     """Restore every view we touched (used on unregister)."""
-    wm = bpy.context.window_manager
-    if wm is None:
-        return
-    for win in wm.windows:
-        for area in win.screen.areas:
-            if area.type != 'VIEW_3D':
-                continue
-            for space in area.spaces:
-                if space.type != 'VIEW_3D':
-                    continue
-                rv3ds = [space.region_3d] + list(getattr(space, "region_quadviews", []) or [])
-                for rv3d in rv3ds:
-                    if rv3d is not None:
-                        sync_clip(rv3d, None)
+    for _win, _area, _region, rv3d in _iter_views():
+        sync_clip(rv3d, None)
     _clip_state.clear()
+    _to_prime.clear()
 
 
 # ------------------------------------------------------------------- colours
 
-def _linear_to_srgb(c):
+# The POST_VIEW overlay buffer is scene-linear and gets the view transform
+# afterwards (checked in 4.2 and 5.2: a 0.85 fill showed as 237, not 217), so
+# every colour sent to a shader must be linear. Colours picked in sRGB
+# (COLOR_GAMMA properties, the palette, constants below) go through _lin().
+
+def _srgb_to_linear(c):
     c = min(max(c, 0.0), 1.0)
-    return c * 12.92 if c <= 0.0031308 else 1.055 * c ** (1.0 / 2.4) - 0.055
+    return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+
+def _lin(rgba):
+    return tuple(_srgb_to_linear(c) for c in rgba[:3]) + tuple(rgba[3:])
+
+
+def _is_plain(rgb):
+    """Unsaturated (white / grey / black): Blender's defaults for objects and materials."""
+    return max(rgb) - min(rgb) < 0.08
 
 
 def target_color(s, target, shading):
     src = s.color_source
     owner = target.owner
     orig = target.orig
-    if src == 'AUTO':
+    auto = src == 'AUTO'
+    if auto:
         ct = getattr(shading, "color_type", 'MATERIAL')
         src = {'OBJECT': 'OBJECT', 'MATERIAL': 'MATERIAL'}.get(ct, 'PALETTE')
-    # Object/material colours are stored scene-linear; the overlay we draw into
-    # expects display (sRGB) values, like the rest of the viewport UI.
+    # Returns a linear colour (see _lin). Object and material colours are
+    # already linear; the Cap Color and the palette are sRGB.
     if src == 'SINGLE':
-        return tuple(s.single_color)
+        return _lin(s.single_color)
+    rgb = None
     if src == 'OBJECT':
-        return tuple(_linear_to_srgb(c) for c in owner.color[:3])
-    if src == 'MATERIAL':
+        rgb = owner.color[:3]
+    elif src == 'MATERIAL':
         mats = [sl.material for sl in getattr(orig, "material_slots", []) if sl.material]
         rgb = mats[0].diffuse_color[:3] if mats else owner.color[:3]
-        return tuple(_linear_to_srgb(c) for c in rgb)
-    return sm.palette_color(owner.name_full)
+    if rgb is not None:
+        if auto and _is_plain(rgb):
+            # a white part with a white cap reads as uncut: use the Cap Color instead
+            return _lin(s.single_color)
+        return tuple(rgb)
+    return _lin(sm.palette_color(owner.name_full))
 
 
 # --------------------------------------------------------------------- draw
@@ -321,12 +409,14 @@ def _line_batch(target, ci, segs, serial, plane, toward, eps):
     return b
 
 
-def _fan_batch(target, ci, segs, serial):
+def _fan_batch(target, ci, segs, serial, n_open):
     k = (target.key, ci, "fan")
     sig = serial
     hit = _batches.get(k)
     if hit is not None and hit[0] == sig:
         return hit[1]
+    if n_open:
+        segs = sm.close_open_contours(segs)
     b = _vbatch('TRIS', {"pos": (sm.fan_triangles(segs), 3)})
     _batches[k] = (sig, b)
     return b
@@ -345,7 +435,7 @@ def _hatch_vec(s, index, style, angle_offset=0.0):
     if style == 'SOLID':
         return (1.0, 1.0, 0.0, 0.0)
     if s.hatch_space == 'SCREEN':
-        base_pitch = s.hatch_pitch_px
+        base_pitch = s.hatch_pitch_px * bpy.context.preferences.system.ui_scale
     else:
         base_pitch = s.hatch_pitch
     ang, pitch = sm.hatch_for_index(index, math.degrees(s.hatch_angle) + angle_offset, base_pitch, s.hatch_vary)
@@ -402,7 +492,7 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style):
                 with accum_off.bind():
                     _clear_bound()
             all_segs = []
-            for idx, t, segs, _n_open, serial in hits:
+            for idx, t, segs, n_open, serial in hits:
                 # 1) even-odd mask
                 with mask_off.bind():
                     _clear_bound()
@@ -411,7 +501,7 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style):
                     gpu.state.blend_set('INVERT')
                     mask_sh.bind()
                     mask_sh.uniform_float("viewProj", vp)
-                    _fan_batch(t, ci, segs, serial).draw(mask_sh)
+                    _fan_batch(t, ci, segs, serial, n_open).draw(mask_sh)
                     gpu.state.blend_set('NONE')
                 # 2) composite the cap into the viewport
                 capb = _cap_batch(segs, plane, bounds)
@@ -421,7 +511,7 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style):
                         col = target_color(s, t, shading)
                         colors[t.key] = col
                     fill = (col[0], col[1], col[2], 1.0)
-                    linec = (col[0] * 0.18, col[1] * 0.18, col[2] * 0.18, 1.0)
+                    linec = (col[0] * 0.02, col[1] * 0.02, col[2] * 0.02, 1.0)  # ~18% in sRGB
                     gpu.state.depth_test_set('LESS_EQUAL')
                     gpu.state.depth_mask_set(False)
                     gpu.state.blend_set('ALPHA')
@@ -453,8 +543,8 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style):
                     gpu.state.blend_set('ALPHA')
                     cap_sh.bind()
                     cap_sh.uniform_float("viewProj", vp)
-                    cap_sh.uniform_float("fillColor", (0.86, 0.10, 0.08, 1.0))
-                    cap_sh.uniform_float("lineColor", (1.0, 0.85, 0.80, 1.0))
+                    cap_sh.uniform_float("fillColor", _lin((0.86, 0.10, 0.08, 1.0)))
+                    cap_sh.uniform_float("lineColor", _lin((1.0, 0.85, 0.80, 1.0)))
                     hv = list(_hatch_vec(s, 0, 'HATCH'))
                     hv[3] = 2.0
                     cap_sh.uniform_float("hatch", tuple(hv))
@@ -475,13 +565,13 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style):
         gpu.state.blend_set('ALPHA')
         line_sh.bind()
         line_sh.uniform_float("viewportSize", (w, h))
-        line_sh.uniform_float("lineWidth", s.outline_width)
+        line_sh.uniform_float("lineWidth", s.outline_width * bpy.context.preferences.system.ui_scale)
         for t, ci, segs, serial, plane, n_open in lines:
             col = colors.get(t.key) or target_color(s, t, shading)
             if n_open:
-                c = (1.0, 0.55, 0.0, 1.0)  # orange: open / non-manifold contour
+                c = _lin((1.0, 0.55, 0.0, 1.0))  # orange: open / non-manifold contour
             elif show_fill:
-                c = (col[0] * 0.12, col[1] * 0.12, col[2] * 0.12, 1.0)
+                c = (col[0] * 0.01, col[1] * 0.01, col[2] * 0.01, 1.0)  # ~12% in sRGB
             else:
                 c = (col[0], col[1], col[2], 1.0)
             line_sh.uniform_float("color", c)
@@ -518,7 +608,7 @@ def _draw_frame(context, s, rv3d, caps):
     sh.bind()
     sh.uniform_float("viewportSize", (region.width, region.height))
     sh.uniform_float("lineWidth", 1.0)
-    sh.uniform_float("color", (1.0, 0.75, 0.2, 0.45))
+    sh.uniform_float("color", _lin((1.0, 0.75, 0.2, 0.45)))
     batch_for_shader(sh, 'LINES', {"pos": [tuple(p) for p in segs]}).draw(sh)
 
 
@@ -565,14 +655,65 @@ def draw_view():
         gpu.state.depth_mask_set(False)
 
 
-def _fmt_length(scene, value):
+_UNIT_SCALE = {  # length_unit -> (metres per unit, suffix)
+    'MICROMETERS': (1e-6, "µm"), 'MILLIMETERS': (1e-3, "mm"), 'CENTIMETERS': (1e-2, "cm"),
+    'METERS': (1.0, "m"), 'KILOMETERS': (1e3, "km"),
+    'THOU': (2.54e-5, "thou"), 'INCHES': (0.0254, "in"), 'FEET': (0.3048, "ft"), 'MILES': (1609.344, "mi"),
+}
+
+
+def fmt_length(scene, value):
+    """A length in the scene's display unit (Scene > Units > Length), e.g. '12.000 mm'."""
     us = scene.unit_settings
     if us.system == 'NONE':
         return f"{value:.3f}"
+    metres = value * us.scale_length
+    unit = _UNIT_SCALE.get(us.length_unit)
+    if unit is not None:
+        return f"{metres / unit[0]:.3f} {unit[1]}"
     try:
-        return bpy.utils.units.to_string(us.system, 'LENGTH', value * us.scale_length, precision=3)
+        return bpy.utils.units.to_string(us.system, 'LENGTH', metres, precision=3)
     except (ValueError, TypeError):
         return f"{value:.3f}"
+
+
+def _enum_name(s, prop):
+    p = s.bl_rna.properties[prop]
+    return p.enum_items[getattr(s, prop)].name
+
+
+def readout_lines(scene, s, info):
+    """(lines, warnings) shown in the viewport's bottom-left corner."""
+    lines, warn = [], []
+    if not info:
+        return lines, warn
+    if "error" in info:
+        warn.append("Crosscut draw error (see console): " + info["error"][:90])
+    elif info.get("ours"):
+        c = engine.plane_coordinate(s)
+        if s.orientation == 'OBJECT':
+            axis = s.plane_object.name if s.plane_object else "?"
+        else:
+            axis = s.orientation
+        head = f"{_enum_name(s, 'mode')} {axis}  {fmt_length(scene, c)}"
+        if s.mode == 'SLICE' and s.thickness > 0:
+            head += f"  ±{fmt_length(scene, s.thickness / 2)}"
+        if s.range_source == 'OBJECT' and s.range_object is not None and s.step > 0:
+            lo, hi = engine.scrub_range(s)
+            k = int(round((c - lo) / s.step))
+            total = int(round((hi - lo) / s.step))
+            head += f"   step {k} / {total}"
+        head += f"   {_enum_name(s, 'cap_style')}"
+        lines.append(head)
+    elif info.get("native"):
+        lines.append(f"Alt+B clipping   {_enum_name(s, 'cap_style')}")
+    if info.get("shading_note"):
+        warn.append("Clipping and caps only show in Solid / Wireframe shading")
+    if info.get("open"):
+        names = info["open"]
+        more = f" (+{len(names) - 3})" if len(names) > 3 else ""
+        warn.append("Open section (non-manifold): " + ", ".join(names[:3]) + more)
+    return lines, warn
 
 
 def draw_readout():
@@ -583,34 +724,7 @@ def draw_readout():
     s = scene.crosscut
     if not s.show_readout:
         return
-    info = _last_info.get(context.region.as_pointer())
-    if not info:
-        return
-    lines = []
-    warn = []
-    if "error" in info:
-        warn.append("Crosscut draw error (see console): " + info["error"][:90])
-    elif info.get("ours"):
-        c = engine.plane_coordinate(s)
-        axis = s.orientation if s.orientation != 'OBJECT' else (s.plane_object.name if s.plane_object else "?")
-        head = f"{'Section' if s.mode == 'SECTION' else 'Slice'} {axis}  {_fmt_length(scene, c)}"
-        if s.mode == 'SLICE' and s.thickness > 0:
-            head += f"  ±{_fmt_length(scene, s.thickness / 2)}"
-        if s.range_source == 'OBJECT' and s.range_object is not None and s.step > 0:
-            lo, hi = engine.scrub_range(s)
-            k = int(round((c - lo) / s.step))
-            total = int(round((hi - lo) / s.step))
-            head += f"   step {k} / {total}"
-        head += f"   [{s.cap_style.title()}]"
-        lines.append(head)
-    elif info.get("native"):
-        lines.append(f"Alt+B clipping   [{s.cap_style.title()}]")
-    if info.get("shading_note"):
-        warn.append("Clipping and caps only show in Solid / Wireframe shading")
-    if info.get("open"):
-        names = info["open"]
-        more = f" (+{len(names) - 3})" if len(names) > 3 else ""
-        warn.append("Open section (non-manifold): " + ", ".join(names[:3]) + more)
+    lines, warn = readout_lines(scene, s, _last_info.get(context.region.as_pointer()))
     if not lines and not warn:
         return
     ui = context.preferences.system.ui_scale

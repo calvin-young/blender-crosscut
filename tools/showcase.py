@@ -113,6 +113,7 @@ def shoot(area, region, name):
 def configure(s, **kw):
     defaults = dict(mode='OFF', orientation='Y', offset=0.0, flip=False, thickness=0.0,
                     cap_style='HATCH', targets='VISIBLE', color_source='AUTO', hatch_vary=True,
+                    cap_native=True, range_source='TARGETS', range_object=None,
                     interference=True, outline=True, show_frame=False, show_readout=True)
     defaults.update(kw)
     for k, v in defaults.items():
@@ -133,6 +134,9 @@ def main():
     sphere = hollow_sphere("hollow-sphere", 40.0, 25.0, (0, 0, 0), (0.80, 0.80, 0.80))
 
     area, region = view3d()
+    with bpy.context.temp_override(area=area, region=region):
+        bpy.ops.screen.screen_full_area()  # bigger shots, and hides the splash screen
+    area, region = view3d()
     space = area.spaces.active
     space.shading.type = 'SOLID'
     space.shading.color_type = 'OBJECT'
@@ -145,7 +149,7 @@ def main():
     for style, label in (('BACKFACES', "01_section_backfaces"),
                          ('SOLID', "02_section_solid"),
                          ('HATCH', "03_section_hatched")):
-        configure(s, mode='SECTION', orientation='Y', cap_style=style)
+        configure(s, mode='SECTION', orientation='Y', flip=True, cap_style=style)
         shoot(area, region, label)
 
     # 4-5: slices
@@ -196,6 +200,8 @@ def main():
     shoot(area, region, "10_range_object_readout")
 
     configure(s, mode='OFF')
+    with bpy.context.temp_override(area=area, region=region):
+        bpy.ops.screen.back_to_previous()
     print("Crosscut showcase: done ->", OUT)
 
 

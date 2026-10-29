@@ -23,6 +23,19 @@ def _center_offset(context, s):
     return 0.5 * (lo + hi) - base
 
 
+def _face_viewer(context, s):
+    """Flip the plane so the side towards the viewer is the one cut away: a new
+    section then shows its cut face instead of the uncut outside of the part."""
+    rv3d = context.region_data
+    f = engine.plane_frame(s)
+    if rv3d is None or f is None or not hasattr(rv3d, "view_rotation"):
+        return
+    toward = np.array(rv3d.view_rotation @ Vector((0.0, 0.0, 1.0)))
+    d = float(f[0] @ toward)
+    if abs(d) > 0.05:  # leave it alone when looking along the plane
+        s.flip = d < 0.0
+
+
 class CROSSCUT_OT_section(bpy.types.Operator):
     """Section the view along an axis (Section mode keeps one side; Slice keeps a slice)"""
     bl_idname = "crosscut.section"
@@ -49,6 +62,7 @@ class CROSSCUT_OT_section(bpy.types.Operator):
             s.mode = 'SECTION'
         if was_off or changed_axis:
             s.offset = _center_offset(context, s)
+            _face_viewer(context, s)
         s.last_mode = s.mode
         tag_redraw()
         return {'FINISHED'}
@@ -66,6 +80,7 @@ class CROSSCUT_OT_toggle(bpy.types.Operator):
             s.mode = s.last_mode if s.last_mode in {'SECTION', 'SLICE'} else 'SECTION'
             if engine.plane_frame(s) is None:
                 s.orientation = 'Z'
+            _face_viewer(context, s)
         else:
             s.last_mode = s.mode
             s.mode = 'OFF'

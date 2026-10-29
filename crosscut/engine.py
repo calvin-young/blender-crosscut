@@ -288,16 +288,27 @@ def prune(live_keys):
 # ---------------------------------------------------------------- handlers
 
 def on_depsgraph_update(_scene, depsgraph):
+    plane_moved = False
     for up in depsgraph.updates:
         idb = up.id
         if isinstance(idb, bpy.types.Object):
             if up.is_updated_geometry:
                 invalidate_object(idb.original.name_full)
+            if up.is_updated_transform:
+                plane_moved = True
         elif isinstance(idb, (bpy.types.Mesh, bpy.types.Curve, bpy.types.MetaBall)):
             orig = idb.original
             for ob in bpy.data.objects:
                 if ob.data == orig:
                     invalidate_object(ob.name_full)
+    if plane_moved:
+        # an Object plane (or a range object) may have moved: update the clip
+        # planes before the next redraw instead of one frame late
+        from . import draw
+        try:
+            draw.sync_views()
+        except Exception as ex:  # noqa: BLE001 - the draw callback retries and reports
+            print("Crosscut: sync failed:", ex)
 
 
 def on_load(*_args):

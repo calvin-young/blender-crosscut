@@ -148,6 +148,35 @@ def open_endpoint_count(segments):
     return int(np.count_nonzero(counts % 2))
 
 
+def close_open_contours(segments, max_open=4096):
+    """Add segments that join open endpoints pairwise (nearest first), so an
+    almost-closed section from a slightly non-manifold mesh still fills
+    sensibly instead of producing even-odd garbage. Returns segments unchanged
+    when every contour is closed or there are too many open ends to pair."""
+    if len(segments) == 0:
+        return segments
+    pts = np.ascontiguousarray(segments.reshape(-1, 3))
+    keys = pts.view(np.dtype((np.void, pts.dtype.itemsize * 3))).ravel()
+    _, first, counts = np.unique(keys, return_index=True, return_counts=True)
+    ends = pts[first[counts % 2 == 1]]
+    if len(ends) < 2 or len(ends) > max_open:
+        return segments
+    d = np.linalg.norm(ends[:, None, :] - ends[None, :, :], axis=2)
+    np.fill_diagonal(d, np.inf)
+    extra = []
+    free = np.ones(len(ends), dtype=bool)
+    for flat in np.argsort(d, axis=None):
+        i, j = divmod(int(flat), len(ends))
+        if i < j and free[i] and free[j]:
+            extra.append((ends[i], ends[j]))
+            free[i] = free[j] = False
+            if not free.any():
+                break
+    if not extra:
+        return segments
+    return np.concatenate([segments, np.array(extra, dtype=segments.dtype)])
+
+
 def fan_triangles(segments, apex=None):
     """Triangles (apex, a, b) for each segment, as a flat (K*3, 3) float32 array.
 
