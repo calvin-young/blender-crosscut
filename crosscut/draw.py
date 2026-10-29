@@ -59,7 +59,7 @@ void main() {
     if (m < 0.5) {
         discard;
     }
-    fragColor = vec4(0.5, 0.0, 0.0, 1.0);
+    fragColor = vec4(COUNT_STEP, 0.0, 0.0, 1.0);
 }
 """
 _CAP_VS = """
@@ -90,16 +90,30 @@ void main() {
         if (hatch.w > 1.5) {
             l = max(l, hatch_line(dot(p, d), pitch, lineWidth));
         }
-        col = mix(fillColor, lineColor, l * lineColor.a);
-        col.a = fillColor.a;
+        float k = l * lineColor.a;
+        col.rgb = mix(fillColor.rgb, lineColor.rgb, k);
+        col.a = mix(fillColor.a, 1.0, k);
+    }
+    if (useCount > 0.5) {
+        // running average where several caps overlap: the n-th cap drawn on a
+        // pixel gets weight 1/n, so n overlapping caps blend equally
+        float n = floor(texelFetch(countTex, ivec2(gl_FragCoord.xy), 0).r * 255.0 / COUNT_UNITS + 0.5);
+        col.a /= max(n, 1.0);
     }
     fragColor = col;
 }
 """
 
 
+# Coverage count per pixel, accumulated additively in an 8-bit texture: each
+# cap adds COUNT_UNITS/255, so up to 15 overlapping objects are counted exactly.
+COUNT_UNITS = 16.0
+
+
 def _make_shader(name, vs, fs, inputs, constants, samplers=(), varyings=()):
     info = gpu.types.GPUShaderCreateInfo()
+    info.define("COUNT_STEP", f"{COUNT_UNITS / 255.0:.8f}")
+    info.define("COUNT_UNITS", f"{COUNT_UNITS:.1f}")
     for i, (typ, nm) in enumerate(inputs):
         info.vertex_in(i, typ, nm)
     for typ, nm in constants:
@@ -132,8 +146,8 @@ def _shader(kind):
             "crosscut_cap", _CAP_VS, _CAP_FS,
             [('VEC3', "pos"), ('VEC2', "uv")],
             [('MAT4', "viewProj"), ('VEC4', "fillColor"), ('VEC4', "lineColor"),
-             ('VEC4', "hatch"), ('FLOAT', "threshold"), ('FLOAT', "lineWidth")],
-            samplers=["maskTex"], varyings=[('VEC2', "vUV")],
+             ('VEC4', "hatch"), ('FLOAT', "threshold"), ('FLOAT', "lineWidth"), ('FLOAT', "useCount")],
+            samplers=["maskTex", "countTex"], varyings=[('VEC2', "vUV")],
         )
     elif kind == "line":
         sh = gpu.shader.from_builtin('POLYLINE_UNIFORM_COLOR')
@@ -394,41 +408,61 @@ def _view_dir_to_viewer(rv3d):
     return vi[:3, 2]
 
 
-def _line_batch(target, ci, segs, serial, plane, toward, eps):
-    sign = 1.0 if float(np.dot(plane[:3], toward)) >= 0 else -1.0
-    n = sm.normalize(plane[:3]) * sign
-    q = round(math.log2(max(eps, 1e-12)))
-    sig = (serial, sign, q)
-    k = (target.key, ci, "line")
-    hit = _batches.get(k)
+def _edge_on(rv3d, plane):
+    """True when the view looks along the plane, so a cap on it has no area on
+    screen. Alt+B's side planes pass through the eye until you orbit."""
+    norm = float(np.linalg.norm(plane[:3]))
+    if norm == 0:
+        return True
+    vi = np.array(rv3d.view_matrix.inverted())
+    if rv3d.is_perspective:
+        d = abs(float(np.dot(plane[:3], vi[:3, 3])) + float(plane[3])) / norm
+        return d < max(rv3d.view_distance, 1e-6) * 1e-4
+    return abs(float(np.dot(plane[:3], vi[:3, 2]))) / norm < 1e-4
+
+
+def _cached(key, sig, build):
+    hit = _batches.get(key)
     if hit is not None and hit[0] == sig:
         return hit[1]
-    pts = segs.reshape(-1, 3) + n * (2.0 ** q)
-    b = _vbatch('LINES', {"pos": (pts, 3)})
-    _batches[k] = (sig, b)
+    b = build()
+    _batches[key] = (sig, b)
     return b
+
+
+def _line_batch(target, ci, segs, serial, plane, bounds, toward, eps):
+    sign = 1.0 if float(np.dot(plane[:3], toward)) >= 0 else -1.0
+    q = round(math.log2(max(eps, 1e-12)))
+
+    def build():
+        # Blender clips the scene, not our overlay: trim the contour to the
+        # other active planes (Alt+B's box) ourselves
+        seg = sm.clip_segments(segs, bounds) if len(bounds) else segs
+        if len(seg) == 0:
+            return None
+        n = sm.normalize(plane[:3]) * sign
+        return _vbatch('LINES', {"pos": (seg.reshape(-1, 3) + n * (2.0 ** q), 3)})
+    return _cached((target.key, ci, "line"), (serial, sign, q), build)
 
 
 def _fan_batch(target, ci, segs, serial, n_open):
-    k = (target.key, ci, "fan")
-    sig = serial
-    hit = _batches.get(k)
-    if hit is not None and hit[0] == sig:
-        return hit[1]
-    if n_open:
-        segs = sm.close_open_contours(segs)
-    b = _vbatch('TRIS', {"pos": (sm.fan_triangles(segs), 3)})
-    _batches[k] = (sig, b)
-    return b
+    def build():
+        sg = sm.close_open_contours(segs) if n_open else segs
+        return _vbatch('TRIS', {"pos": (sm.fan_triangles(sg), 3)})
+    return _cached((target.key, ci, "fan"), serial, build)
 
 
-def _cap_batch(segs, plane, bounds):
-    poly, uv = sm.cap_polygon(segs, plane, bounds)
-    if len(poly) < 3:
-        return None
+def _quad_batch(poly, uv):
     tri = sm.fan_triangulate(poly)
     tuv = sm.fan_triangulate(np.concatenate([uv, np.zeros((len(uv), 1))], 1))[:, :2]
     return _vbatch('TRIS', {"pos": (tri, 3), "uv": (tuv, 2)})
+
+
+def _cap_batch(key, sig, segs, plane, bounds):
+    def build():
+        poly, uv = sm.cap_polygon(segs, plane, bounds)
+        return _quad_batch(poly, uv) if len(poly) >= 3 else None
+    return _cached(key, sig, build)
 
 
 def _hatch_vec(s, index, style, angle_offset=0.0):
@@ -444,7 +478,32 @@ def _hatch_vec(s, index, style, angle_offset=0.0):
     return (signed, math.cos(a), math.sin(a), 1.0 if style == 'HATCH' else 2.0)
 
 
-def _draw_caps(context, s, rv3d, caps, show_fill, style):
+def _cap_uniforms(sh, vp, fill, line, hatch, threshold, width, mask_tex, count_tex=None):
+    sh.bind()
+    sh.uniform_float("viewProj", vp)
+    sh.uniform_float("fillColor", fill)
+    sh.uniform_float("lineColor", line)
+    sh.uniform_float("hatch", hatch)
+    sh.uniform_float("threshold", threshold)
+    sh.uniform_float("lineWidth", width)
+    sh.uniform_float("useCount", 1.0 if count_tex is not None else 0.0)
+    sh.uniform_sampler("maskTex", mask_tex)
+    sh.uniform_sampler("countTex", count_tex if count_tex is not None else mask_tex)
+
+
+def backface_color():
+    """The theme's Face Orientation back colour (red by default), linear."""
+    try:
+        c = bpy.context.preferences.themes[0].view_3d.face_back
+    except (AttributeError, IndexError):
+        c = (1.0, 0.0, 0.0)
+    # a little darker, as the overlay shows it on a lit surface
+    return _lin((c[0] * 0.75, c[1] * 0.75, c[2] * 0.75, 1.0))
+
+
+def _draw_caps(context, s, rv3d, caps, show_fill, style, fill_override=None):
+    """Draw caps and outlines. fill_override: one fill colour for every target
+    (no interference highlight), used for the Backfaces slice outline."""
     region = context.region
     w, h = region.width, region.height
     if w < 2 or h < 2:
@@ -477,7 +536,7 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style):
         hits = []
         for idx, t in enumerate(targets):
             live.add(t.key)
-            res = engine.section(t, ci, plane, depsgraph)
+            res = engine.section(t, ci, plane, depsgraph, bounds)
             if res is None:
                 continue
             segs, n_open, serial = res
@@ -487,11 +546,13 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style):
         info["count"] = max(info["count"], len(hits))
 
         if show_fill:
-            want_interference = s.interference and len(hits) > 1
-            if want_interference:
+            # with overlapping parts, count coverage so overlaps can blend and
+            # (optionally) get the interference hatching
+            several = len(hits) > 1
+            want_interference = s.interference and several and fill_override is None
+            if several:
                 with accum_off.bind():
                     _clear_bound()
-            all_segs = []
             for idx, t, segs, n_open, serial in hits:
                 # 1) even-odd mask
                 with mask_off.bind():
@@ -503,29 +564,8 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style):
                     mask_sh.uniform_float("viewProj", vp)
                     _fan_batch(t, ci, segs, serial, n_open).draw(mask_sh)
                     gpu.state.blend_set('NONE')
-                # 2) composite the cap into the viewport
-                capb = _cap_batch(segs, plane, bounds)
-                if capb is not None:
-                    col = colors.get(t.key)
-                    if col is None:
-                        col = target_color(s, t, shading)
-                        colors[t.key] = col
-                    fill = (col[0], col[1], col[2], 1.0)
-                    linec = (col[0] * 0.02, col[1] * 0.02, col[2] * 0.02, 1.0)  # ~18% in sRGB
-                    gpu.state.depth_test_set('LESS_EQUAL')
-                    gpu.state.depth_mask_set(False)
-                    gpu.state.blend_set('ALPHA')
-                    cap_sh.bind()
-                    cap_sh.uniform_float("viewProj", vp)
-                    cap_sh.uniform_float("fillColor", fill)
-                    cap_sh.uniform_float("lineColor", linec)
-                    cap_sh.uniform_float("hatch", _hatch_vec(s, idx, style))
-                    cap_sh.uniform_float("threshold", 0.5)
-                    cap_sh.uniform_float("lineWidth", s.hatch_width)
-                    cap_sh.uniform_sampler("maskTex", mask_off.texture_color)
-                    capb.draw(cap_sh)
-                # 3) accumulate coverage for interference
-                if want_interference:
+                # 2) count coverage
+                if several:
                     with accum_off.bind():
                         gpu.state.depth_test_set('NONE')
                         gpu.state.blend_set('ADDITIVE')
@@ -533,30 +573,42 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style):
                         accum_sh.uniform_sampler("maskTex", mask_off.texture_color)
                         _fullscreen_batch().draw(accum_sh)
                         gpu.state.blend_set('NONE')
-                all_segs.append(segs)
+                # 3) composite the cap into the viewport
+                capb = _cap_batch((t.key, ci, "cap"), serial, segs, plane, bounds)
+                if capb is not None:
+                    if fill_override is not None:
+                        col = fill_override
+                    else:
+                        col = colors.get(t.key)
+                        if col is None:
+                            col = target_color(s, t, shading)
+                            colors[t.key] = col
+                    fill = (col[0], col[1], col[2], 1.0)
+                    linec = (col[0] * 0.02, col[1] * 0.02, col[2] * 0.02, 1.0)  # ~18% in sRGB
+                    gpu.state.depth_test_set('LESS_EQUAL')
+                    gpu.state.depth_mask_set(False)
+                    gpu.state.blend_set('ALPHA')
+                    _cap_uniforms(cap_sh, vp, fill, linec, _hatch_vec(s, idx, style), 0.5, s.hatch_width,
+                                  mask_off.texture_color, accum_off.texture_color if several else None)
+                    capb.draw(cap_sh)
             if want_interference:
-                segs_all = np.concatenate(all_segs)
-                capb = _cap_batch(segs_all, plane, bounds)
+                serials = tuple(hh[4] for hh in hits)
+                capb = _cap_batch(("__interference__", ci, "cap"), serials,
+                                  np.concatenate([hh[2] for hh in hits]), plane, bounds)
                 if capb is not None:
                     gpu.state.depth_test_set('LESS_EQUAL')
                     gpu.state.depth_mask_set(False)
                     gpu.state.blend_set('ALPHA')
-                    cap_sh.bind()
-                    cap_sh.uniform_float("viewProj", vp)
-                    cap_sh.uniform_float("fillColor", _lin((0.86, 0.10, 0.08, 1.0)))
-                    cap_sh.uniform_float("lineColor", _lin((1.0, 0.85, 0.80, 1.0)))
                     hv = list(_hatch_vec(s, 0, 'HATCH'))
                     hv[3] = 2.0
-                    cap_sh.uniform_float("hatch", tuple(hv))
-                    cap_sh.uniform_float("threshold", 0.75)
-                    cap_sh.uniform_float("lineWidth", 0.18)
-                    cap_sh.uniform_sampler("maskTex", accum_off.texture_color)
+                    _cap_uniforms(cap_sh, vp, _lin((0.86, 0.10, 0.08, 1.0)), _lin((1.0, 0.85, 0.80, 1.0)),
+                                  tuple(hv), 1.5 * COUNT_UNITS / 255.0, 0.18, accum_off.texture_color)
                     capb.draw(cap_sh)
 
         for _idx, t, segs, n_open, serial in hits:
             if n_open:
                 info["open"].append(t.owner.name)
-            lines.append((t, ci, segs, serial, plane, n_open))
+            lines.append((t, ci, segs, serial, plane, bounds, n_open))
 
     # outlines last, on top of every cap
     if s.outline and lines:
@@ -566,8 +618,11 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style):
         line_sh.bind()
         line_sh.uniform_float("viewportSize", (w, h))
         line_sh.uniform_float("lineWidth", s.outline_width * bpy.context.preferences.system.ui_scale)
-        for t, ci, segs, serial, plane, n_open in lines:
-            col = colors.get(t.key) or target_color(s, t, shading)
+        for t, ci, segs, serial, plane, bounds, n_open in lines:
+            b = _line_batch(t, ci, segs, serial, plane, bounds, toward, eps)
+            if b is None:
+                continue
+            col = fill_override or colors.get(t.key) or target_color(s, t, shading)
             if n_open:
                 c = _lin((1.0, 0.55, 0.0, 1.0))  # orange: open / non-manifold contour
             elif show_fill:
@@ -575,22 +630,24 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style):
             else:
                 c = (col[0], col[1], col[2], 1.0)
             line_sh.uniform_float("color", c)
-            _line_batch(t, ci, segs, serial, plane, toward, eps).draw(line_sh)
+            b.draw(line_sh)
 
     engine.prune(live)
-    for k in [k for k in _batches if k[0] not in live]:
+    for k in [k for k in _batches if k[0] not in live and k[0] != "__interference__"]:
         del _batches[k]
     info["open"] = sorted(set(info["open"]))
     return info
 
 
-def _draw_frame(context, s, rv3d, caps):
+_FRAME_COLOR = (1.0, 0.75, 0.2)
+
+
+def _frame_quads(context, s, caps):
+    """One rectangle per cap plane, a little larger than the targets."""
     pts = engine.target_points(context, s)
     if len(pts) == 0:
-        return
-    sh = _shader("line")
-    region = context.region
-    segs = []
+        return []
+    quads = []
     for plane, _bounds in caps:
         n = sm.normalize(plane[:3])
         u, v = sm.plane_basis(n)
@@ -598,17 +655,50 @@ def _draw_frame(context, s, rv3d, caps):
         pad = max(pu.max() - pu.min(), pv.max() - pv.min()) * 0.06
         u0, u1, v0, v1 = pu.min() - pad, pu.max() + pad, pv.min() - pad, pv.max() + pad
         origin = -n * (float(plane[3]) / float(np.linalg.norm(plane[:3])))
-        c = [origin + u * a + v * b for a, b in ((u0, v0), (u1, v0), (u1, v1), (u0, v1))]
+        uv = np.array([(u0, v0), (u1, v0), (u1, v1), (u0, v1)])
+        quads.append((np.array([origin + u * a + v * b for a, b in uv]), uv))
+    return quads
+
+
+def _draw_plane_fill(context, s, rv3d, quads):
+    """Tint (and optionally hatch) the plane so it reads at a glance. Drawn
+    before the caps, which paint over it where the parts are cut."""
+    region = context.region
+    w, h = region.width, region.height
+    if w < 2 or h < 2 or not quads:
+        return
+    sh = _shader("cap")
+    tex = _offscreen(w, h)[0].texture_color
+    ui = bpy.context.preferences.system.ui_scale
+    if s.plane_display == 'HATCH':
+        a = math.radians(45.0)
+        hatch = (-12.0 * ui, math.cos(a), math.sin(a), 1.0)
+    else:
+        hatch = (1.0, 1.0, 0.0, 0.0)
+    gpu.state.depth_test_set('LESS_EQUAL')
+    gpu.state.depth_mask_set(False)
+    gpu.state.blend_set('ALPHA')
+    _cap_uniforms(sh, rv3d.perspective_matrix, _lin(_FRAME_COLOR + (0.10,)), _lin(_FRAME_COLOR + (0.30,)),
+                  hatch, -1.0, 0.08, tex)
+    for poly, uv in quads:
+        _quad_batch(poly, uv).draw(sh)
+
+
+def _draw_frame(context, s, quads):
+    segs = []
+    for c, _uv in quads:
         for i in range(4):
             segs.extend([c[i], c[(i + 1) % 4]])
     if not segs:
         return
+    sh = _shader("line")
+    region = context.region
     gpu.state.depth_test_set('NONE')
     gpu.state.blend_set('ALPHA')
     sh.bind()
     sh.uniform_float("viewportSize", (region.width, region.height))
     sh.uniform_float("lineWidth", 1.0)
-    sh.uniform_float("color", _lin((1.0, 0.75, 0.2, 0.45)))
+    sh.uniform_float("color", _lin(_FRAME_COLOR + (0.45,)))
     batch_for_shader(sh, 'LINES', {"pos": [tuple(p) for p in segs]}).draw(sh)
 
 
@@ -623,24 +713,35 @@ def draw_view():
     try:
         planes = engine.compute_planes(s)
         ours = sync_clip(rv3d, planes[0] if planes else None, context.area)
+        style = s.cap_style
         if ours:
             caps = planes[1]
-        elif s.cap_native and rv3d.use_clip_planes:
-            caps = engine.native_caps(rv3d)
+        elif style != 'BACKFACES' and rv3d.use_clip_planes:
+            # caps for Alt+B, minus the box sides seen edge-on (nothing to see, all the cost)
+            caps = [c for c in engine.native_caps(rv3d) if not _edge_on(rv3d, c[0])]
         else:
             caps = []
         shading_type = context.space_data.shading.type
-        info = {"ours": ours, "native": (not ours and bool(caps)), "count": 0, "open": []}
-        style = s.cap_style
+        native = not ours and style != 'BACKFACES' and bool(rv3d.use_clip_planes)
+        info = {"ours": ours, "native": native, "count": 0, "open": []}
         # Blender only applies viewport clipping in Solid and Wireframe shading
-        info["shading_note"] = bool(caps) and shading_type in {'MATERIAL', 'RENDERED'}
-        if caps and shading_type in {'SOLID', 'WIREFRAME'} and style != 'BACKFACES':
-            # Wireframe shading: outlines only, no fill
-            show_fill = shading_type != 'WIREFRAME'
+        clips = shading_type in {'SOLID', 'WIREFRAME'}
+        info["shading_note"] = bool(caps) and not clips
+        plane_shown = ours and s.plane_display != 'NONE'
+        quads = _frame_quads(context, s, caps) if plane_shown and caps else []
+        if quads and s.plane_display in {'TINT', 'HATCH'}:
+            _draw_plane_fill(context, s, rv3d, quads)
+        # Wireframe shading: outlines only, no fill
+        show_fill = shading_type != 'WIREFRAME'
+        if caps and clips and style != 'BACKFACES':
             if show_fill or s.outline:
                 info.update(_draw_caps(context, s, rv3d, caps, show_fill, style))
-        if caps and ours and s.show_frame:
-            _draw_frame(context, s, rv3d, caps)
+        elif caps and clips and ours and s.mode == 'SLICE' and s.thickness <= 1e-9:
+            # a zero-thickness slice clips everything, so with Backfaces there
+            # would be nothing at all to see: show the cut as a backface-red fill
+            info.update(_draw_caps(context, s, rv3d, caps, show_fill, 'SOLID', fill_override=backface_color()))
+        if quads:
+            _draw_frame(context, s, quads)
         _last_info[key] = info
     except Exception as ex:  # never let a drawing error spam every redraw
         msg = f"{type(ex).__name__}: {ex}"
@@ -694,7 +795,7 @@ def readout_lines(scene, s, info):
         if s.orientation == 'OBJECT':
             axis = s.plane_object.name if s.plane_object else "?"
         else:
-            axis = s.orientation
+            axis = _enum_name(s, 'orientation')
         head = f"{_enum_name(s, 'mode')} {axis}  {fmt_length(scene, c)}"
         if s.mode == 'SLICE' and s.thickness > 0:
             head += f"  ±{fmt_length(scene, s.thickness / 2)}"

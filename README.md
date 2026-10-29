@@ -17,16 +17,19 @@ the maintainer's hand-made mock-ups in [docs/images/reference/](docs/images/refe
 
 ## Features
 
-- **Section**: cut along X, Y, Z or any plane (an Empty you place with G/R or align to the view).
+- **Section**: cut along X, Y, Z, an Empty you place with G/R, or **View**: a plane facing the
+  view as it is when you click, which stays put when you orbit (click again to re-aim).
 - **Slice**: show only the cross-section (thickness 0) or a slab of any thickness.
-- **Cap styles**: Backfaces (native look), Solid, Hatched. Toggle Backfaces/caps from the pie,
-  the panel or the header button.
+- **Cap styles**: Backfaces (native look), Solid, Hatched. They apply to Section, Slice and
+  Blender's own Alt+B box alike; Backfaces turns capping off everywhere.
 - **Scrub**: drag a slider to sweep the plane across the targets' bounds, or across any
-  object's bounds (for example a build volume). Step buttons and **Shift+Alt+Wheel** move it by
-  a fixed step (default 0.08, one MJF layer at 1 unit = 1 mm); add Ctrl for 10 steps.
+  object's bounds (for example a build volume), as 0-1 or as a distance. Step buttons and
+  **Shift+Alt+Wheel** move it by a fixed step (default 0.08, one MJF layer at 1 unit = 1 mm);
+  add Ctrl for 10 steps.
+- **Plane display**: frame, tinted (default) or hatched, so you can see where the plane is.
 - **Several bodies**: hatch direction then spacing alternates per object (ISO 128-50 style), and
   where two or more objects' sections overlap the overlap is cross-hatched in red
-  (interference).
+  (interference). With interference off, overlapping caps blend their colours.
 - **Watertightness hint**: an open (non-manifold) section is outlined in orange and listed in the
   viewport readout.
 - **Works with Alt+B**: Blender's own clipping box gets caps too. Pressing Alt+B while Crosscut
@@ -52,9 +55,9 @@ Blender 4.2 or newer. Edit > Preferences > Get Extensions > (menu) > Install fro
 
 | Where | What |
 |---|---|
-| **Shift+Alt+B** (3D View) | Pie: Section X / Y / Z, Off, Backfaces/Caps, Section/Slice, Flip, Plane from View |
+| **Shift+Alt+B** (3D View) | Pie: Section X / Y / Z, Off, Backfaces/Caps, Section/Slice, Flip, Section from View |
 | Header button (right) | Toggle on/off, popover with the main controls |
-| Sidebar (N) > Crosscut | All settings |
+| Sidebar (N) > Crosscut | Section / Slice, cap style, axis, scrub; Caps, Settings and Targets & Range below |
 | **Shift+Alt+Wheel** | Step the plane (Ctrl for x10) while Crosscut is on |
 
 Clipping and caps show in **Solid** and **Wireframe** shading (Blender does not clip Material
@@ -86,10 +89,11 @@ object are never capped, so a build-volume box does not fill the whole section.
 
 ## Status
 
-**Experimental (0.2.0).** 0.1.0 was written without access to Blender; 0.2.0 is the first build
+**Experimental (0.3.0).** 0.1.0 was written without access to Blender; 0.2.0 was the first build
 run and tested in Blender, with an automated in-viewport test suite
-([`tests/blender/`](tests/blender/run_viewport_tests.py)). Tested on Blender 4.2.23 LTS and 5.2.3
-LTS (Linux, OpenGL; 5.2 also on Vulkan). Not yet used on real work, so expect rough edges.
+([`tests/blender/`](tests/blender/run_viewport_tests.py)); 0.3.0 reworks the UI and fixes what the
+maintainer's first real test found. Tested on Blender 4.2.23 LTS and 5.2.3 LTS (Linux, OpenGL;
+5.2 also on Vulkan). Expect rough edges.
 
 The project is developed almost entirely by an AI assistant (Claude) with minimal human code
 review; the maintainer sets the direction, tests each build on real work and reviews the

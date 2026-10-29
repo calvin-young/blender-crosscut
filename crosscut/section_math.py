@@ -89,7 +89,7 @@ def _lex_less(a, b):
     )
 
 
-def section_segments(verts, tris, plane):
+def section_segments(verts, tris, plane, cols=None):
     """Intersect a triangle mesh with a plane.
 
     verts: (N, 3) float, tris: (M, 3) int, plane: 4-vector in the same space.
@@ -101,6 +101,9 @@ def section_segments(verts, tris, plane):
     with duplicated vertices. Vertices exactly on the plane count as "kept"
     (>= 0), which gives a consistent half-open classification: each triangle has
     exactly 0 or 2 crossing edges.
+
+    cols: optional (tris[:, 0], tris[:, 1], tris[:, 2]) as contiguous arrays,
+    cached by the caller; makes the crossing test about 4x faster.
     """
     verts = np.asarray(verts, dtype=np.float64)
     tris = np.asarray(tris, dtype=np.int64)
@@ -108,13 +111,14 @@ def section_segments(verts, tris, plane):
         return np.zeros((0, 2, 3))
     s = verts @ np.asarray(plane[:3], dtype=np.float64) + float(plane[3])
     pos = s >= 0.0
-    tp = pos[tris]
-    cnt = tp.sum(axis=1)
-    keep = (cnt == 1) | (cnt == 2)
+    if cols is None:
+        cols = (tris[:, 0], tris[:, 1], tris[:, 2])
+    p0, p1, p2 = pos[cols[0]], pos[cols[1]], pos[cols[2]]
+    keep = (p0 != p1) | (p1 != p2)
     if not keep.any():
         return np.zeros((0, 2, 3))
     tm = tris[keep]
-    tpm = tp[keep]
+    tpm = np.stack([p0[keep], p1[keep], p2[keep]], axis=1)
     ia = tm
     ib = tm[:, [1, 2, 0]]
     cross = tpm != tpm[:, [1, 2, 0]]  # exactly two True per row
@@ -224,6 +228,53 @@ def clip_convex_polygon(poly, planes):
         if len(pts) < 3:
             return np.zeros((0, 3))
     return np.array(pts)
+
+
+def clip_segments(segments, planes):
+    """Keep the parts of segments (K, 2, 3) on the kept side of every plane."""
+    seg = np.asarray(segments, dtype=np.float64)
+    for pl in planes:
+        if len(seg) == 0:
+            break
+        if plane_is_degenerate(pl):
+            if pl[3] < 0:
+                return np.zeros((0, 2, 3))
+            continue
+        n = np.asarray(pl[:3], dtype=np.float64)
+        da = seg[:, 0] @ n + float(pl[3])
+        db = seg[:, 1] @ n + float(pl[3])
+        keep = (da >= 0) | (db >= 0)
+        seg, da, db = seg[keep], da[keep], db[keep]
+        part = (da < 0) | (db < 0)
+        if part.any():
+            a, b = seg[part, 0], seg[part, 1]
+            t = (da[part] / (da[part] - db[part]))[:, None]
+            p = a + t * (b - a)
+            a = np.where((da[part] < 0)[:, None], p, a)
+            b = np.where((db[part] < 0)[:, None], p, b)
+            seg = seg.copy()
+            seg[part, 0] = a
+            seg[part, 1] = b
+    return seg
+
+
+def box_section_polygon(plane, lo, hi):
+    """Convex polygon where a plane cuts the axis-aligned box [lo, hi] (may be empty)."""
+    lo = np.asarray(lo, dtype=np.float64)
+    hi = np.asarray(hi, dtype=np.float64)
+    n = normalize(plane[:3])
+    norm = float(np.linalg.norm(plane[:3]))
+    if norm == 0:
+        return np.zeros((0, 3))
+    c = 0.5 * (lo + hi)
+    c = c - n * ((float(np.dot(plane[:3], c)) + float(plane[3])) / norm)
+    r = float(np.linalg.norm(hi - lo)) + 1e-9
+    u, v = plane_basis(n)
+    sq = np.array([c - u * r - v * r, c + u * r - v * r, c + u * r + v * r, c - u * r + v * r])
+    faces = [np.array([1.0, 0, 0, -lo[0]]), np.array([-1.0, 0, 0, hi[0]]),
+             np.array([0, 1.0, 0, -lo[1]]), np.array([0, -1.0, 0, hi[1]]),
+             np.array([0, 0, 1.0, -lo[2]]), np.array([0, 0, -1.0, hi[2]])]
+    return clip_convex_polygon(sq, faces)
 
 
 def cap_polygon(segments, plane, bound_planes=(), margin=0.02):

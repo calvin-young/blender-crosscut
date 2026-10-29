@@ -32,6 +32,12 @@ def tag_redraw(_self=None, _context=None):
                 area.tag_redraw()
 
 
+def _orientation_changed(self, context):
+    # a position along the old axis means nothing along the new one: start in the middle
+    self.offset = engine.center_offset(self)
+    tag_redraw(self, context)
+
+
 def _get_position(self):
     lo, hi = engine.scrub_range(self)
     if hi - lo <= 1e-12:
@@ -53,7 +59,7 @@ def _set_position(self, value):
 
 
 MODES = [
-    ('OFF', "Off", "No Crosscut clipping (native Alt+B clipping still gets caps if enabled)", 'X', 0),
+    ('OFF', "Off", "No Crosscut plane (Alt+B clipping still gets caps unless Backfaces is chosen)", 'X', 0),
     ('SECTION', "Section", "Cut the view with a plane and keep one side (half section)", 'MOD_BOOLEAN', 1),
     ('SLICE', "Slice", "Show only a slice: the cross-section itself, or a slab of the given thickness", 'ALIGN_JUSTIFY', 2),
 ]
@@ -64,10 +70,13 @@ ORIENTATIONS = [
     ('Z', "Z", "Plane normal along world Z"),
     ('OBJECT', "Object", "Use an object (usually an Empty) as the plane: its local Z axis is the normal. "
                          "Move/rotate it with the usual tools"),
+    ('VIEW', "View", "Plane facing the view as it was when chosen. It stays put when you orbit; "
+                     "click View again to face the current view"),
 ]
 
 CAP_STYLES = [
-    ('BACKFACES', "Backfaces", "No cap: see the inside of the part, like plain Alt+B"),
+    ('BACKFACES', "Backfaces", "No caps: see the inside of the part, like plain Alt+B "
+                               "(a zero-thickness slice still shows its outline)"),
     ('SOLID', "Solid", "Fill the cut with a flat colour so solid material reads as solid"),
     ('HATCH', "Hatched", "Fill the cut and add section hatching"),
 ]
@@ -77,21 +86,30 @@ class CrosscutSettings(bpy.types.PropertyGroup):
     mode: EnumProperty(name="Mode", items=MODES, default='OFF', update=tag_redraw)
     last_mode: StringProperty(default='SECTION', options={'HIDDEN'})
 
-    orientation: EnumProperty(name="Orientation", items=ORIENTATIONS, default='Z', update=tag_redraw)
+    orientation: EnumProperty(name="Orientation", items=ORIENTATIONS, default='Z', update=_orientation_changed)
+    view_normal: FloatVectorProperty(size=3, default=(0.0, 0.0, 1.0), options={'HIDDEN'}, update=tag_redraw)
+    view_base: FloatProperty(options={'HIDDEN'}, update=tag_redraw)
+    placed: BoolProperty(default=False, options={'HIDDEN'},
+                         description="The plane has been positioned once (first use starts it in the middle)")
     plane_object: PointerProperty(
         name="Plane Object", type=bpy.types.Object, update=tag_redraw,
         description="Object whose local Z axis defines the section plane",
     )
     offset: FloatProperty(
-        name="Offset", subtype='DISTANCE', unit='LENGTH', precision=3, step=10,
+        name="Position", subtype='DISTANCE', unit='LENGTH', precision=3, step=10,
         description="Plane position along its normal. For X/Y/Z this is the world coordinate; "
-                    "for an Object plane it is measured from the object's origin",
+                    "for an Object plane it is measured from the object's origin, for a View "
+                    "plane from where it was placed",
         update=tag_redraw,
     )
     position: FloatProperty(
         name="Scrub", subtype='FACTOR', min=0.0, max=1.0, precision=3,
         description="Drag to sweep the plane across the scrub range",
         get=_get_position, set=_set_position,
+    )
+    scrub_distance: BoolProperty(
+        name="Scrub by Distance", default=False,
+        description="Show the plane position as a distance instead of a 0-1 slider across the range",
     )
     flip: BoolProperty(name="Flip", description="Keep the other side of the plane", update=tag_redraw)
     thickness: FloatProperty(
@@ -107,10 +125,6 @@ class CrosscutSettings(bpy.types.PropertyGroup):
 
     cap_style: EnumProperty(name="Cap", items=CAP_STYLES, default='HATCH', update=tag_redraw)
     last_cap_style: StringProperty(default='HATCH', options={'HIDDEN'})
-    cap_native: BoolProperty(
-        name="Cap Alt+B Clipping", default=True, update=tag_redraw,
-        description="Also draw caps for Blender's own clipping region (Alt+B) while Crosscut is Off",
-    )
 
     targets: EnumProperty(
         name="Targets", default='VISIBLE', update=tag_redraw,
@@ -138,7 +152,7 @@ class CrosscutSettings(bpy.types.PropertyGroup):
         default=(0.29, 0.47, 0.25), update=tag_redraw,
     )
     hatch_space: EnumProperty(
-        name="Hatch Space", default='SCREEN', update=tag_redraw,
+        name="Hatch Space", default='MODEL', update=tag_redraw,
         items=[
             ('SCREEN', "Screen", "Constant line spacing in pixels at any zoom"),
             ('MODEL', "Model", "Line spacing in scene units, locked to the part"),
@@ -146,7 +160,7 @@ class CrosscutSettings(bpy.types.PropertyGroup):
     )
     hatch_pitch_px: FloatProperty(name="Spacing", min=3.0, max=96.0, default=10.0, precision=1,
                                   description="Hatch spacing in pixels", update=tag_redraw)
-    hatch_pitch: FloatProperty(name="Spacing", subtype='DISTANCE', unit='LENGTH', min=1e-4, default=2.0,
+    hatch_pitch: FloatProperty(name="Spacing", subtype='DISTANCE', unit='LENGTH', min=1e-4, default=0.5,
                                precision=3, description="Hatch spacing in scene units", update=tag_redraw)
     hatch_angle: FloatProperty(name="Angle", subtype='ANGLE', default=math.radians(45.0), update=tag_redraw)
     hatch_width: FloatProperty(name="Line Width", subtype='FACTOR', min=0.05, max=0.9, default=0.3,
@@ -161,10 +175,18 @@ class CrosscutSettings(bpy.types.PropertyGroup):
     outline_width: FloatProperty(name="Width", min=0.5, max=6.0, default=1.5, update=tag_redraw)
     interference: BoolProperty(
         name="Show Interference", default=True, update=tag_redraw,
-        description="Highlight areas where two or more objects' sections overlap",
+        description="Highlight areas where two or more objects' sections overlap with red "
+                    "cross-hatching. Without it, overlapping caps blend their colours",
     )
-    show_frame: BoolProperty(name="Plane Frame", default=True, update=tag_redraw,
-                             description="Outline the section plane around the targets")
+    plane_display: EnumProperty(
+        name="Plane", default='TINT', update=tag_redraw,
+        items=[
+            ('NONE', "None", "Don't draw the plane"),
+            ('FRAME', "Frame", "Outline the plane around the targets"),
+            ('TINT', "Tint", "Outline the plane and tint it"),
+            ('HATCH', "Hatched", "Outline the plane, tint it and add light hatching"),
+        ],
+    )
     show_readout: BoolProperty(name="Readout", default=True, update=tag_redraw,
                                description="Show the plane position and warnings in the viewport")
 

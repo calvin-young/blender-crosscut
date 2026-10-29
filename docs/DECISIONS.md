@@ -10,8 +10,9 @@ this list is an assumption, tracked in the table at the end.
 
 | ID | Requirement | Status in 0.1.0 |
 | --- | --- | --- |
+| R-011 | After testing 0.2.0 (2026-10-29): defaults Hatch Space Model, Spacing 0.5, Scrub 0.5, everything but the main panel collapsed. Bugs: Alt+B outlines run past the box; dragging parts stutters under Alt+B. UI: Section and Slice as two buttons, one or neither on; cap style row right below; drop "Cap Alt+B Clipping" (Backfaces does that); Backfaces + zero-thickness Slice must show something (outline, maybe backface-red fill); bury Step in a collapsed settings panel; replace Offset with a scrub-by-distance toggle there; add a View button for a static plane parallel to the view; blend overlapping colours when interference is off; optional tint/hatch on the plane frame | 0.3.0, see below |
 | R-010 | Test the add-on in Blender, fix all the bugs, provide an installable zip (2026-10-29) | 0.2.0: in-Blender test suite, fixes below, `dist/crosscut-0.2.0.zip` |
-| R-009 | First user test: "looks great but definitely buggy"; next build should be run and tested in Blender before he gives detailed feedback (2026-10-26) | Done in 0.2.0; awaiting his test |
+| R-009 | First user test: "looks great but definitely buggy"; next build should be run and tested in Blender before the maintainer gives detailed feedback (2026-10-26) | Done in 0.2.0; tested, see R-011 |
 | R-008 | Name: maintainer created the repo as `blender-crosscut`, accepting "Crosscut" (2026-10-26) | Done |
 | R-007 | Search for existing solutions before building | Done: none did live Solid-mode capping on top of Alt+B (Bonsai cutaway, Section Toolbox, Section Box, RadCut, Clip View and others reviewed) |
 | R-006 | Standalone add-on first; weigh whether it belongs in Bucket Builder; later compare the experience tied to bucket dimensions | Standalone; generic range object (D-001, D-007) |
@@ -22,6 +23,73 @@ this list is an assumption, tracked in the table at the end.
 | R-001 | Main use: while modelling parts. Secondary: finding interferences when packing buckets | Drives defaults |
 
 ## Decisions
+
+### Changes after the maintainer's test of 0.2.0 (0.3.0, 2026-10-29)
+
+Asked for in R-011 unless marked *assumed*:
+
+- **Alt+B outlines ran past the box.** Blender clips the scene, not add-on drawing, and the fill
+  was already trimmed to the other planes but the outline wasn't. Outlines are now clipped to
+  the other active planes (`section_math.clip_segments`).
+- **Dragging parts stuttered under Alt+B.** Alt+B gives six cap planes instead of one, so a
+  moving part was cut six times per frame. Now (D-017): the box sides seen edge-on are skipped,
+  a target is only cut by a plane where that plane's part inside the box can touch it, cap
+  polygons are cached, and the triangle crossing test is about 4x faster. Two 160k-triangle
+  parts dragged inside an Alt+B box: 15 ms a frame before, 4 ms now (13 ms once orbited so the
+  sides are visible; Section is 7 ms).
+- **UI** (D-013): Section / Slice buttons, either or neither on; cap style row below them, and
+  it now also governs Alt+B (Backfaces = no caps anywhere), so "Cap Alt+B Clipping" is gone;
+  axis row X Y Z Object View + Flip; scrub slider with the step arrows; Caps, Settings and
+  Targets & Range panels collapsed. Settings holds Plane display, Readout, Scrub by Distance
+  (shows the position as a distance instead of 0-1) and Step.
+- **View plane** (D-014).
+- **Backfaces + zero-thickness Slice** showed nothing. It now fills the section in the theme's
+  Face Orientation back colour (darkened a little, *assumed*) with the usual outline.
+- **Overlap colours** (D-015).
+- **Plane tint / hatch** (D-016).
+- **Defaults:** Hatch Space Model, Spacing 0.5. Scrub 0.5: the first time Crosscut is switched
+  on the plane starts in the middle of the range, after that it stays where it was left.
+  Changing the axis re-centres it (*assumed*: a position along X means nothing along Y).
+
+### D-017: Cull cap planes that cannot show anything (2026-10-29)
+
+- **Context:** Alt+B's six planes made every moving part six times as expensive as a Section.
+- **Decision:** Skip native cap planes the view looks along (the four sides pass through the eye
+  until you orbit: their caps have no area). For every plane, intersect it with the target's
+  world bounding box, clip that polygon by the other planes, and skip the target if nothing is
+  left. Cache cap polygons per section serial. Cache the triangle index columns per mesh.
+- **Revisit if:** big parts still stutter when orbited; then a spatial index (Issue #4).
+
+### D-016: Plane display None / Frame / Tint / Hatched, default Tint (2026-10-29)
+
+- **Context:** The 1-pixel frame alone made it hard to see where the plane is.
+- **Decision:** An enum in Settings. Tint fills the frame with 10 % amber; Hatched adds faint
+  screen-space lines. Drawn before the caps, so caps paint over it and the kept part shows
+  through it. Default Tint is *assumed*.
+
+### D-015: Overlapping caps blend equally when interference is off (2026-10-29)
+
+- **Context:** The last object drawn covered the others.
+- **Decision:** Each cap's coverage is counted per pixel (8-bit offscreen, 16/255 per object, so
+  up to 15 overlaps count exactly) and the n-th cap on a pixel is drawn with alpha 1/n: a running
+  average, so all overlapping colours count equally. Complementary colours average to a greyish
+  tone (blue + orange); striping each colour would keep them recognisable (open question).
+
+### D-014: View plane is static, stored as normal + base (2026-10-29)
+
+- **Decision:** The View button (operator `crosscut.from_view`) stores the view's direction and
+  the middle of the targets along it; the plane does not follow the view, and clicking View
+  again re-captures. Section keeps the far side, so you look straight at the cut, and scrubbing
+  moves it toward or away from you. The pie's "Plane from View" (which added an Empty) became
+  "Section from View" (*assumed*); the Empty is still available from Object > +.
+
+### D-013: Section and Slice are two buttons, one or neither on (2026-10-29)
+
+- **Context:** "Off" in the old mode row didn't say what was off, and the separate Alt+B toggle
+  overlapped with Backfaces.
+- **Decision:** Two operator buttons (`crosscut.set_mode`) drawn as toggles; clicking the lit one
+  turns Crosscut off. The internal `mode` enum keeps OFF / SECTION / SLICE. The cap style applies
+  to Section, Slice and Alt+B alike.
 
 ### Bugs found in the first in-Blender run (0.2.0, 2026-10-29)
 
@@ -178,7 +246,7 @@ What `tests/blender/run_viewport_tests.py` and the screenshots showed in 0.1.0, 
 | --- | --- | --- | --- | --- |
 | Q-001 | Blender 4.2+ extension format only (no legacy `bl_info`) | assumption | 0.1.0 | open |
 | Q-002 | Settings live on the Scene and save with the .blend | assumption | 0.1.0 | open |
-| Q-003 | Default cap style Hatched, 45 degrees, screen-space spacing 10 px | assumption | 0.1.0 | open |
+| Q-003 | Default cap style Hatched, 45 degrees, screen-space spacing 10 px | assumption | 0.1.0 | maintainer set Model space, 0.5 (R-011) |
 | Q-004 | Section keeps the side opposite the plane normal (a Z section keeps everything below) | assumption | 0.1.0 | replaced by D-010 for the operators |
 | Q-005 | Slice slabs are centred on the plane | assumption | 0.1.0 | open |
 | Q-006 | Default step 0.08 (one MJF layer) | assumption | 0.1.0 | open |
@@ -189,10 +257,10 @@ What `tests/blender/run_viewport_tests.py` and the screenshots showed in 0.1.0, 
 | Q-011 | License GPL-3.0-or-later (matches the LICENSE the maintainer added) | assumption | 0.1.0 | confirmed by repo |
 | Q-012 | Which Blender version is in daily use | unasked question | 0.1.0 | open |
 | Q-013 | Whether to override Alt+B itself rather than add new hotkeys | unasked question | 0.1.0 | open |
-| Q-014 | Screen-space vs. model-space hatching as default | unasked question | 0.1.0 | open |
+| Q-014 | Screen-space vs. model-space hatching as default | unasked question | 0.1.0 | answered: Model (R-011) |
 | Q-015 | Whether Material Preview support matters | unasked question | 0.1.0 | open |
 | Q-016 | Whether a 6-plane section box is wanted | unasked question | 0.1.0 | open |
-| Q-017 | Bugs from the maintainer's first test (details pending; first do our own Blender test pass) | follow-up | R-009 | own pass done in 0.2.0; his details still welcome |
+| Q-017 | Bugs from the maintainer's first test (details pending; first do our own Blender test pass) | follow-up | R-009 | done: first feedback in R-011 |
 | Q-018 | Bucket Builder integration: auto-pick the bucket as range, printer layer index, interference list | follow-up | R-006 | open |
 | Q-019 | Section box (up to 6 planes) and multiple independent planes | follow-up | 0.1.0 | open |
 | Q-020 | Export the section (curve / mesh / SVG); section and interference area readouts | follow-up | 0.1.0 | open |
@@ -204,4 +272,10 @@ What `tests/blender/run_viewport_tests.py` and the screenshots showed in 0.1.0, 
 | Q-026 | Section keeps the far side when switched on from the operators (D-010) | assumption | 0.2.0 | open |
 | Q-027 | Auto colours: white/grey parts get the green Cap Color (D-011) | assumption | 0.2.0 | open |
 | Q-028 | Open contours are closed nearest-first and filled, still flagged orange (D-012) | assumption | 0.2.0 | open |
-| Q-029 | Default hatch spacing 10 px looks denser than the mock-up on a large screen | unasked question | 0.2.0 | open |
+| Q-029 | Default hatch spacing 10 px looks denser than the mock-up on a large screen | unasked question | 0.2.0 | moot: default is now 0.5 in model space |
+| Q-030 | Plane display defaults to Tint (D-016) | assumption | 0.3.0 | open |
+| Q-031 | Pie "Plane from View" (Empty) replaced by "Section from View" (static View plane) (D-014) | assumption | 0.3.0 | open |
+| Q-032 | Changing the axis re-centres the plane | assumption | 0.3.0 | open |
+| Q-033 | Overlaps blend as an equal average; stripes of each colour might read better (D-015) | unasked question | 0.3.0 | open |
+| Q-034 | Backfaces + zero-thickness slice uses the theme's backface colour, darkened 25 % | assumption | 0.3.0 | open |
+| Q-035 | Center / Cursor / Selection buttons stay in the main panel | assumption | 0.3.0 | open |

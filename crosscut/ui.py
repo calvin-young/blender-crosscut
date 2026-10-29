@@ -11,12 +11,21 @@ _keymaps = []
 def _draw_main(layout, context, compact=False):
     s = context.scene.crosscut
     col = layout.column()
+    # Section / Slice: one or neither (neither = only Alt+B clipping gets caps)
     row = col.row(align=True)
-    row.prop(s, "mode", expand=True)
+    row.operator("crosscut.set_mode", text="Section", icon='MOD_BOOLEAN',
+                 depress=s.mode == 'SECTION').mode = 'SECTION'
+    row.operator("crosscut.set_mode", text="Slice", icon='ALIGN_JUSTIFY',
+                 depress=s.mode == 'SLICE').mode = 'SLICE'
+    # applies to Section, Slice and Alt+B alike; Backfaces = no caps anywhere
+    row = col.row(align=True)
+    row.prop(s, "cap_style", expand=True)
 
     col.separator()
     row = col.row(align=True)
-    row.prop(s, "orientation", expand=True)
+    for key in ('X', 'Y', 'Z', 'OBJECT'):
+        row.prop_enum(s, "orientation", key)
+    row.operator("crosscut.from_view", text="View", depress=s.orientation == 'VIEW')
     sub = row.row(align=True)
     sub.enabled = s.mode == 'SECTION'
     sub.operator("crosscut.flip", text="", icon='ARROW_LEFTRIGHT', depress=s.flip)
@@ -26,17 +35,17 @@ def _draw_main(layout, context, compact=False):
         op = r.operator("crosscut.add_plane", text="", icon='ADD')
         op.align = 'VIEW'
 
-    active = s.mode != 'OFF'
     box = col.column(align=True)
-    box.enabled = active
-    box.prop(s, "position", slider=True)
+    box.enabled = s.mode != 'OFF'
     r = box.row(align=True)
-    r.prop(s, "offset", text="")
+    if s.scrub_distance:
+        r.prop(s, "offset")
+    else:
+        r.prop(s, "position", slider=True)
     st = r.operator("crosscut.step", text="", icon='TRIA_LEFT')
     st.direction = -1
     st = r.operator("crosscut.step", text="", icon='TRIA_RIGHT')
     st.direction = 1
-    box.prop(s, "step")
     if s.mode == 'SLICE':
         box.prop(s, "thickness")
     if not compact:
@@ -44,10 +53,6 @@ def _draw_main(layout, context, compact=False):
         r.operator("crosscut.center", text="Center")
         r.operator("crosscut.to_cursor", text="Cursor")
         r.operator("crosscut.to_selection", text="Selection")
-
-    col.separator()
-    row = col.row(align=True)
-    row.prop(s, "cap_style", expand=True)
 
 
 class CROSSCUT_PT_main(bpy.types.Panel):
@@ -83,6 +88,7 @@ class CROSSCUT_PT_display(bpy.types.Panel):
     bl_category = "Crosscut"
     bl_label = "Caps"
     bl_parent_id = "CROSSCUT_PT_main"
+    bl_options = {'DEFAULT_CLOSED'}
 
     def draw(self, context):
         s = context.scene.crosscut
@@ -110,12 +116,27 @@ class CROSSCUT_PT_display(bpy.types.Panel):
         sr.active = s.outline
         sr.prop(s, "outline_width", text="")
         col.prop(s, "interference")
-        layout.separator()
-        col = layout.column(heading="Show")
-        col.prop(s, "show_frame")
+
+
+class CROSSCUT_PT_settings(bpy.types.Panel):
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "Crosscut"
+    bl_label = "Settings"
+    bl_parent_id = "CROSSCUT_PT_main"
+    bl_options = {'DEFAULT_CLOSED'}
+
+    def draw(self, context):
+        s = context.scene.crosscut
+        layout = self.layout
+        layout.use_property_split = True
+        layout.use_property_decorate = False
+        col = layout.column()
+        col.prop(s, "plane_display")
         col.prop(s, "show_readout")
-        col = layout.column(heading="Alt+B")
-        col.prop(s, "cap_native", text="Cap Alt+B Clipping")
+        col.separator()
+        col.prop(s, "scrub_distance")
+        col.prop(s, "step")
 
 
 class CROSSCUT_PT_targets(bpy.types.Panel):
@@ -175,7 +196,7 @@ class CROSSCUT_MT_pie(bpy.types.Menu):
         pie.operator("crosscut.toggle_slice",
                      text="Slice" if s.mode != 'SLICE' else "Section", icon='ALIGN_JUSTIFY')
         pie.operator("crosscut.flip", icon='ARROW_LEFTRIGHT')
-        pie.operator("crosscut.add_plane", text="Plane from View", icon='VIEW_CAMERA').align = 'VIEW'
+        pie.operator("crosscut.from_view", text="Section from View", icon='VIEW_CAMERA')
 
 
 def _header_button(self, context):
@@ -190,6 +211,7 @@ def _header_button(self, context):
 classes = (
     CROSSCUT_PT_main,
     CROSSCUT_PT_display,
+    CROSSCUT_PT_settings,
     CROSSCUT_PT_targets,
     CROSSCUT_PT_popover,
     CROSSCUT_MT_pie,

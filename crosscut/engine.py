@@ -10,6 +10,7 @@ TARGET_TYPES = {'MESH', 'CURVE', 'SURFACE', 'FONT', 'META'}
 AXES = {'X': (1.0, 0.0, 0.0), 'Y': (0.0, 1.0, 0.0), 'Z': (0.0, 0.0, 1.0)}
 
 
+
 # ------------------------------------------------------------------ the plane
 
 def plane_frame(s):
@@ -17,6 +18,11 @@ def plane_frame(s):
     None when the plane is undefined (Object orientation with no object)."""
     if s.orientation in AXES:
         return np.array(AXES[s.orientation]), 0.0
+    if s.orientation == 'VIEW':
+        n = np.array(s.view_normal, dtype=np.float64)
+        if np.linalg.norm(n) < 1e-12:
+            return None
+        return sm.normalize(n), float(s.view_base)
     ob = s.plane_object
     if ob is None:
         return None
@@ -144,6 +150,15 @@ def scrub_range(s):
     return sm.project_range(pts, n)
 
 
+def center_offset(s):
+    """Offset that puts the plane through the middle of the scrub range."""
+    lo, hi = scrub_range(s)
+    base = plane_base(s)
+    if base is None or hi <= lo:
+        return s.offset
+    return 0.5 * (lo + hi) - base
+
+
 def target_points(context, s):
     obs = original_targets(context, s)
     if not obs:
@@ -247,28 +262,45 @@ def _mesh(target, depsgraph):
             v = v.reshape(-1, 3).astype(np.float64)
             t = t.reshape(-1, 3).astype(np.int64)
             _version[0] += 1
-            e = dict(v=v, t=t, bbmin=v.min(0), bbmax=v.max(0), ver=_version[0])
+            cols = tuple(np.ascontiguousarray(t[:, i]) for i in range(3))
+            e = dict(v=v, t=t, cols=cols, bbmin=v.min(0), bbmax=v.max(0), ver=_version[0])
     _meshes[mk] = e
     return e or None
 
 
-def section(target, cap_index, plane, depsgraph):
+def _cap_misses(e, m, plane, bounds):
+    """True when the part of the plane inside the other planes (`bounds`)
+    cannot touch the target's bounding box, so there is nothing to cap."""
+    if not len(bounds):
+        return False
+    corners = np.array([[x, y, z] for x in (e["bbmin"][0], e["bbmax"][0])
+                        for y in (e["bbmin"][1], e["bbmax"][1])
+                        for z in (e["bbmin"][2], e["bbmax"][2])])
+    w = sm.transform_points(corners, m)
+    poly = sm.box_section_polygon(plane, w.min(0), w.max(0))
+    return len(poly) == 0 or len(sm.clip_convex_polygon(poly, bounds)) == 0
+
+
+def section(target, cap_index, plane, depsgraph, bounds=()):
     """(segments (K,2,3) world space, open-endpoint count, serial) for one
-    target, or None. `serial` changes whenever the segments change."""
+    target, or None. `serial` changes whenever the segments change. Targets
+    whose cut lies wholly outside the other active planes (`bounds`) are
+    skipped: with Alt+B's six planes most of them are."""
     e = _mesh(target, depsgraph)
     if e is None:
         return None
     m = target.matrix
-    sig = (e["ver"], m.tobytes(), np.asarray(plane, dtype=np.float64).tobytes())
+    sig = (e["ver"], m.tobytes(), np.asarray(plane, dtype=np.float64).tobytes(),
+           np.asarray(bounds, dtype=np.float64).tobytes())
     ck = (target.key, cap_index)
     hit = _sections.get(ck)
     if hit is not None and hit[0] == sig:
         return hit[1]
     local = sm.plane_to_local(plane, m)
-    if not sm.bbox_crosses_plane(e["bbmin"], e["bbmax"], local):
+    if not sm.bbox_crosses_plane(e["bbmin"], e["bbmax"], local) or _cap_misses(e, m, plane, bounds):
         res = None
     else:
-        seg = sm.section_segments(e["v"], e["t"], local)
+        seg = sm.section_segments(e["v"], e["t"], local, e["cols"])
         if len(seg) == 0:
             res = None
         else:

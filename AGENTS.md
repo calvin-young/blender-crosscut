@@ -8,7 +8,7 @@ The human-facing overview is in [README.md](README.md).
 - **What it is:** a Blender add-on that adds filled (solid or hatched) caps to viewport
   clipping, plus section and slice views with a scrub slider. It drives the same
   `RegionView3D.clip_planes` that Alt+B uses and draws the caps with the `gpu` module.
-- **Status:** experimental (0.2.0, 2026-10-29): first build tested in Blender (4.2.23 and 5.2.3,
+- **Status:** experimental (0.3.0, 2026-10-29): UI rework after the maintainer's first test; tested in Blender (4.2.23 and 5.2.3,
   OpenGL; 5.2 on Vulkan too) with the in-viewport suite below. Waiting for the maintainer's
   test on real work. See "State and next steps".
 - **Runs in:** Blender 4.2+ as an extension (`crosscut/blender_manifest.toml`); Python 3.11
@@ -58,6 +58,8 @@ docs/                     DECISIONS.md, PROMPT_STATS.md, images (concepts + main
 - Never write ID data (scene properties etc.) from a draw callback; defer with `bpy.app.timers`.
   Clip planes are pushed to every view from property updates, operators and the depsgraph
   handler (`draw.sync_views`); the draw callback only catches what those miss (D-002, D-008).
+- Our overlay is not clipped by Blender: anything drawn on a cap plane must be trimmed to the
+  other active planes (`bounds`) by us, as the fill polygon and outlines are.
 - Colours sent to shaders must be scene-linear: the POST_VIEW buffer gets the view transform
   afterwards (D-009). Convert sRGB values with `draw._lin()`.
 - `section_math.py` stays free of `bpy` so it can be tested anywhere.
@@ -75,9 +77,10 @@ this file, the reasons behind decisions and the approaches that were dropped go 
 
 ## State and next steps
 
-- 0.2.0 fixed what the first in-Blender run found (DECISIONS.md, 0.2.0 section). All 77 viewport
-  checks pass on 4.2.23 and 5.2.3.
-- Next: the maintainer tests 0.2.0 on real parts and reports. Then work through the Issues.
+- 0.2.0 fixed what the first in-Blender run found; 0.3.0 the maintainer's first test of it (UI
+  rework, Alt+B outline and drag fixes; DECISIONS.md, 0.3.0 section). All 101 viewport checks pass
+  on 4.2.23 and 5.2.3 (5.2 also on Vulkan).
+- Next: the maintainer tests 0.3.0. Open questions Q-030 to Q-035 in DECISIONS.md. Then the Issues.
 - Not tested yet: macOS/Windows, HiDPI scaling above 1, Metal, very large multi-object scenes.
 
 ## Before you change things

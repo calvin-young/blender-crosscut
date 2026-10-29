@@ -197,6 +197,32 @@ def test_close_open_contours():
     assert sm.close_open_contours(full) is full
 
 
+def test_clip_segments():
+    seg = np.array([[[-2.0, 0, 0], [2.0, 0, 0]], [[5.0, 1, 0], [6.0, 1, 0]], [[0.0, 2, 0], [1.0, 2, 0]]])
+    keep_x_le_1 = np.array([-1.0, 0, 0, 1.0])
+    out = sm.clip_segments(seg, [keep_x_le_1, sm.CLIP_NONE])
+    assert len(out) == 2
+    assert np.allclose(out[0], [[-2, 0, 0], [1, 0, 0]])
+    assert np.allclose(out[1], seg[2])
+    assert len(sm.clip_segments(seg, [sm.CLIP_ALL])) == 0
+
+
+def test_box_section_polygon():
+    z = np.array([0, 0, 1.0, -0.5])        # plane z = 0.5
+    poly = sm.box_section_polygon(z, (0, 0, 0), (1, 1, 1))
+    assert len(poly) == 4 and np.allclose(poly[:, 2], 0.5)
+    assert np.allclose(poly.min(0)[:2], 0) and np.allclose(poly.max(0)[:2], 1)
+    assert len(sm.box_section_polygon(np.array([0, 0, 1.0, -2.0]), (0, 0, 0), (1, 1, 1))) == 0
+
+
+def test_section_segments_with_cached_columns():
+    v = np.array([[0, 0, -1], [1, 0, 1], [0, 1, 1], [1, 1, -1]], dtype=np.float64)
+    t = np.array([[0, 1, 2], [1, 3, 2]])
+    plane = np.array([0, 0, 1.0, 0])
+    cols = tuple(np.ascontiguousarray(t[:, i]) for i in range(3))
+    assert np.array_equal(sm.section_segments(v, t, plane), sm.section_segments(v, t, plane, cols))
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

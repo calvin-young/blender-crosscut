@@ -14,13 +14,8 @@ def _s(context):
     return context.scene.crosscut
 
 
-def _center_offset(context, s):
-    """Offset that puts the plane through the middle of the scrub range."""
-    lo, hi = engine.scrub_range(s)
-    base = engine.plane_base(s)
-    if base is None or hi <= lo:
-        return s.offset
-    return 0.5 * (lo + hi) - base
+def _center_offset(_context, s):
+    return engine.center_offset(s)
 
 
 def _face_viewer(context, s):
@@ -34,6 +29,85 @@ def _face_viewer(context, s):
     d = float(f[0] @ toward)
     if abs(d) > 0.05:  # leave it alone when looking along the plane
         s.flip = d < 0.0
+
+
+def _switch_on(context, s, mode):
+    """Turn Crosscut on from Off: the first time in the middle of the range,
+    afterwards where it was left; cutting away the side facing the viewer."""
+    if engine.plane_frame(s) is None:
+        s.orientation = 'Z'
+    s.mode = mode
+    if not s.placed:
+        s.offset = _center_offset(context, s)
+        s.placed = True
+    _face_viewer(context, s)
+    s.last_mode = mode
+
+
+class CROSSCUT_OT_set_mode(bpy.types.Operator):
+    """Turn Section or Slice on, or off again when it is already on"""
+    bl_idname = "crosscut.set_mode"
+    bl_label = "Set Mode"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    mode: EnumProperty(items=[('SECTION', "Section", ""), ('SLICE', "Slice", "")], default='SECTION')
+
+    @classmethod
+    def description(cls, _context, props):
+        if props.mode == 'SLICE':
+            return ("Slice: show only the cross-section, or a slab of the given thickness. "
+                    "Click again to turn it off")
+        return "Section: cut the view with a plane and keep one side. Click again to turn it off"
+
+    def execute(self, context):
+        s = _s(context)
+        if s.mode == self.mode:
+            s.last_mode = s.mode
+            s.mode = 'OFF'
+        elif s.mode == 'OFF':
+            _switch_on(context, s, self.mode)
+        else:
+            s.mode = self.mode
+            s.last_mode = self.mode
+        tag_redraw()
+        return {'FINISHED'}
+
+
+class CROSSCUT_OT_from_view(bpy.types.Operator):
+    """Put the plane parallel to the view, through the middle of the targets. It stays put when
+    you orbit; click again to face the current view"""
+    bl_idname = "crosscut.from_view"
+    bl_label = "Plane from View"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return context.region_data is not None
+
+    def execute(self, context):
+        s = _s(context)
+        rv3d = context.region_data
+        # view-local +Z points at the viewer; Section keeps the side opposite
+        # the normal, so the half nearest the viewer is the one cut away
+        n = np.array(rv3d.view_rotation @ Vector((0.0, 0.0, 1.0)))
+        n = n / np.linalg.norm(n)
+        pts = engine.target_points(context, s)
+        if len(pts):
+            lo, hi = float((pts @ n).min()), float((pts @ n).max())
+            base = 0.5 * (lo + hi)
+        else:
+            base = float(n @ np.array(context.scene.cursor.location))
+        s.view_normal = n
+        s.view_base = base
+        s.orientation = 'VIEW'
+        s.offset = 0.0
+        s.flip = False
+        s.placed = True
+        if s.mode == 'OFF':
+            s.mode = s.last_mode if s.last_mode in {'SECTION', 'SLICE'} else 'SECTION'
+            s.last_mode = s.mode
+        tag_redraw()
+        return {'FINISHED'}
 
 
 class CROSSCUT_OT_section(bpy.types.Operator):
@@ -55,14 +129,16 @@ class CROSSCUT_OT_section(bpy.types.Operator):
         s = _s(context)
         was_off = s.mode == 'OFF'
         changed_axis = s.orientation != self.axis
-        s.orientation = self.axis
-        if self.mode != 'KEEP':
-            s.mode = self.mode
-        elif was_off:
-            s.mode = 'SECTION'
-        if was_off or changed_axis:
+        s.orientation = self.axis  # re-centres when the axis changes
+        mode = self.mode if self.mode != 'KEEP' else (s.mode if not was_off else 'SECTION')
+        if was_off:
+            s.placed = True  # centred just now or by the axis change below
             s.offset = _center_offset(context, s)
-            _face_viewer(context, s)
+            _switch_on(context, s, mode)
+        else:
+            s.mode = mode
+            if changed_axis:
+                _face_viewer(context, s)
         s.last_mode = s.mode
         tag_redraw()
         return {'FINISHED'}
@@ -77,10 +153,7 @@ class CROSSCUT_OT_toggle(bpy.types.Operator):
     def execute(self, context):
         s = _s(context)
         if s.mode == 'OFF':
-            s.mode = s.last_mode if s.last_mode in {'SECTION', 'SLICE'} else 'SECTION'
-            if engine.plane_frame(s) is None:
-                s.orientation = 'Z'
-            _face_viewer(context, s)
+            _switch_on(context, s, s.last_mode if s.last_mode in {'SECTION', 'SLICE'} else 'SECTION')
         else:
             s.last_mode = s.mode
             s.mode = 'OFF'
@@ -285,6 +358,8 @@ class CROSSCUT_OT_use_bounds(bpy.types.Operator):
 
 
 classes = (
+    CROSSCUT_OT_set_mode,
+    CROSSCUT_OT_from_view,
     CROSSCUT_OT_section,
     CROSSCUT_OT_toggle,
     CROSSCUT_OT_toggle_slice,

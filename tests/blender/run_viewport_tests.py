@@ -246,8 +246,9 @@ def setup_view(view):
 def settings(s, **kw):
     base = dict(mode='OFF', orientation='Z', offset=0.0, flip=False, thickness=0.0,
                 cap_style='SOLID', targets='VISIBLE', color_source='SINGLE', single_color=GREEN,
-                hatch_vary=True, interference=True, outline=True, show_frame=False,
-                show_readout=True, cap_native=True, range_source='TARGETS', range_object=None)
+                hatch_vary=True, interference=True, outline=True, plane_display='NONE',
+                show_readout=True, range_source='TARGETS', range_object=None,
+                hatch_space='SCREEN', hatch_pitch_px=10.0, scrub_distance=False)
     base.update(kw)
     for k, v in base.items():
         setattr(s, k, v)
@@ -368,6 +369,19 @@ def slices(view):
     check(T, "slab: outer wall between caps is shaded part",
           is_greyish(shot.at(view.px((0, -39.3, 0))), lo=60), f"{shot.at(view.px((0, -39.3, 0)))}")
     check(T, "slab: pole clipped", near(shot.at(view.px((0, 0, 39))), bg, BG_TOL))
+
+    # Backfaces + a zero-thickness slice would show nothing at all: it shows the cut in backface red
+    settings(s, mode='SLICE', orientation='Z', offset=0.0, thickness=0.0, cap_style='BACKFACES')
+    yield from settle()
+    shot = Shot(view, "slice_section_only_backfaces")
+    c = shot.at(view.px((0, -32, 0)))
+    check(T, "backfaces, zero thickness: section shown in backface red", is_red(c), f"{c}")
+    check(T, "backfaces, zero thickness: hole is background", near(shot.at(view.px((0, 0, 0))), bg, BG_TOL))
+    settings(s, mode='SLICE', orientation='Z', offset=0.0, thickness=10.0, cap_style='BACKFACES')
+    yield from settle()
+    shot = Shot(view, "slice_slab_backfaces")
+    check(T, "backfaces, slab: no caps", not is_red(shot.at(view.px((0, -32, 5))))
+          and not is_green(shot.at(view.px((0, -32, 5)))), f"{shot.at(view.px((0, -32, 5)))}")
     check(T, "no draw errors", not errors(), str(errors()))
 
 
@@ -394,7 +408,14 @@ def multibody(view):
     settings(s, mode='SECTION', orientation='Z', offset=0.0, color_source='OBJECT', interference=False)
     yield from settle()
     shot = Shot(view, "multibody_no_interference")
-    check(T, "interference off: overlap not red", not is_red(shot.at(view.px((4, 0, 0)))))
+    c = shot.at(view.px((4, 0, 0)))
+    check(T, "interference off: overlap not red", not is_red(c), f"{c}")
+    a1 = shot.at(view.px((-25, 0, 0)))   # part-001 alone (blue)
+    a2 = shot.at(view.px((20, 0, 0)))    # part-002 alone (orange)
+    # the overlap blends the two colours instead of one covering the other
+    check(T, "interference off: overlap blends both colours",
+          all(min(x, y) - 25 <= v <= max(x, y) + 25 for v, x, y in zip(c, a1, a2, strict=False))
+          and not near(c, a1, 30) and not near(c, a2, 30), f"overlap {c} part-001 {a1} part-002 {a2}")
 
     settings(s, mode='SECTION', orientation='Z', offset=0.0, color_source='OBJECT', cap_style='HATCH')
     yield from settle()
@@ -466,7 +487,7 @@ def native_altb(view):
     scene = new_scene("cc-native")
     hollow_sphere("part-001", 40, 25)
     s = scene.crosscut
-    settings(s, mode='OFF', cap_native=True, cap_style='SOLID')
+    settings(s, mode='OFF', cap_style='SOLID')
     view.look((0, 0, 0), 220, (55, 0, 30))
     yield 0.1
     with view.override():
@@ -486,6 +507,36 @@ def native_altb(view):
     shot = Shot(view, "native_altb_orbited")
     g = sum(is_green(tuple(p)) for p in shot.px[::8, ::8].reshape(-1, 3))
     check(T, "after orbiting, the box side cap shows", g > 200, f"{g} green samples")
+    settings(s, mode='OFF', cap_style='BACKFACES')
+    yield from settle()
+    shot = Shot(view, "native_altb_backfaces")
+    g = sum(is_green(tuple(p)) for p in shot.px[::8, ::8].reshape(-1, 3))
+    check(T, "Backfaces: no Alt+B caps", g < 5, f"{g} green samples")
+
+    # Outlines stay inside the box: a box over one quadrant cuts the sphere with
+    # two side planes, and each side's contour runs on past the other side
+    view.rv3d.use_clip_planes = False
+    view.look((0, 0, 0), 220, (55, 0, 30))
+    yield from settle()
+    with view.override():
+        w, h = view.region.width, view.region.height
+        bpy.ops.view3d.clip_border(xmin=0, xmax=int(w * 0.5), ymin=0, ymax=int(h * 0.5), wait_for_input=False)
+    view.look((0, 0, 0), 220, (75, 0, 70))
+    settings(s, mode='OFF', cap_style='SOLID', outline=False)
+    yield from settle()
+    off = Shot(view, "native_altb_quadrant_no_outline")
+    settings(s, mode='OFF', cap_style='SOLID', outline=True, outline_width=3.0)
+    yield from settle()
+    on = Shot(view, "native_altb_quadrant_outline")
+    bg = bg_of(off, view)
+    fg = np.abs(off.px - np.array(bg)).max(axis=2) > BG_TOL
+    near_fg = fg.copy()
+    for dx in range(-6, 7, 2):
+        for dy in range(-6, 7, 2):
+            near_fg |= np.roll(np.roll(fg, dy, 0), dx, 1)
+    dark = on.px.max(axis=2) < 40
+    stray = int((dark & ~near_fg).sum())
+    check(T, "outlines clipped to the Alt+B box", stray < 50, f"{stray} dark pixels away from any part")
     view.rv3d.use_clip_planes = False
     yield from settle()
     check(T, "no draw errors", not errors(), str(errors()))
@@ -626,6 +677,82 @@ def operators(view):
 
 
 @test
+def modes_and_view_plane(view):
+    T = "modes_and_view_plane"
+    scene = new_scene("cc-modes")
+    hollow_sphere("part-001", 40, 25, loc=(100, 0, 0))
+    s = scene.crosscut
+    check(T, "defaults: model-space hatch, 0.5 spacing",
+          s.hatch_space == 'MODEL' and abs(s.hatch_pitch - 0.5) < 1e-6, f"{s.hatch_space} {s.hatch_pitch}")
+    s.color_source, s.single_color, s.cap_style = 'SINGLE', GREEN, 'SOLID'
+    view.look((100, 0, 0), 220, (55, 0, 30))
+    yield 0.1
+    # first use starts in the middle of the range (part is centred at x=100)
+    s.orientation = 'X'
+    with view.override():
+        bpy.ops.crosscut.set_mode(mode='SECTION')
+    check(T, "Section button: on, scrub 0.5", s.mode == 'SECTION' and abs(s.position - 0.5) < 1e-3,
+          f"{s.mode} {s.position}")
+    s.position = 0.3
+    with view.override():
+        bpy.ops.crosscut.set_mode(mode='SLICE')
+    check(T, "Slice button: switches mode, keeps position", s.mode == 'SLICE' and abs(s.position - 0.3) < 1e-3)
+    with view.override():
+        bpy.ops.crosscut.set_mode(mode='SLICE')
+    check(T, "Slice again: off", s.mode == 'OFF')
+    with view.override():
+        bpy.ops.crosscut.set_mode(mode='SECTION')
+    check(T, "on again: position kept", s.mode == 'SECTION' and abs(s.position - 0.3) < 1e-3, f"{s.position}")
+    s.orientation = 'Y'
+    check(T, "axis change re-centres", abs(s.position - 0.5) < 1e-3, f"{s.position}")
+
+    # View plane: faces the view, stays put when orbiting
+    view.look((100, 0, 0), 220, (60, 0, 40))
+    yield from settle()
+    with view.override():
+        bpy.ops.crosscut.from_view()
+    vz = view.rv3d.view_rotation @ Vector((0, 0, 1))
+    n = Vector(s.view_normal)
+    check(T, "View: plane faces the view", s.orientation == 'VIEW' and n.dot(vz) > 0.999, f"{n} {vz}")
+    check(T, "View: through the middle", abs(s.position - 0.5) < 1e-3 and not s.flip, f"{s.position} {s.flip}")
+    yield from settle()
+    shot = Shot(view, "view_plane")
+    c = shot.at(view.px(Vector((100, 0, 0)) + n.orthogonal().normalized() * 32))  # in the cut ring
+    check(T, "View: looking straight at the cut", is_green(c), f"{c}")
+    view.look((100, 0, 0), 220, (60, 0, 90))
+    yield from settle()
+    check(T, "View: orbiting does not move the plane", Vector(s.view_normal).dot(n) > 0.9999)
+    Shot(view, "view_plane_orbited")
+    with view.override():
+        bpy.ops.crosscut.step(direction=1)
+    check(T, "View: step moves along the normal", abs(engine_coord(s) - (n.dot(Vector((100, 0, 0))) + s.step)) < 1e-3,
+          f"{engine_coord(s)}")
+    s.scrub_distance = True
+    check(T, "scrub by distance: offset is the position", abs(s.offset - s.step) < 1e-4, f"{s.offset}")
+    s.scrub_distance = False
+
+    # plane tint: inside the frame but off the part is tinted, not background
+    settings(s, mode='SECTION', orientation='Z', offset=0.0, plane_display='NONE')
+    view.look((100, 0, 0), 220, (55, 0, 30))
+    yield from settle()
+    plain = Shot(view, "plane_none")
+    p = view.px((100 + 41, 41, 0))
+    settings(s, mode='SECTION', orientation='Z', offset=0.0, plane_display='TINT')
+    yield from settle()
+    tint = Shot(view, "plane_tint")
+    check(T, "Tint: plane corner is tinted", not near(tint.at(p), plain.at(p), 4), f"{tint.at(p)} vs {plain.at(p)}")
+    check(T, "Tint: cap still its colour", is_green(tint.at(view.px((100, -32, 0)))))
+    settings(s, mode='SECTION', orientation='Z', offset=0.0, plane_display='HATCH')
+    yield from settle()
+    Shot(view, "plane_hatch")
+    check(T, "no draw errors", not errors(), str(errors()))
+
+
+def engine_coord(s):
+    return cc("engine").plane_coordinate(s)
+
+
+@test
 def live_updates(view):
     T = "live_updates"
     scene = new_scene("cc-live")
@@ -731,7 +858,7 @@ def readout(view):
     vol = box("bucket-01", (120, 120, 120), color=(0.5, 0.5, 0.5))
     vol.display_type = 'WIRE'
     s = scene.crosscut
-    settings(s, mode='SECTION', orientation='Z', offset=12.0, show_frame=True, range_source='OBJECT',
+    settings(s, mode='SECTION', orientation='Z', offset=12.0, plane_display='FRAME', range_source='OBJECT',
              range_object=vol, step=0.08, color_source='AUTO', cap_style='HATCH')
     view.look((0, 0, 0), 330, (60, 0, 30))
     yield 0.1
@@ -785,6 +912,50 @@ def performance(view):
     Shot(view, "perf_dense")
     check(T, f"scrub frame time on 1.3M tris (first {first * 1000:.0f} ms, median {med * 1000:.0f} ms)",
           med < 0.25)
+    check(T, "no draw errors", not errors(), str(errors()))
+
+
+@test
+def drag_perf(view):
+    """Moving a part must stay smooth with Alt+B clipping too (6 cap planes, not 1)."""
+    T = "drag_perf"
+    scene = new_scene("cc-drag")
+    ob = dense_sphere("part-001", 7)
+    dense_sphere("part-002", 7).location = (60, 0, 0)
+    s = scene.crosscut
+    view.look((30, 0, 0), 260, (55, 0, 30))
+    settings(s, mode='SECTION', orientation='Z', cap_style='HATCH')
+
+    def drag_ms():
+        times = []
+        for i in range(16):
+            ob.location.x = i * 0.5
+            t0 = time.perf_counter()
+            bpy.context.view_layer.update()
+            redraw(1)
+            times.append(time.perf_counter() - t0)
+        return sorted(times)[len(times) // 2] * 1000
+
+    yield 0.1
+    redraw(1)
+    sec = drag_ms()
+    settings(s, mode='OFF', cap_style='HATCH')
+    yield from settle()
+    with view.override():
+        w, h = view.region.width, view.region.height
+        bpy.ops.view3d.clip_border(xmin=int(w * 0.42), xmax=int(w * 0.58), ymin=int(h * 0.4),
+                                   ymax=int(h * 0.6), wait_for_input=False)
+    yield from settle()
+    nat = drag_ms()
+    view.look((30, 0, 0), 260, (55, 0, 60))   # orbit: the box sides are no longer edge-on
+    yield from settle()
+    orb = drag_ms()
+    Shot(view, "drag_altb_orbited")
+    print(f"    drag frame: section {sec:.0f} ms, Alt+B {nat:.0f} ms, Alt+B orbited {orb:.0f} ms")
+    check(T, f"Alt+B drag frame {nat:.0f} ms (section {sec:.0f} ms)", nat < max(2.0 * sec, 40))
+    check(T, f"Alt+B orbited drag frame {orb:.0f} ms", orb < max(3.0 * sec, 60))
+    view.rv3d.use_clip_planes = False
+    yield from settle()
     check(T, "no draw errors", not errors(), str(errors()))
 
 

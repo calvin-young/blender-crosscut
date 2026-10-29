@@ -113,8 +113,9 @@ def shoot(area, region, name):
 def configure(s, **kw):
     defaults = dict(mode='OFF', orientation='Y', offset=0.0, flip=False, thickness=0.0,
                     cap_style='HATCH', targets='VISIBLE', color_source='AUTO', hatch_vary=True,
-                    cap_native=True, range_source='TARGETS', range_object=None,
-                    interference=True, outline=True, show_frame=False, show_readout=True)
+                    range_source='TARGETS', range_object=None,
+                    interference=True, outline=True, plane_display='NONE', show_readout=True,
+                    hatch_space='SCREEN', hatch_pitch_px=10.0)
     defaults.update(kw)
     for k, v in defaults.items():
         setattr(s, k, v)
@@ -180,7 +181,7 @@ def main():
     # 9: Blender's own Alt+B box gets caps too
     for ob in scene.objects:
         ob.hide_set(ob.name != "hollow-sphere")
-    configure(s, mode='OFF', cap_native=True, cap_style='HATCH')
+    configure(s, mode='OFF', cap_style='HATCH')
     look(area, (0, 0, 0), 190, (70, 0, 35))
     with bpy.context.temp_override(area=area, region=region):
         w, h = region.width, region.height
@@ -194,7 +195,7 @@ def main():
         ob.hide_set(ob.name not in {"hollow-sphere"})
     vol = box("build-volume", (120, 120, 120), (0, 0, 0), (0.5, 0.5, 0.5))
     vol.display_type = 'WIRE'
-    configure(s, mode='SECTION', orientation='Z', offset=12.0, show_frame=True,
+    configure(s, mode='SECTION', orientation='Z', offset=12.0, plane_display='FRAME',
               range_source='OBJECT', range_object=vol, step=0.08)
     look(area, (0, 0, 0), 300, (60, 0, 30))
     shoot(area, region, "10_range_object_readout")
