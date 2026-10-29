@@ -29,7 +29,8 @@ the maintainer's hand-made mock-ups in [docs/images/reference/](docs/images/refe
 - **Plane display**: frame, tinted (default) or hatched, so you can see where the plane is.
 - **Several bodies**: hatch direction then spacing alternates per object (ISO 128-50 style), and
   where two or more objects' sections overlap the overlap is cross-hatched in red
-  (interference). With interference off, overlapping caps blend their colours.
+  (interference; style, colours and opacity adjustable). Overlapping caps either blend their
+  colours or share the area in stripes.
 - **Watertightness hint**: an open (non-manifold) section is outlined in orange and listed in the
   viewport readout.
 - **Works with Alt+B**: Blender's own clipping box gets caps too. Pressing Alt+B while Crosscut
@@ -57,7 +58,7 @@ Blender 4.2 or newer. Edit > Preferences > Get Extensions > (menu) > Install fro
 |---|---|
 | **Shift+Alt+B** (3D View) | Pie: Section X / Y / Z, Off, Backfaces/Caps, Section/Slice, Flip, Section from View |
 | Header button (right) | Toggle on/off, popover with the main controls |
-| Sidebar (N) > Crosscut | Section / Slice, cap style, axis, scrub; Caps, Settings and Targets & Range below |
+| Sidebar (N) > Crosscut | Section / Slice, cap style, axis, scrub; Caps, Settings and Targets & Scrub Range below |
 | **Shift+Alt+Wheel** | Step the plane (Ctrl for x10) while Crosscut is on |
 
 Clipping and caps show in **Solid** and **Wireframe** shading (Blender does not clip Material
@@ -89,10 +90,10 @@ object are never capped, so a build-volume box does not fill the whole section.
 
 ## Status
 
-**Experimental (0.3.0).** 0.1.0 was written without access to Blender; 0.2.0 was the first build
+**Experimental (0.4.0).** 0.1.0 was written without access to Blender; 0.2.0 was the first build
 run and tested in Blender, with an automated in-viewport test suite
-([`tests/blender/`](tests/blender/run_viewport_tests.py)); 0.3.0 reworks the UI and fixes what the
-maintainer's first real test found. Tested on Blender 4.2.23 LTS and 5.2.3 LTS (Linux, OpenGL;
+([`tests/blender/`](tests/blender/run_viewport_tests.py)); 0.3.0 and 0.4.0 rework the UI and fix
+what the maintainer's real tests found. Tested on Blender 4.2.23 LTS and 5.2.3 LTS (Linux, OpenGL;
 5.2 also on Vulkan). Expect rough edges.
 
 The project is developed almost entirely by an AI assistant (Claude) with minimal human code

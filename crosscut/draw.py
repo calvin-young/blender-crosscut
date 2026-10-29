@@ -95,10 +95,23 @@ void main() {
         col.a = mix(fillColor.a, 1.0, k);
     }
     if (useCount > 0.5) {
-        // running average where several caps overlap: the n-th cap drawn on a
-        // pixel gets weight 1/n, so n overlapping caps blend equally
-        float n = floor(texelFetch(countTex, ivec2(gl_FragCoord.xy), 0).r * 255.0 / COUNT_UNITS + 0.5);
-        col.a /= max(n, 1.0);
+        // the n-th cap drawn on this pixel
+        float n = max(floor(texelFetch(countTex, ivec2(gl_FragCoord.xy), 0).r * 255.0 / COUNT_UNITS + 0.5), 1.0);
+        if (stripe.w > 0.5) {
+            // stripes: of `total` overlapping caps, the n-th keeps every total-th stripe
+            float total = floor(texelFetch(totalTex, ivec2(gl_FragCoord.xy), 0).r * 255.0 / COUNT_UNITS + 0.5);
+            if (total > 1.5) {
+                vec2 p = (stripe.x < 0.0) ? gl_FragCoord.xy : vUV;
+                float idx = floor(dot(p, stripe.yz) / abs(stripe.x));
+                if (abs(mod(idx, total) - (n - 1.0)) > 0.5) {
+                    discard;
+                }
+            }
+        }
+        else {
+            // running average: weight 1/n, so n overlapping caps blend equally
+            col.a /= n;
+        }
     }
     fragColor = col;
 }
@@ -146,8 +159,9 @@ def _shader(kind):
             "crosscut_cap", _CAP_VS, _CAP_FS,
             [('VEC3', "pos"), ('VEC2', "uv")],
             [('MAT4', "viewProj"), ('VEC4', "fillColor"), ('VEC4', "lineColor"),
-             ('VEC4', "hatch"), ('FLOAT', "threshold"), ('FLOAT', "lineWidth"), ('FLOAT', "useCount")],
-            samplers=["maskTex", "countTex"], varyings=[('VEC2', "vUV")],
+             ('VEC4', "hatch"), ('FLOAT', "threshold"), ('FLOAT', "lineWidth"), ('FLOAT', "useCount"),
+             ('VEC4', "stripe")],
+            samplers=["maskTex", "countTex", "totalTex"], varyings=[('VEC2', "vUV")],
         )
     elif kind == "line":
         sh = gpu.shader.from_builtin('POLYLINE_UNIFORM_COLOR')
@@ -163,7 +177,7 @@ def _offscreen(w, h):
             for o in old:
                 o.free()
         _offscreens.clear()
-        pair = (gpu.types.GPUOffScreen(w, h), gpu.types.GPUOffScreen(w, h))
+        pair = tuple(gpu.types.GPUOffScreen(w, h) for _ in range(3))  # mask, running count, total count
         _offscreens[key] = pair
     return pair
 
@@ -315,9 +329,11 @@ def sync_clip(rv3d, desired, area=None):
     else:
         st = {"saved": (cur_on, cur.copy()), "ours": None}
         _clip_state[key] = st
-        if not cur_on:
-            # no Alt+B box in this view, so possibly no clipping box either
-            _request_prime(key)
+        # Without Alt+B there may be no clipping box at all; with Alt+B,
+        # Blender would keep shading the area outside the old box. An empty
+        # box fixes both. On hand-back the user's planes come back (and clip)
+        # but their box shading doesn't: Python can't rebuild the box.
+        _request_prime(key)
 
     full = _pad6(desired)
     full_flat = _flat(full)
@@ -478,7 +494,8 @@ def _hatch_vec(s, index, style, angle_offset=0.0):
     return (signed, math.cos(a), math.sin(a), 1.0 if style == 'HATCH' else 2.0)
 
 
-def _cap_uniforms(sh, vp, fill, line, hatch, threshold, width, mask_tex, count_tex=None):
+def _cap_uniforms(sh, vp, fill, line, hatch, threshold, width, mask_tex, count_tex=None,
+                  total_tex=None, stripe=(1.0, 1.0, 0.0, 0.0)):
     sh.bind()
     sh.uniform_float("viewProj", vp)
     sh.uniform_float("fillColor", fill)
@@ -487,8 +504,63 @@ def _cap_uniforms(sh, vp, fill, line, hatch, threshold, width, mask_tex, count_t
     sh.uniform_float("threshold", threshold)
     sh.uniform_float("lineWidth", width)
     sh.uniform_float("useCount", 1.0 if count_tex is not None else 0.0)
+    sh.uniform_float("stripe", stripe if total_tex is not None else (1.0, 1.0, 0.0, 0.0))
     sh.uniform_sampler("maskTex", mask_tex)
     sh.uniform_sampler("countTex", count_tex if count_tex is not None else mask_tex)
+    sh.uniform_sampler("totalTex", total_tex if total_tex is not None else mask_tex)
+
+
+def _stripe_vec(s):
+    """Stripes for overlapping caps: twice the hatch spacing, 45 degrees off the hatch."""
+    if s.hatch_space == 'SCREEN':
+        pitch = -2.0 * s.hatch_pitch_px * bpy.context.preferences.system.ui_scale
+    else:
+        pitch = 2.0 * s.hatch_pitch
+    a = s.hatch_angle - math.radians(45.0)
+    return (pitch, math.cos(a), math.sin(a), 1.0)
+
+
+def _draw_mask(off, sh, vp, fan):
+    """Even-odd coverage of one section into `off` (cleared first)."""
+    with off.bind():
+        _clear_bound()
+        gpu.state.depth_test_set('NONE')
+        gpu.state.face_culling_set('NONE')
+        gpu.state.blend_set('INVERT')
+        sh.bind()
+        sh.uniform_float("viewProj", vp)
+        fan.draw(sh)
+        gpu.state.blend_set('NONE')
+
+
+def _add_coverage(off, sh, mask_off):
+    """Add one COUNT_UNITS step to `off` wherever the mask is lit."""
+    with off.bind():
+        gpu.state.depth_test_set('NONE')
+        gpu.state.blend_set('ADDITIVE')
+        sh.bind()
+        sh.uniform_sampler("maskTex", mask_off.texture_color)
+        _fullscreen_batch().draw(sh)
+        gpu.state.blend_set('NONE')
+
+
+def auto_uses_cap_color(context, s):
+    """Whether Auto colours currently give any target the Cap Color (a white
+    or grey part under Object / Material shading), so the UI can hide it."""
+    space = context.space_data
+    shading = getattr(space, "shading", None)
+    ct = getattr(shading, "color_type", 'MATERIAL')
+    if ct not in {'OBJECT', 'MATERIAL'}:
+        return False
+    for ob in engine.original_targets(context, s)[:5000]:
+        if ct == 'OBJECT':
+            rgb = ob.color[:3]
+        else:
+            mats = [sl.material for sl in getattr(ob, "material_slots", []) if sl.material]
+            rgb = mats[0].diffuse_color[:3] if mats else ob.color[:3]
+        if _is_plain(rgb):
+            return True
+    return False
 
 
 def backface_color():
@@ -519,7 +591,7 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style, fill_override=None):
         return {"count": 0}
 
     vp = rv3d.perspective_matrix
-    mask_off, accum_off = _offscreen(w, h)
+    mask_off, accum_off, total_off = _offscreen(w, h)
     mask_sh = _shader("mask")
     cap_sh = _shader("cap")
     accum_sh = _shader("accum")
@@ -550,29 +622,23 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style, fill_override=None):
             # (optionally) get the interference hatching
             several = len(hits) > 1
             want_interference = s.interference and several and fill_override is None
+            stripes = several and s.overlap_style == 'STRIPES' and fill_override is None
             if several:
                 with accum_off.bind():
                     _clear_bound()
+            if stripes:
+                # stripes need the total overlap count up front
+                with total_off.bind():
+                    _clear_bound()
+                for _idx, t, segs, n_open, serial in hits:
+                    _draw_mask(mask_off, mask_sh, vp, _fan_batch(t, ci, segs, serial, n_open))
+                    _add_coverage(total_off, accum_sh, mask_off)
             for idx, t, segs, n_open, serial in hits:
                 # 1) even-odd mask
-                with mask_off.bind():
-                    _clear_bound()
-                    gpu.state.depth_test_set('NONE')
-                    gpu.state.face_culling_set('NONE')
-                    gpu.state.blend_set('INVERT')
-                    mask_sh.bind()
-                    mask_sh.uniform_float("viewProj", vp)
-                    _fan_batch(t, ci, segs, serial, n_open).draw(mask_sh)
-                    gpu.state.blend_set('NONE')
+                _draw_mask(mask_off, mask_sh, vp, _fan_batch(t, ci, segs, serial, n_open))
                 # 2) count coverage
                 if several:
-                    with accum_off.bind():
-                        gpu.state.depth_test_set('NONE')
-                        gpu.state.blend_set('ADDITIVE')
-                        accum_sh.bind()
-                        accum_sh.uniform_sampler("maskTex", mask_off.texture_color)
-                        _fullscreen_batch().draw(accum_sh)
-                        gpu.state.blend_set('NONE')
+                    _add_coverage(accum_off, accum_sh, mask_off)
                 # 3) composite the cap into the viewport
                 capb = _cap_batch((t.key, ci, "cap"), serial, segs, plane, bounds)
                 if capb is not None:
@@ -589,7 +655,8 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style, fill_override=None):
                     gpu.state.depth_mask_set(False)
                     gpu.state.blend_set('ALPHA')
                     _cap_uniforms(cap_sh, vp, fill, linec, _hatch_vec(s, idx, style), 0.5, s.hatch_width,
-                                  mask_off.texture_color, accum_off.texture_color if several else None)
+                                  mask_off.texture_color, accum_off.texture_color if several else None,
+                                  total_off.texture_color if stripes else None, _stripe_vec(s))
                     capb.draw(cap_sh)
             if want_interference:
                 serials = tuple(hh[4] for hh in hits)
@@ -599,10 +666,14 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style, fill_override=None):
                     gpu.state.depth_test_set('LESS_EQUAL')
                     gpu.state.depth_mask_set(False)
                     gpu.state.blend_set('ALPHA')
-                    hv = list(_hatch_vec(s, 0, 'HATCH'))
-                    hv[3] = 2.0
-                    _cap_uniforms(cap_sh, vp, _lin((0.86, 0.10, 0.08, 1.0)), _lin((1.0, 0.85, 0.80, 1.0)),
-                                  tuple(hv), 1.5 * COUNT_UNITS / 255.0, 0.18, accum_off.texture_color)
+                    style_i = s.interference_style
+                    hv = list(_hatch_vec(s, 0, 'SOLID' if style_i == 'SOLID' else 'HATCH'))
+                    if style_i == 'CROSS':
+                        hv[3] = 2.0
+                    fill_i = _lin(tuple(s.interference_color) + (s.interference_opacity,))
+                    line_i = _lin(tuple(s.interference_line_color) + (1.0,))
+                    _cap_uniforms(cap_sh, vp, fill_i, line_i, tuple(hv), 1.5 * COUNT_UNITS / 255.0, 0.18,
+                                  accum_off.texture_color)
                     capb.draw(cap_sh)
 
         for _idx, t, segs, n_open, serial in hits:

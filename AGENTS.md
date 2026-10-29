@@ -8,7 +8,7 @@ The human-facing overview is in [README.md](README.md).
 - **What it is:** a Blender add-on that adds filled (solid or hatched) caps to viewport
   clipping, plus section and slice views with a scrub slider. It drives the same
   `RegionView3D.clip_planes` that Alt+B uses and draws the caps with the `gpu` module.
-- **Status:** experimental (0.3.0, 2026-10-29): UI rework after the maintainer's first test; tested in Blender (4.2.23 and 5.2.3,
+- **Status:** experimental (0.4.0, 2026-10-29): UI reworked after the maintainer's tests; nearly 1.0; tested in Blender (4.2.23 and 5.2.3,
   OpenGL; 5.2 on Vulkan too) with the in-viewport suite below. Waiting for the maintainer's
   test on real work. See "State and next steps".
 - **Runs in:** Blender 4.2+ as an extension (`crosscut/blender_manifest.toml`); Python 3.11
@@ -80,7 +80,10 @@ this file, the reasons behind decisions and the approaches that were dropped go 
 - 0.2.0 fixed what the first in-Blender run found; 0.3.0 the maintainer's first test of it (UI
   rework, Alt+B outline and drag fixes; DECISIONS.md, 0.3.0 section). All 101 viewport checks pass
   on 4.2.23 and 5.2.3 (5.2 also on Vulkan).
-- Next: the maintainer tests 0.3.0. Open questions Q-030 to Q-035 in DECISIONS.md. Then the Issues.
+- 0.4.0 (second maintainer test): overlap stripes, interference settings, leftover Alt+B shading
+  fixed. 107 viewport checks pass on 4.2.23 and 5.2.3 (and Vulkan).
+- Next: the maintainer tests 0.4.0 and decides on 1.0. Open questions Q-030 to Q-038 in
+  DECISIONS.md. Then the Issues.
 - Not tested yet: macOS/Windows, HiDPI scaling above 1, Metal, very large multi-object scenes.
 
 ## Before you change things

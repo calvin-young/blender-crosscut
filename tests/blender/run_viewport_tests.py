@@ -248,7 +248,8 @@ def settings(s, **kw):
                 cap_style='SOLID', targets='VISIBLE', color_source='SINGLE', single_color=GREEN,
                 hatch_vary=True, interference=True, outline=True, plane_display='NONE',
                 show_readout=True, range_source='TARGETS', range_object=None,
-                hatch_space='SCREEN', hatch_pitch_px=10.0, scrub_distance=False)
+                hatch_space='SCREEN', hatch_pitch_px=10.0, scrub_distance=False, overlap_style='BLEND',
+                interference_style='CROSS', interference_opacity=1.0)
     base.update(kw)
     for k, v in base.items():
         setattr(s, k, v)
@@ -417,6 +418,45 @@ def multibody(view):
           all(min(x, y) - 25 <= v <= max(x, y) + 25 for v, x, y in zip(c, a1, a2, strict=False))
           and not near(c, a1, 30) and not near(c, a2, 30), f"overlap {c} part-001 {a1} part-002 {a2}")
 
+    # stripes: the overlap shows both parts' colours side by side
+    settings(s, mode='SECTION', orientation='Z', offset=0.0, color_source='OBJECT', interference=False,
+             overlap_style='STRIPES')
+    yield from settle()
+    shot = Shot(view, "multibody_stripes")
+    cx, cy = view.px((4, 0, 0))
+    patch = [tuple(p) for p in shot.px[cy + shot.oy - 12:cy + shot.oy + 12, cx + shot.ox - 12:cx + shot.ox + 12]
+             .reshape(-1, 3)]
+    blue = sum(p[2] > p[0] + 60 for p in patch)
+    orange = sum(p[0] > p[2] + 60 for p in patch)
+    check(T, "stripes: overlap has both colours", blue > 60 and orange > 60, f"blue {blue} orange {orange}")
+
+    # interference appearance: solid, custom colour, half opacity over the stripes
+    settings(s, mode='SECTION', orientation='Z', offset=0.0, color_source='OBJECT', interference=True,
+             overlap_style='STRIPES', interference_style='SOLID', interference_color=(1.0, 0.0, 1.0),
+             interference_opacity=1.0)
+    yield from settle()
+    shot = Shot(view, "multibody_interference_solid_magenta")
+    c = shot.at(view.px((4, 0, 0)))
+    check(T, "interference colour and style", c[0] > 200 and c[2] > 200 and c[1] < 60, f"{c}")
+    settings(s, mode='SECTION', orientation='Z', offset=0.0, color_source='OBJECT', interference=True,
+             overlap_style='STRIPES', interference_style='CROSS', interference_opacity=0.4)
+    yield from settle()
+    Shot(view, "multibody_interference_translucent")
+    s.interference_color = (0.86, 0.10, 0.08)
+    s.interference_opacity = 1.0
+    s.overlap_style = 'BLEND'
+
+    # Auto colours use the Cap Color only for white/grey parts: the panel hides it otherwise
+    s.color_source = 'AUTO'
+    with view.override():
+        coloured = cc("draw").auto_uses_cap_color(bpy.context, s)
+    check(T, "Auto, coloured parts: Cap Color not used (hidden)", not coloured)
+    scene.objects["part-003"].color = (1, 1, 1, 1)
+    with view.override():
+        white = cc("draw").auto_uses_cap_color(bpy.context, s)
+    check(T, "Auto, a white part: Cap Color used (shown)", white)
+    scene.objects["part-003"].color = (0.45, 0.75, 0.35, 1)
+
     settings(s, mode='SECTION', orientation='Z', offset=0.0, color_source='OBJECT', cap_style='HATCH')
     yield from settle()
     Shot(view, "multibody_hatched")
@@ -564,17 +604,38 @@ def handoff(view):
     yield from settle()
     check(T, "toggle off: clipping restored to off", not view.rv3d.use_clip_planes and s.mode == 'OFF')
 
-    # 2) An Alt+B box exists: Crosscut on replaces it, off restores it
+    # 2) An Alt+B box exists: Crosscut on replaces it, off restores it. Blender
+    # shades the Alt+B box volume, which shows once you orbit; it must go too.
+    view.look((0, 0, 0), 220, (55, 0, 75))
+    yield from settle()
+    plain = Shot(view, "handoff_plain")
+    view.look((0, 0, 0), 220, (55, 0, 30))
+    yield from settle()
     with view.override():
         w, h = view.region.width, view.region.height
         bpy.ops.view3d.clip_border(xmin=0, xmax=int(w * 0.5), ymin=0, ymax=h, wait_for_input=False)
+    view.look((0, 0, 0), 220, (55, 0, 75))
     yield 0.05
+    yield from settle()
+    boxed = Shot(view, "handoff_altb_box")
     saved = [tuple(p) for p in view.rv3d.clip_planes]
     with view.override():
-        bpy.ops.crosscut.toggle()
+        bpy.ops.crosscut.set_mode(mode='SECTION')
     yield 0.1
     yield from settle()
     check(T, "on over Alt+B: ours", cc("draw").last_info(view.region).get("ours"))
+    on = Shot(view, "handoff_section_over_altb")
+    # compare against the unclipped view where it is background, away from the overlay texts
+    bgc = np.array(bg_of(plain, view))
+    empty = np.abs(plain.px - bgc).max(axis=2) == 0
+    rw, rh = view.region.width, view.region.height
+    win = np.zeros_like(empty)
+    win[plain.oy + int(rh * 0.1):plain.oy + int(rh * 0.9), plain.ox + int(rw * 0.15):plain.ox + int(rw * 0.85)] = True
+
+    def shaded(shot):
+        return int((empty & win & (np.abs(shot.px - bgc).max(axis=2) > 0)).sum())
+    check(T, "Alt+B box volume is shaded (test sees it)", shaded(boxed) > 2000, f"{shaded(boxed)} px")
+    check(T, "on over Alt+B: no leftover box shading", shaded(on) < 200, f"{shaded(on)} px")
     with view.override():
         bpy.ops.crosscut.toggle()
     yield 0.1

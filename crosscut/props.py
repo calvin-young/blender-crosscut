@@ -175,8 +175,36 @@ class CrosscutSettings(bpy.types.PropertyGroup):
     outline_width: FloatProperty(name="Width", min=0.5, max=6.0, default=1.5, update=tag_redraw)
     interference: BoolProperty(
         name="Show Interference", default=True, update=tag_redraw,
-        description="Highlight areas where two or more objects' sections overlap with red "
-                    "cross-hatching. Without it, overlapping caps blend their colours",
+        description="Highlight areas where two or more objects' sections overlap (red cross-hatching "
+                    "by default; see Interference settings)",
+    )
+    overlap_style: EnumProperty(
+        name="Overlaps", default='BLEND', update=tag_redraw,
+        items=[
+            ('BLEND', "Blend", "Overlapping caps mix their colours equally"),
+            ('STRIPES', "Stripes", "Overlapping caps share the area in stripes, one per part "
+                                   "(stripe width = twice the hatch spacing)"),
+        ],
+    )
+    interference_style: EnumProperty(
+        name="Style", default='CROSS', update=tag_redraw,
+        items=[
+            ('SOLID', "Solid", "Flat fill"),
+            ('HATCH', "Hatched", "Fill with single hatching"),
+            ('CROSS', "Cross", "Fill with cross-hatching"),
+        ],
+    )
+    interference_color: FloatVectorProperty(
+        name="Color", subtype='COLOR_GAMMA', size=3, min=0.0, max=1.0, default=(0.86, 0.10, 0.08),
+        description="Fill colour of overlapping areas", update=tag_redraw,
+    )
+    interference_line_color: FloatVectorProperty(
+        name="Line Color", subtype='COLOR_GAMMA', size=3, min=0.0, max=1.0, default=(1.0, 0.85, 0.80),
+        description="Hatch line colour of overlapping areas", update=tag_redraw,
+    )
+    interference_opacity: FloatProperty(
+        name="Opacity", subtype='FACTOR', min=0.0, max=1.0, default=1.0, update=tag_redraw,
+        description="Fill opacity: below 1 the overlapping caps (blended or striped) show through",
     )
     plane_display: EnumProperty(
         name="Plane", default='TINT', update=tag_redraw,

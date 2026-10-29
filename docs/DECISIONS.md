@@ -10,6 +10,7 @@ this list is an assumption, tracked in the table at the end.
 
 | ID | Requirement | Status in 0.1.0 |
 | --- | --- | --- |
+| R-012 | After testing 0.3.0 (2026-10-29): stutter fixed. A toggle between blending and striping overlapping colours; hide Cap Color when Auto doesn't use it; bug: switching Section/Slice on over Alt+B left Alt+B's box shading; Center as the middle button; settings for the interference look; maybe rename "Targets & Range"; "just about ready for a 1.0" | 0.4.0, see below |
 | R-011 | After testing 0.2.0 (2026-10-29): defaults Hatch Space Model, Spacing 0.5, Scrub 0.5, everything but the main panel collapsed. Bugs: Alt+B outlines run past the box; dragging parts stutters under Alt+B. UI: Section and Slice as two buttons, one or neither on; cap style row right below; drop "Cap Alt+B Clipping" (Backfaces does that); Backfaces + zero-thickness Slice must show something (outline, maybe backface-red fill); bury Step in a collapsed settings panel; replace Offset with a scrub-by-distance toggle there; add a View button for a static plane parallel to the view; blend overlapping colours when interference is off; optional tint/hatch on the plane frame | 0.3.0, see below |
 | R-010 | Test the add-on in Blender, fix all the bugs, provide an installable zip (2026-10-29) | 0.2.0: in-Blender test suite, fixes below, `dist/crosscut-0.2.0.zip` |
 | R-009 | First user test: "looks great but definitely buggy"; next build should be run and tested in Blender before the maintainer gives detailed feedback (2026-10-26) | Done in 0.2.0; tested, see R-011 |
@@ -23,6 +24,31 @@ this list is an assumption, tracked in the table at the end.
 | R-001 | Main use: while modelling parts. Secondary: finding interferences when packing buckets | Drives defaults |
 
 ## Decisions
+
+### Changes after the maintainer's test of 0.3.0 (0.4.0, 2026-10-29)
+
+- **Leftover Alt+B shading.** Blender shades the volume of an Alt+B box from the box itself, not
+  from the clip planes, so it stayed when Crosscut took over. Crosscut now gives the view an
+  empty box whenever it takes over (D-008 used to do this only when clipping was off). When
+  Crosscut hands back, the user's planes come back and still clip, but their box shading
+  doesn't: Python can't rebuild the box.
+- **Overlaps: Blend / Stripes** in the Caps panel (D-018).
+- **Cap Color** shows for Single, and for Auto only while some target is white or grey under the
+  current Object / Material shading colour.
+- **Interference** is a sub-panel of Caps with the on/off checkbox in its header: Style (Solid,
+  Hatched, Cross), Color, Line Color and Opacity. Below 1, the blended or striped overlap shows
+  through.
+- Buttons now read Cursor / Center / Selection.
+- The panel is now "Targets & Scrub Range", not the suggested "Scrub Targets & Range": Targets
+  also decides which parts get caps, not just what the scrub range covers (*assumed*).
+
+### D-018: Overlap stripes share the area by coverage order (2026-10-29)
+
+- **Decision:** A pre-pass counts how many caps cover each pixel (a third 8-bit offscreen). The
+  n-th cap drawn on a pixel keeps the stripes whose index mod that total equals n-1, so each of
+  the overlapping parts gets an equal share. Stripes are twice the hatch spacing wide, in the
+  hatch space, at the hatch angle minus 45 degrees (*assumed*; no separate width setting yet).
+  Costs one extra mask pass per part, only where parts overlap.
 
 ### Changes after the maintainer's test of 0.2.0 (0.3.0, 2026-10-29)
 
@@ -276,6 +302,9 @@ What `tests/blender/run_viewport_tests.py` and the screenshots showed in 0.1.0, 
 | Q-030 | Plane display defaults to Tint (D-016) | assumption | 0.3.0 | open |
 | Q-031 | Pie "Plane from View" (Empty) replaced by "Section from View" (static View plane) (D-014) | assumption | 0.3.0 | open |
 | Q-032 | Changing the axis re-centres the plane | assumption | 0.3.0 | open |
-| Q-033 | Overlaps blend as an equal average; stripes of each colour might read better (D-015) | unasked question | 0.3.0 | open |
+| Q-033 | Overlaps blend as an equal average; stripes of each colour might read better (D-015) | unasked question | 0.3.0 | answered: a Blend / Stripes toggle (R-012) |
 | Q-034 | Backfaces + zero-thickness slice uses the theme's backface colour, darkened 25 % | assumption | 0.3.0 | open |
-| Q-035 | Center / Cursor / Selection buttons stay in the main panel | assumption | 0.3.0 | open |
+| Q-035 | Center / Cursor / Selection buttons stay in the main panel | assumption | 0.3.0 | kept; reordered Cursor / Center / Selection (R-012) |
+| Q-036 | Stripe width = 2x hatch spacing, angle = hatch angle - 45 degrees; no own setting (D-018) | assumption | 0.4.0 | open |
+| Q-037 | Panel named "Targets & Scrub Range" instead of "Scrub Targets & Range" | assumption | 0.4.0 | open |
+| Q-038 | Next release numbered 0.4.0, not 1.0: 1.0 waits for the maintainer's go | assumption | 0.4.0 | open |

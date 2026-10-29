@@ -50,8 +50,8 @@ def _draw_main(layout, context, compact=False):
         box.prop(s, "thickness")
     if not compact:
         r = box.row(align=True)
-        r.operator("crosscut.center", text="Center")
         r.operator("crosscut.to_cursor", text="Cursor")
+        r.operator("crosscut.center", text="Center")
         r.operator("crosscut.to_selection", text="Selection")
 
 
@@ -98,10 +98,10 @@ class CROSSCUT_PT_display(bpy.types.Panel):
         col = layout.column()
         col.active = s.cap_style != 'BACKFACES'
         col.prop(s, "color_source")
-        if s.color_source in {'SINGLE', 'AUTO'}:
+        if s.color_source == 'SINGLE' or (s.color_source == 'AUTO' and draw.auto_uses_cap_color(context, s)):
             col.prop(s, "single_color")
         sub = col.column()
-        sub.active = s.cap_style == 'HATCH'
+        sub.active = s.cap_style == 'HATCH' or s.overlap_style == 'STRIPES'
         sub.prop(s, "hatch_space")
         if s.hatch_space == 'SCREEN':
             sub.prop(s, "hatch_pitch_px", text="Spacing (px)")
@@ -115,7 +115,33 @@ class CROSSCUT_PT_display(bpy.types.Panel):
         sr = r.row()
         sr.active = s.outline
         sr.prop(s, "outline_width", text="")
-        col.prop(s, "interference")
+        col.prop(s, "overlap_style", expand=True)
+
+
+class CROSSCUT_PT_interference(bpy.types.Panel):
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "Crosscut"
+    bl_label = "Interference"
+    bl_parent_id = "CROSSCUT_PT_display"
+    bl_options = {'DEFAULT_CLOSED'}
+
+    def draw_header(self, context):
+        self.layout.prop(context.scene.crosscut, "interference", text="")
+
+    def draw(self, context):
+        s = context.scene.crosscut
+        layout = self.layout
+        layout.use_property_split = True
+        layout.use_property_decorate = False
+        col = layout.column()
+        col.active = s.interference and s.cap_style != 'BACKFACES'
+        col.prop(s, "interference_style")
+        col.prop(s, "interference_color")
+        sub = col.column()
+        sub.active = s.interference_style != 'SOLID'
+        sub.prop(s, "interference_line_color")
+        col.prop(s, "interference_opacity", slider=True)
 
 
 class CROSSCUT_PT_settings(bpy.types.Panel):
@@ -143,7 +169,7 @@ class CROSSCUT_PT_targets(bpy.types.Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = "Crosscut"
-    bl_label = "Targets & Range"
+    bl_label = "Targets & Scrub Range"
     bl_parent_id = "CROSSCUT_PT_main"
     bl_options = {'DEFAULT_CLOSED'}
 
@@ -211,6 +237,7 @@ def _header_button(self, context):
 classes = (
     CROSSCUT_PT_main,
     CROSSCUT_PT_display,
+    CROSSCUT_PT_interference,
     CROSSCUT_PT_settings,
     CROSSCUT_PT_targets,
     CROSSCUT_PT_popover,

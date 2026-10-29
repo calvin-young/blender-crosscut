@@ -1,7 +1,7 @@
 schema_version = "1.0.0"
 
 id = "crosscut"
-version = "0.3.0"
+version = "0.4.0"
 name = "Crosscut"
 tagline = "Live capped section and slice views on top of viewport clipping"
 maintainer = "Calvin Young <github.com/calvin-young>"

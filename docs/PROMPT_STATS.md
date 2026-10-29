@@ -23,7 +23,7 @@ steering lines matters more than the count of prompts.
 
 | Date | Tool and model | Prompts | Steering lines | Notes |
 |---|---|---|---|---|
-| 2026-10-29 | Claude Code (workstation), Opus 5.5 | 2 | 6 | First in-Blender test pass: viewport test suite, 0.2.0 fixes, zip; then 0.3.0 from the maintainer's test |
+| 2026-10-29 | Claude Code (workstation), Opus 5.5 | 3 | 9 | First in-Blender test pass: viewport test suite, 0.2.0 fixes, zip; then 0.3.0 and 0.4.0 from the maintainer's tests |
 | 2026-10-26 | Claude (cloud session), Opus 5.5 | 1 | 3 | Repo created; first user test; handoff to Claude Code |
 | 2026-10-22 | Claude (cloud session), Opus 5.5 | 1 | 6 | Initial spec with 3 mock-ups; 0.1.0 built without Blender access |
 
@@ -32,6 +32,9 @@ steering lines matters more than the count of prompts.
 One line for each thing the human contributed that the AI would not have done on its own,
 newest first, tagged with its kind (decide, correct, domain, tested, scope).
 
+- 2026-10-29 [tested]: confirmed the drag stutter fixed; found Alt+B's box shading left over after switching Section on.
+- 2026-10-29 [decide]: Blend / Stripes toggle for overlaps, interference appearance settings, Cap Color hidden when Auto doesn't use it, Center in the middle.
+- 2026-10-29 [scope]: judged it just about ready for a 1.0 release.
 - 2026-10-29 [decide]: new defaults: model-space hatch at 0.5 spacing, scrub starting at 0.5, every panel but the main one collapsed.
 - 2026-10-29 [tested]: found Alt+B outlines drawn past the clipping box, and stutter when dragging parts under Alt+B only.
 - 2026-10-29 [decide]: UI rework: Section/Slice as two one-or-none buttons, cap style row below, no separate Alt+B toggle, Step and a scrub-by-distance toggle in a collapsed panel.
