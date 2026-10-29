@@ -186,6 +186,17 @@ def test_hatch_for_index_alternates():
     assert sm.hatch_for_index(3, 45, 8, False) == (45, 8)
 
 
+def test_close_open_contours():
+    # a U-shaped (open) square contour gets its missing side back
+    sq = np.array([[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]], dtype=np.float64)
+    u = np.array([[sq[0], sq[1]], [sq[1], sq[2]], [sq[2], sq[3]]])
+    assert sm.open_endpoint_count(u) == 2
+    closed = sm.close_open_contours(u)
+    assert len(closed) == 4 and sm.open_endpoint_count(closed) == 0
+    full = np.concatenate([u, [[sq[3], sq[0]]]])
+    assert sm.close_open_contours(full) is full
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
