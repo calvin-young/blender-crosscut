@@ -8,11 +8,12 @@ hatched) wherever the plane passes through solid material, so a cut part reads a
 cross-section, the way section views work in CAD. One key toggles back to the plain
 backface look.
 
-![Display modes (concept render)](docs/images/concepts/modes.png)
+| Backfaces (plain Alt+B) | Hatched section | Slice |
+|---|---|---|
+| ![Backfaces](docs/images/screenshots/01_section_backfaces.png) | ![Hatched section](docs/images/screenshots/03_section_hatched.png) | ![Slice](docs/images/screenshots/04_slice_section_only.png) |
 
-*Concept renders made outside Blender to compare the options. Run
-[`tools/showcase.py`](tools/showcase.py) in Blender for real screenshots. The look it aims for
-comes from the maintainer's hand-made mock-ups in [docs/images/reference/](docs/images/reference/).*
+*Blender 5.2 screenshots made by [`tools/showcase.py`](tools/showcase.py). The look comes from
+the maintainer's hand-made mock-ups in [docs/images/reference/](docs/images/reference/).*
 
 ## Features
 
@@ -30,13 +31,17 @@ comes from the maintainer's hand-made mock-ups in [docs/images/reference/](docs/
   viewport readout.
 - **Works with Alt+B**: Blender's own clipping box gets caps too. Pressing Alt+B while Crosscut
   is active hands clipping back to Blender (and turns Crosscut off).
-- Colours follow the Solid shading colour (Object or Material), or use a per-object palette or
-  a single colour.
+- Colours follow the Solid shading colour (Object or Material); white or grey parts get the Cap
+  Color (green by default) so the cut stands out. Or use a per-object palette or a single colour.
+- A new section keeps the far side of the part, so you look at the cut face, not at the uncut
+  outside. Flip swaps sides.
 - Caps are drawn on the GPU every frame; the mesh/plane intersection is cached and only
-  recomputed when the plane or the mesh changes (about 30 ms for a 1M-triangle mesh in numpy).
-  Nothing is added to or changed in your meshes.
+  recomputed when the plane or the mesh changes (scrubbing a 1.3M-triangle mesh redraws in
+  about 15 ms on the test machine). Nothing is added to or changed in your meshes.
 
-![Several bodies (concept render)](docs/images/concepts/multibody.png)
+| Several bodies with interference | Scrub range from a build-volume object |
+|---|---|
+| ![Several bodies](docs/images/screenshots/06_multibody_interference.png) | ![Range object](docs/images/screenshots/10_range_object_readout.png) |
 
 ## Install
 
@@ -81,8 +86,10 @@ object are never capped, so a build-volume box does not fill the whole section.
 
 ## Status
 
-**Experimental (0.1.0).** This first build was written without access to Blender and has known
-bugs from its first real test; a tested build is next. Expect rough edges.
+**Experimental (0.2.0).** 0.1.0 was written without access to Blender; 0.2.0 is the first build
+run and tested in Blender, with an automated in-viewport test suite
+([`tests/blender/`](tests/blender/run_viewport_tests.py)). Tested on Blender 4.2.23 LTS and 5.2.3
+LTS (Linux, OpenGL; 5.2 also on Vulkan). Not yet used on real work, so expect rough edges.
 
 The project is developed almost entirely by an AI assistant (Claude) with minimal human code
 review; the maintainer sets the direction, tests each build on real work and reviews the

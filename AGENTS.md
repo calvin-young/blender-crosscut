@@ -8,8 +8,9 @@ The human-facing overview is in [README.md](README.md).
 - **What it is:** a Blender add-on that adds filled (solid or hatched) caps to viewport
   clipping, plus section and slice views with a scrub slider. It drives the same
   `RegionView3D.clip_planes` that Alt+B uses and draws the caps with the `gpu` module.
-- **Status:** experimental (0.1.0). The first build was written without access to Blender;
-  the maintainer's first test found it "looks great but definitely buggy" (no details yet).
+- **Status:** experimental (0.2.0, 2026-10-29): first build tested in Blender (4.2.23 and 5.2.3,
+  OpenGL; 5.2 on Vulkan too) with the in-viewport suite below. Waiting for the maintainer's
+  test on real work. See "State and next steps".
 - **Runs in:** Blender 4.2+ as an extension (`crosscut/blender_manifest.toml`); Python 3.11
   inside Blender. `crosscut/section_math.py` and the tests run on any Python 3.10+ with numpy.
 
@@ -20,9 +21,15 @@ The human-facing overview is in [README.md](README.md).
   `ln -s "$PWD/crosscut" ~/.config/blender/<version>/extensions/user_default/crosscut`,
   then enable "Crosscut" in Preferences > Add-ons.
 - **Run tests (no Blender needed):** `python tests/test_section_math.py && python tests/test_addon_logic.py`
-- **Run in Blender with screenshots:** `blender --python tools/showcase.py` (needs a real
-  display; viewport draw handlers do not run in `--background`). Writes PNGs to
-  `~/crosscut_showcase/`.
+- **Run the in-Blender viewport tests:** `blender --factory-startup --python tests/blender/run_viewport_tests.py`
+  (add `-- --only <name>` for one test, `-- --keep` to leave Blender open; `--gpu-backend vulkan`
+  before `--python` for Vulkan on 5.x). Needs a real display: draw handlers do not run in
+  `--background`; on the workstation use `DISPLAY=:0`. It builds synthetic scenes, checks pixels
+  at known spots, writes screenshots to `~/crosscut_tests/<version>/` and exits 1 on any failure.
+  Look at the screenshots too: the checks cannot judge looks. Takes about a minute.
+- **Showcase screenshots:** `blender --python tools/showcase.py` with Crosscut enabled. Writes
+  PNGs to `~/crosscut_showcase/`; the README images in `docs/images/screenshots/` are crops of
+  these.
 - **Lint:** `ruff check --select F,E9,B --line-length 120 .`
 - **Build a release zip:** `cd crosscut && zip -r ../dist/crosscut-<version>.zip . -x "__pycache__/*"`
   (the manifest must sit at the root of the zip). Bump `version` in the manifest first.
@@ -37,6 +44,7 @@ crosscut/                 the extension package
   draw.py                 clip-plane sync with RegionView3D, GPU cap rendering, viewport readout
   props.py ops.py ui.py   scene settings, operators, panels / pie / header popover / keymaps
 tests/                    plain-Python tests; bpy/gpu are stubbed in test_addon_logic.py
+tests/blender/            in-Blender viewport tests (pixel checks + screenshots)
 tools/showcase.py         builds a demo scene in Blender and screenshots every mode
 tools/concept_render.py   numpy ray caster used for the README concept figures
 docs/                     DECISIONS.md, PROMPT_STATS.md, images (concepts + maintainer's reference mock-ups)
@@ -48,8 +56,10 @@ docs/                     DECISIONS.md, PROMPT_STATS.md, images (concepts + main
 - Non-destructive: never modify user meshes, materials or modifier stacks.
 - Draw callbacks must never raise every frame: catch, print once, show it in the readout.
 - Never write ID data (scene properties etc.) from a draw callback; defer with `bpy.app.timers`.
-  Writing `RegionView3D` clip planes from the draw callback is the current design; see
-  docs/DECISIONS.md D-002 and its "revisit if".
+  Clip planes are pushed to every view from property updates, operators and the depsgraph
+  handler (`draw.sync_views`); the draw callback only catches what those miss (D-002, D-008).
+- Colours sent to shaders must be scene-linear: the POST_VIEW buffer gets the view transform
+  afterwards (D-009). Convert sRGB values with `draw._lin()`.
 - `section_math.py` stays free of `bpy` so it can be tested anywhere.
 - SPDX `GPL-3.0-or-later` header on every source file.
 - UI/UX matters more to the maintainer than code style: keep labels short, tooltips useful,
@@ -63,12 +73,19 @@ live only in a chat or in one assistant's memory. Current state and next steps g
 this file, the reasons behind decisions and the approaches that were dropped go in
 `docs/DECISIONS.md`, and bugs and planned features go in GitHub Issues. Anything private stays in a gitignored file or outside the repo.
 
+## State and next steps
+
+- 0.2.0 fixed what the first in-Blender run found (DECISIONS.md, 0.2.0 section). All 77 viewport
+  checks pass on 4.2.23 and 5.2.3.
+- Next: the maintainer tests 0.2.0 on real parts and reports. Then work through the Issues.
+- Not tested yet: macOS/Windows, HiDPI scaling above 1, Metal, very large multi-object scenes.
+
 ## Before you change things
 
 - Read [docs/DECISIONS.md](docs/DECISIONS.md): why it's built this way, what was tried, and the
   open assumptions the maintainer hasn't confirmed yet. Don't retry an abandoned approach
   without new information.
-- The roadmap will live in GitHub Issues (not created yet; follow-ups are listed in DECISIONS.md).
+- The roadmap lives in [GitHub Issues](https://github.com/calvin-young/blender-crosscut/issues).
 - Update [docs/PROMPT_STATS.md](docs/PROMPT_STATS.md) at the end of each working session.
 
 ## Data
