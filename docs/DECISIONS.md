@@ -10,6 +10,7 @@ this list is an assumption, tracked in the table at the end.
 
 | ID | Requirement | Status in 0.1.0 |
 | --- | --- | --- |
+| R-013 | After testing 0.4.0 (2026-10-29): no outline in Wireframe; show the Wire/Bounds note only when such objects exist, and warn in the readout; stripe width and plane colour/opacity settings; Object with no object must not cut, and the only visible object should be picked automatically; Cap Targets and Scrub Range under Settings; parts selectable in a zero-thickness slice; a slab's second plane in another colour or without stacked tint; hide rather than grey out (except Flip); turning off must not bring back the Alt+B box; prep everything for 1.0, release after review | 0.9.0 (1.0 candidate), see below |
 | R-012 | After testing 0.3.0 (2026-10-29): stutter fixed. A toggle between blending and striping overlapping colours; hide Cap Color when Auto doesn't use it; bug: switching Section/Slice on over Alt+B left Alt+B's box shading; Center as the middle button; settings for the interference look; maybe rename "Targets & Range"; "just about ready for a 1.0" | 0.4.0, see below |
 | R-011 | After testing 0.2.0 (2026-10-29): defaults Hatch Space Model, Spacing 0.5, Scrub 0.5, everything but the main panel collapsed. Bugs: Alt+B outlines run past the box; dragging parts stutters under Alt+B. UI: Section and Slice as two buttons, one or neither on; cap style row right below; drop "Cap Alt+B Clipping" (Backfaces does that); Backfaces + zero-thickness Slice must show something (outline, maybe backface-red fill); bury Step in a collapsed settings panel; replace Offset with a scrub-by-distance toggle there; add a View button for a static plane parallel to the view; blend overlapping colours when interference is off; optional tint/hatch on the plane frame | 0.3.0, see below |
 | R-010 | Test the add-on in Blender, fix all the bugs, provide an installable zip (2026-10-29) | 0.2.0: in-Blender test suite, fixes below, `dist/crosscut-0.2.0.zip` |
@@ -24,6 +25,48 @@ this list is an assumption, tracked in the table at the end.
 | R-001 | Main use: while modelling parts. Secondary: finding interferences when packing buckets | Drives defaults |
 
 ## Decisions
+
+### Changes after the maintainer's test of 0.4.0 (0.9.0, 2026-10-29)
+
+- **Turning off leaves no clipping** (D-019). This also explains the "random slicing" with an
+  Object plane and no object: with no plane, Crosscut released the view, and releasing put the
+  old Alt+B planes back.
+- **Object plane**: no object = no cut, with a readout hint. When Object is chosen with none
+  set, the only visible Empty is picked, else the only visible object (*assumed* reading of
+  "automatically selected as the target": the plane object, not the cap targets). A part used
+  as its own plane is still capped; only a flat mesh (a cutter) used as the plane is excluded.
+  An Empty plane starts through the Empty (offset 0), anything else in the middle of the range.
+- **Selecting in a zero-thickness slice** (D-020).
+- **Wireframe**: clipped, but no caps or outlines.
+- **Wire/Bounds note**: shown in Cap Targets and in the readout only when such solids are
+  visible; the scrub range object is left out (it is uncapped on purpose).
+- **Settings**: Stripe Width (px or scene units, following the hatch space); plane Color, Second
+  Plane colour (Slice only) and Opacity. A slab draws its nearer plane, then the farther one
+  only outside it, so looking through both doesn't double the tint (both requested options,
+  done together).
+- **UI**: hidden instead of greyed out, except Flip. Scrub and its buttons hide while Crosscut is
+  off; hatch settings hide unless Hatched; Interference hides with Backfaces; Cap Targets and
+  Scrub Range are sub-panels of Settings.
+- **1.0 prep**: README rewritten with fresh screenshots, `docs/USER_GUIDE.md`, `CHANGELOG.md`,
+  manifest version 0.9.0 (*assumed*: the candidate is 0.9.0 and the release will be 1.0.0).
+
+### D-020: Click-select by section in a zero-thickness slice (2026-10-29)
+
+- **Context:** Blender doesn't select clipped geometry, and a zero-thickness slice clips
+  everything.
+- **Decision:** `crosscut.select_section` on the select click (left or right, following the
+  keymap preference) in the 3D View keymap. It only runs in a zero-thickness slice: it casts
+  the click onto the plane and does an even-odd test against each part's cached section. A hit
+  selects (Shift toggles; overlapping parts cycle). A miss passes the click on to Blender.
+  Box select still doesn't work there.
+
+### D-019: Releasing a view turns clipping off (2026-10-29)
+
+- **Context:** 0.2.0 to 0.4.0 put back whatever clipping a view had before Crosscut took over
+  (D-006). Since 0.4.0 the old Alt+B box's shading can't come back with it, and the maintainer
+  wants no clipping after turning Crosscut off.
+- **Decision:** When Crosscut releases a view (turned off, or no plane), clipping is turned off.
+  Pressing Alt+B while Crosscut is on still hands that new box to Blender.
 
 ### Changes after the maintainer's test of 0.3.0 (0.4.0, 2026-10-29)
 
@@ -307,4 +350,8 @@ What `tests/blender/run_viewport_tests.py` and the screenshots showed in 0.1.0, 
 | Q-035 | Center / Cursor / Selection buttons stay in the main panel | assumption | 0.3.0 | kept; reordered Cursor / Center / Selection (R-012) |
 | Q-036 | Stripe width = 2x hatch spacing, angle = hatch angle - 45 degrees; no own setting (D-018) | assumption | 0.4.0 | open |
 | Q-037 | Panel named "Targets & Scrub Range" instead of "Scrub Targets & Range" | assumption | 0.4.0 | open |
-| Q-038 | Next release numbered 0.4.0, not 1.0: 1.0 waits for the maintainer's go | assumption | 0.4.0 | open |
+| Q-038 | Next release numbered 0.4.0, not 1.0: 1.0 waits for the maintainer's go | assumption | 0.4.0 | confirmed: release after review (R-013) |
+| Q-039 | Object auto-pick fills the plane object (only visible Empty, else only visible object) | assumption | 0.9.0 | open |
+| Q-040 | Plane colours: amber first, blue second plane; tint opacity 10 % | assumption | 0.9.0 | open |
+| Q-041 | The 1.0 candidate is numbered 0.9.0 | assumption | 0.9.0 | open |
+| Q-042 | Whether to publish on the Blender Extensions platform for 1.0 | unasked question | 0.9.0 | open |

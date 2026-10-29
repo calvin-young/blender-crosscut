@@ -32,9 +32,26 @@ def tag_redraw(_self=None, _context=None):
                 area.tag_redraw()
 
 
+def _start_offset(s):
+    """Where a newly chosen plane starts: through an Empty used as the plane,
+    else in the middle of the scrub range."""
+    if s.orientation == 'OBJECT' and s.plane_object is not None and s.plane_object.type == 'EMPTY':
+        return 0.0
+    return engine.center_offset(s)
+
+
 def _orientation_changed(self, context):
-    # a position along the old axis means nothing along the new one: start in the middle
-    self.offset = engine.center_offset(self)
+    if self.orientation == 'OBJECT' and self.plane_object is None:
+        ob = engine.obvious_plane_object(bpy.context)
+        if ob is not None:
+            self.plane_object = ob
+    # a position along the old axis means nothing along the new one: start afresh
+    self.offset = _start_offset(self)
+    tag_redraw(self, context)
+
+
+def _plane_object_changed(self, context):
+    self.offset = _start_offset(self)
     tag_redraw(self, context)
 
 
@@ -68,8 +85,9 @@ ORIENTATIONS = [
     ('X', "X", "Plane normal along world X"),
     ('Y', "Y", "Plane normal along world Y"),
     ('Z', "Z", "Plane normal along world Z"),
-    ('OBJECT', "Object", "Use an object (usually an Empty) as the plane: its local Z axis is the normal. "
-                         "Move/rotate it with the usual tools"),
+    ('OBJECT', "Object", "Use an object as the plane: its local Z axis is the normal, through its origin. "
+                         "Move/rotate it with the usual tools. Picked automatically when only one "
+                         "Empty, or only one object, is visible"),
     ('VIEW', "View", "Plane facing the view as it was when chosen. It stays put when you orbit; "
                      "click View again to face the current view"),
 ]
@@ -92,8 +110,8 @@ class CrosscutSettings(bpy.types.PropertyGroup):
     placed: BoolProperty(default=False, options={'HIDDEN'},
                          description="The plane has been positioned once (first use starts it in the middle)")
     plane_object: PointerProperty(
-        name="Plane Object", type=bpy.types.Object, update=tag_redraw,
-        description="Object whose local Z axis defines the section plane",
+        name="Plane Object", type=bpy.types.Object, update=_plane_object_changed,
+        description="Object whose local Z axis defines the section plane (no cut until one is chosen)",
     )
     offset: FloatProperty(
         name="Position", subtype='DISTANCE', unit='LENGTH', precision=3, step=10,
@@ -182,10 +200,14 @@ class CrosscutSettings(bpy.types.PropertyGroup):
         name="Overlaps", default='BLEND', update=tag_redraw,
         items=[
             ('BLEND', "Blend", "Overlapping caps mix their colours equally"),
-            ('STRIPES', "Stripes", "Overlapping caps share the area in stripes, one per part "
-                                   "(stripe width = twice the hatch spacing)"),
+            ('STRIPES', "Stripes", "Overlapping caps share the area in stripes, one per part"),
         ],
     )
+    stripe_width: FloatProperty(name="Stripe Width", subtype='DISTANCE', unit='LENGTH', min=1e-4, default=1.0,
+                                precision=3, description="Width of each overlap stripe in scene units",
+                                update=tag_redraw)
+    stripe_width_px: FloatProperty(name="Stripe Width", min=2.0, max=200.0, default=12.0, precision=1,
+                                   description="Width of each overlap stripe in pixels", update=tag_redraw)
     interference_style: EnumProperty(
         name="Style", default='CROSS', update=tag_redraw,
         items=[
@@ -214,6 +236,18 @@ class CrosscutSettings(bpy.types.PropertyGroup):
             ('TINT', "Tint", "Outline the plane and tint it"),
             ('HATCH', "Hatched", "Outline the plane, tint it and add light hatching"),
         ],
+    )
+    plane_color: FloatVectorProperty(
+        name="Color", subtype='COLOR_GAMMA', size=3, min=0.0, max=1.0, default=(1.0, 0.75, 0.2),
+        description="Colour of the plane frame and tint", update=tag_redraw,
+    )
+    plane_color_2: FloatVectorProperty(
+        name="Second Plane", subtype='COLOR_GAMMA', size=3, min=0.0, max=1.0, default=(0.25, 0.65, 1.0),
+        description="Colour of the second plane of a Slice slab, so the two read apart", update=tag_redraw,
+    )
+    plane_opacity: FloatProperty(
+        name="Opacity", subtype='FACTOR', min=0.0, max=1.0, default=0.10, update=tag_redraw,
+        description="Tint opacity",
     )
     show_readout: BoolProperty(name="Readout", default=True, update=tag_redraw,
                                description="Show the plane position and warnings in the viewport")

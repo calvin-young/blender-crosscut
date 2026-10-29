@@ -87,12 +87,46 @@ def native_caps(rv3d):
 
 # ---------------------------------------------------------------- targets
 
+def is_flat(ob):
+    """A plane-like mesh (one bounding-box side ~0): a cutter, not a part."""
+    dims = np.ptp(np.array([tuple(c) for c in ob.bound_box], dtype=np.float64), axis=0)
+    return float(dims.min()) <= 1e-6 * max(float(dims.max()), 1e-12)
+
+
 def is_helper(ob, s):
     if ob is None:
         return False
-    if ob == s.plane_object or ob == s.range_object:
+    if ob == s.range_object:
         return True
+    if ob == s.plane_object and is_flat(ob):
+        return True  # a plane mesh used as the cutter; a part used as its own plane is still capped
     return ob.display_type in {'WIRE', 'BOUNDS'}
+
+
+def obvious_plane_object(context):
+    """The only visible Empty, else the only visible object, else None."""
+    view_layer = context.view_layer
+    if view_layer is None:
+        return None
+    vis = [ob for ob in view_layer.objects if ob is not None and _visible(ob, view_layer, None)
+           and ob.type not in {'CAMERA', 'LIGHT', 'LIGHT_PROBE', 'SPEAKER'}]
+    empties = [ob for ob in vis if ob.type == 'EMPTY']
+    if len(empties) == 1:
+        return empties[0]
+    if not empties and len(vis) == 1:
+        return vis[0]
+    return None
+
+
+def hidden_from_caps(context, s):
+    """Visible solids not capped because they display as Wire or Bounds
+    (the range object is left out: it's meant to be uncapped)."""
+    view_layer = context.view_layer
+    if view_layer is None:
+        return []
+    return [ob.name for ob in view_layer.objects
+            if ob is not None and ob.type in TARGET_TYPES and ob.display_type in {'WIRE', 'BOUNDS'}
+            and ob != s.range_object and _visible(ob, view_layer, None)]
 
 
 def _visible(ob, view_layer, space):
@@ -116,7 +150,7 @@ def original_targets(context, s):
         coll = set(s.target_collection.all_objects)
     out = []
     for ob in view_layer.objects:
-        if ob.type not in TARGET_TYPES or is_helper(ob, s):
+        if ob is None or ob.type not in TARGET_TYPES or is_helper(ob, s):
             continue
         if not _visible(ob, view_layer, None):
             continue
@@ -309,6 +343,27 @@ def section(target, cap_index, plane, depsgraph, bounds=()):
             res = (seg_w, sm.open_endpoint_count(seg), _version[0])
     _sections[ck] = (sig, res)
     return res
+
+
+def objects_at(context, s, point, plane, depsgraph):
+    """Owners of the targets whose section on `plane` (cap index 0, as drawn)
+    contains the world point, in target order. Even-odd test in the plane."""
+    u, v = sm.plane_basis(sm.normalize(plane[:3]))
+    px, py = float(point @ u), float(point @ v)
+    out = []
+    for t in collect_targets(context, s, depsgraph):
+        res = section(t, 0, plane, depsgraph)
+        if res is None:
+            continue
+        seg = res[0]
+        ax, ay = seg[:, 0] @ u, seg[:, 0] @ v
+        bx, by = seg[:, 1] @ u, seg[:, 1] @ v
+        crosses = (ay > py) != (by > py)
+        with np.errstate(divide='ignore', invalid='ignore'):
+            x_at = ax + (py - ay) * (bx - ax) / (by - ay)
+        if int(np.count_nonzero(crosses & (px < x_at))) % 2 == 1 and t.owner not in out:
+            out.append(t.owner)
+    return out
 
 
 def prune(live_keys):

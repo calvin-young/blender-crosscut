@@ -3,7 +3,7 @@
 
 import bpy
 import numpy as np
-from bpy.props import EnumProperty, FloatProperty, IntProperty
+from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty
 from mathutils import Matrix, Vector
 
 from . import engine
@@ -107,6 +107,57 @@ class CROSSCUT_OT_from_view(bpy.types.Operator):
             s.mode = s.last_mode if s.last_mode in {'SECTION', 'SLICE'} else 'SECTION'
             s.last_mode = s.mode
         tag_redraw()
+        return {'FINISHED'}
+
+
+def _zero_slice(s):
+    return s.mode == 'SLICE' and s.thickness <= 1e-9
+
+
+class CROSSCUT_OT_select_section(bpy.types.Operator):
+    """Click-select parts by their section in a zero-thickness slice (Blender
+    can't select them there: everything else is clipped away)"""
+    bl_idname = "crosscut.select_section"
+    bl_label = "Select by Section"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    extend: BoolProperty(name="Extend", description="Toggle the part's selection instead of replacing it")
+
+    @classmethod
+    def poll(cls, context):
+        sc = context.scene
+        return (sc is not None and _zero_slice(sc.crosscut) and context.mode == 'OBJECT'
+                and context.region_data is not None)
+
+    def invoke(self, context, event):
+        from bpy_extras import view3d_utils
+        s = _s(context)
+        planes = engine.compute_planes(s)
+        if not planes:
+            return {'PASS_THROUGH'}
+        plane = np.asarray(planes[1][0][0], dtype=np.float64)
+        xy = (event.mouse_region_x, event.mouse_region_y)
+        o = np.array(view3d_utils.region_2d_to_origin_3d(context.region, context.region_data, xy))
+        d = np.array(view3d_utils.region_2d_to_vector_3d(context.region, context.region_data, xy))
+        denom = float(plane[:3] @ d)
+        if abs(denom) < 1e-12:
+            return {'PASS_THROUGH'}
+        p = o + d * (-(float(plane[:3] @ o) + float(plane[3])) / denom)
+        hits = engine.objects_at(context, s, p, plane, context.evaluated_depsgraph_get())
+        if not hits:
+            return {'PASS_THROUGH'}  # Blender's own click-select deselects as usual
+        active = context.view_layer.objects.active
+        # clicking again where parts overlap cycles through them
+        ob = hits[(hits.index(active) + 1) % len(hits)] if active in hits and len(hits) > 1 else hits[0]
+        if self.extend:
+            if ob.select_get() and ob == active:
+                ob.select_set(False)
+                return {'FINISHED'}
+        else:
+            for o2 in context.selected_objects:
+                o2.select_set(False)
+        ob.select_set(True)
+        context.view_layer.objects.active = ob
         return {'FINISHED'}
 
 
@@ -360,6 +411,7 @@ class CROSSCUT_OT_use_bounds(bpy.types.Operator):
 classes = (
     CROSSCUT_OT_set_mode,
     CROSSCUT_OT_from_view,
+    CROSSCUT_OT_select_section,
     CROSSCUT_OT_section,
     CROSSCUT_OT_toggle,
     CROSSCUT_OT_toggle_slice,

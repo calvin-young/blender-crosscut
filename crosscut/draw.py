@@ -78,7 +78,13 @@ float hatch_line(float x, float pitch, float width) {
 
 void main() {
     float m = texelFetch(maskTex, ivec2(gl_FragCoord.xy), 0).r;
-    if (m < threshold) {
+    if (threshold > 1.5) {
+        // inverted: keep only where the mask is NOT lit
+        if (m > 0.5) {
+            discard;
+        }
+    }
+    else if (m < threshold) {
         discard;
     }
     vec4 col = fillColor;
@@ -297,9 +303,10 @@ def _request_prime(key):
 
 
 def sync_clip(rv3d, desired, area=None):
-    """Make rv3d's clip planes match `desired` (list of planes) or hand them
-    back to the user when desired is None. Returns True when Crosscut owns the
-    clipping in this view."""
+    """Make rv3d's clip planes match `desired` (list of planes), or release the
+    view when desired is None: clipping off, whatever was there before (an
+    Alt+B box's planes would come back without its shading, which only
+    confuses). Returns True when Crosscut owns the clipping in this view."""
     key = rv3d.as_pointer()
     st = _clip_state.get(key)
     cur_on = bool(rv3d.use_clip_planes)
@@ -309,9 +316,8 @@ def sync_clip(rv3d, desired, area=None):
         if st is not None:
             ours = st.get("ours")
             if ours is not None and cur_on and np.allclose(cur, ours, atol=1e-5, rtol=1e-6):
-                on, planes = st["saved"]
-                rv3d.clip_planes = planes.reshape(6, 4).tolist()
-                rv3d.use_clip_planes = on
+                rv3d.clip_planes = [list(sm.CLIP_NONE)] * 6
+                rv3d.use_clip_planes = False
                 if area is not None:
                     area.tag_redraw()
             del _clip_state[key]
@@ -327,12 +333,11 @@ def sync_clip(rv3d, desired, area=None):
             _request_mode_off()
             return False
     else:
-        st = {"saved": (cur_on, cur.copy()), "ours": None}
+        st = {"ours": None}
         _clip_state[key] = st
         # Without Alt+B there may be no clipping box at all; with Alt+B,
         # Blender would keep shading the area outside the old box. An empty
-        # box fixes both. On hand-back the user's planes come back (and clip)
-        # but their box shading doesn't: Python can't rebuild the box.
+        # box fixes both.
         _request_prime(key)
 
     full = _pad6(desired)
@@ -511,11 +516,11 @@ def _cap_uniforms(sh, vp, fill, line, hatch, threshold, width, mask_tex, count_t
 
 
 def _stripe_vec(s):
-    """Stripes for overlapping caps: twice the hatch spacing, 45 degrees off the hatch."""
+    """Stripes for overlapping caps, in the hatch space, 45 degrees off the hatch."""
     if s.hatch_space == 'SCREEN':
-        pitch = -2.0 * s.hatch_pitch_px * bpy.context.preferences.system.ui_scale
+        pitch = -s.stripe_width_px * bpy.context.preferences.system.ui_scale
     else:
-        pitch = 2.0 * s.hatch_pitch
+        pitch = s.stripe_width
     a = s.hatch_angle - math.radians(45.0)
     return (pitch, math.cos(a), math.sin(a), 1.0)
 
@@ -710,7 +715,9 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style, fill_override=None):
     return info
 
 
-_FRAME_COLOR = (1.0, 0.75, 0.2)
+def _plane_colors(s, n):
+    cols = [tuple(s.plane_color), tuple(s.plane_color_2)]
+    return [cols[min(i, 1)] for i in range(n)]
 
 
 def _frame_quads(context, s, caps):
@@ -739,28 +746,38 @@ def _draw_plane_fill(context, s, rv3d, quads):
     if w < 2 or h < 2 or not quads:
         return
     sh = _shader("cap")
-    tex = _offscreen(w, h)[0].texture_color
+    mask_off = _offscreen(w, h)[0]
+    vp = rv3d.perspective_matrix
     ui = bpy.context.preferences.system.ui_scale
     if s.plane_display == 'HATCH':
         a = math.radians(45.0)
         hatch = (-12.0 * ui, math.cos(a), math.sin(a), 1.0)
     else:
         hatch = (1.0, 1.0, 0.0, 0.0)
-    gpu.state.depth_test_set('LESS_EQUAL')
-    gpu.state.depth_mask_set(False)
-    gpu.state.blend_set('ALPHA')
-    _cap_uniforms(sh, rv3d.perspective_matrix, _lin(_FRAME_COLOR + (0.10,)), _lin(_FRAME_COLOR + (0.30,)),
-                  hatch, -1.0, 0.08, tex)
-    for poly, uv in quads:
-        _quad_batch(poly, uv).draw(sh)
+    colors = _plane_colors(s, len(quads))
+    # Two slab planes: draw the nearer one, then the farther one only where the
+    # nearer doesn't cover it, so looking through both doesn't double the tint
+    vm = np.array(rv3d.view_matrix)
+    depth = [float((vm @ np.append(poly.mean(0), 1.0))[2]) for poly, _uv in quads]
+    order = sorted(range(len(quads)), key=lambda i: -depth[i])
+    for k, i in enumerate(order):
+        poly, uv = quads[i]
+        batch = _quad_batch(poly, uv)
+        if k > 0:
+            near_poly = quads[order[0]][0]
+            _draw_mask(mask_off, _shader("mask"), vp,
+                       _vbatch('TRIS', {"pos": (sm.fan_triangulate(near_poly), 3)}))
+        gpu.state.depth_test_set('LESS_EQUAL')
+        gpu.state.depth_mask_set(False)
+        gpu.state.blend_set('ALPHA')
+        c = colors[i]
+        _cap_uniforms(sh, vp, _lin(c + (s.plane_opacity,)), _lin(c + (min(1.0, s.plane_opacity * 3.0),)),
+                      hatch, 2.0 if k > 0 else -1.0, 0.08, mask_off.texture_color)
+        batch.draw(sh)
 
 
 def _draw_frame(context, s, quads):
-    segs = []
-    for c, _uv in quads:
-        for i in range(4):
-            segs.extend([c[i], c[(i + 1) % 4]])
-    if not segs:
+    if not quads:
         return
     sh = _shader("line")
     region = context.region
@@ -769,8 +786,10 @@ def _draw_frame(context, s, quads):
     sh.bind()
     sh.uniform_float("viewportSize", (region.width, region.height))
     sh.uniform_float("lineWidth", 1.0)
-    sh.uniform_float("color", _lin(_FRAME_COLOR + (0.45,)))
-    batch_for_shader(sh, 'LINES', {"pos": [tuple(p) for p in segs]}).draw(sh)
+    for (c, _uv), col in zip(quads, _plane_colors(s, len(quads)), strict=True):
+        segs = [tuple(c[(i + j) % 4]) for i in range(4) for j in (0, 1)]
+        sh.uniform_float("color", _lin(col + (0.6,)))
+        batch_for_shader(sh, 'LINES', {"pos": segs}).draw(sh)
 
 
 def draw_view():
@@ -802,15 +821,16 @@ def draw_view():
         quads = _frame_quads(context, s, caps) if plane_shown and caps else []
         if quads and s.plane_display in {'TINT', 'HATCH'}:
             _draw_plane_fill(context, s, rv3d, quads)
-        # Wireframe shading: outlines only, no fill
-        show_fill = shading_type != 'WIREFRAME'
-        if caps and clips and style != 'BACKFACES':
-            if show_fill or s.outline:
-                info.update(_draw_caps(context, s, rv3d, caps, show_fill, style))
-        elif caps and clips and ours and s.mode == 'SLICE' and s.thickness <= 1e-9:
+        # caps are for Solid shading; Wireframe gets no caps or outlines
+        solid = shading_type == 'SOLID'
+        if caps and solid and style != 'BACKFACES':
+            info.update(_draw_caps(context, s, rv3d, caps, True, style))
+        elif caps and solid and ours and s.mode == 'SLICE' and s.thickness <= 1e-9:
             # a zero-thickness slice clips everything, so with Backfaces there
             # would be nothing at all to see: show the cut as a backface-red fill
-            info.update(_draw_caps(context, s, rv3d, caps, show_fill, 'SOLID', fill_override=backface_color()))
+            info.update(_draw_caps(context, s, rv3d, caps, True, 'SOLID', fill_override=backface_color()))
+        info["no_plane_object"] = s.mode != 'OFF' and s.orientation == 'OBJECT' and s.plane_object is None
+        info["uncapped"] = engine.hidden_from_caps(context, s) if (ours or native) and solid else []
         if quads:
             _draw_frame(context, s, quads)
         _last_info[key] = info
@@ -879,8 +899,14 @@ def readout_lines(scene, s, info):
         lines.append(head)
     elif info.get("native"):
         lines.append(f"Alt+B clipping   {_enum_name(s, 'cap_style')}")
+    if info.get("no_plane_object"):
+        warn.append("Object plane: pick an object (nothing is cut until then)")
+    if info.get("uncapped"):
+        names = info["uncapped"]
+        more = f" (+{len(names) - 3})" if len(names) > 3 else ""
+        warn.append("Not capped (Wire/Bounds display): " + ", ".join(names[:3]) + more)
     if info.get("shading_note"):
-        warn.append("Clipping and caps only show in Solid / Wireframe shading")
+        warn.append("Clipping works in Solid and Wireframe shading only; caps in Solid")
     if info.get("open"):
         names = info["open"]
         more = f" (+{len(names) - 3})" if len(names) > 3 else ""

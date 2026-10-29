@@ -35,8 +35,9 @@ def _draw_main(layout, context, compact=False):
         op = r.operator("crosscut.add_plane", text="", icon='ADD')
         op.align = 'VIEW'
 
+    if s.mode == 'OFF':
+        return  # hide, don't grey out, what doesn't apply (Flip above is the exception)
     box = col.column(align=True)
-    box.enabled = s.mode != 'OFF'
     r = box.row(align=True)
     if s.scrub_distance:
         r.prop(s, "offset")
@@ -82,6 +83,12 @@ def _window_region(context):
     return None
 
 
+def _split(layout):
+    layout.use_property_split = True
+    layout.use_property_decorate = False
+    return layout.column()
+
+
 class CROSSCUT_PT_display(bpy.types.Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
@@ -92,30 +99,40 @@ class CROSSCUT_PT_display(bpy.types.Panel):
 
     def draw(self, context):
         s = context.scene.crosscut
-        layout = self.layout
-        layout.use_property_split = True
-        layout.use_property_decorate = False
-        col = layout.column()
-        col.active = s.cap_style != 'BACKFACES'
+        col = _split(self.layout)
+        if s.cap_style == 'BACKFACES':
+            col.label(text="Backfaces: no caps", icon='INFO')
+            if s.mode == 'SLICE':
+                _outline_row(col, s)  # a zero-thickness slice still shows its outline
+            return
         col.prop(s, "color_source")
         if s.color_source == 'SINGLE' or (s.color_source == 'AUTO' and draw.auto_uses_cap_color(context, s)):
             col.prop(s, "single_color")
-        sub = col.column()
-        sub.active = s.cap_style == 'HATCH' or s.overlap_style == 'STRIPES'
-        sub.prop(s, "hatch_space")
-        if s.hatch_space == 'SCREEN':
-            sub.prop(s, "hatch_pitch_px", text="Spacing (px)")
-        else:
-            sub.prop(s, "hatch_pitch")
-        sub.prop(s, "hatch_angle")
-        sub.prop(s, "hatch_width")
-        sub.prop(s, "hatch_vary")
-        r = col.row(heading="Outline")
-        r.prop(s, "outline", text="")
-        sr = r.row()
-        sr.active = s.outline
-        sr.prop(s, "outline_width", text="")
+        if s.cap_style == 'HATCH':
+            col.prop(s, "hatch_space")
+            if s.hatch_space == 'SCREEN':
+                col.prop(s, "hatch_pitch_px", text="Spacing (px)")
+            else:
+                col.prop(s, "hatch_pitch")
+            col.prop(s, "hatch_angle")
+            col.prop(s, "hatch_width")
+            col.prop(s, "hatch_vary")
+        _outline_row(col, s)
         col.prop(s, "overlap_style", expand=True)
+        if s.overlap_style == 'STRIPES':
+            if s.cap_style != 'HATCH':
+                col.prop(s, "hatch_space", text="Stripe Space")
+            if s.hatch_space == 'SCREEN':
+                col.prop(s, "stripe_width_px", text="Stripe Width (px)")
+            else:
+                col.prop(s, "stripe_width")
+
+
+def _outline_row(col, s):
+    r = col.row(heading="Outline")
+    r.prop(s, "outline", text="")
+    if s.outline:
+        r.prop(s, "outline_width", text="")
 
 
 class CROSSCUT_PT_interference(bpy.types.Panel):
@@ -126,21 +143,23 @@ class CROSSCUT_PT_interference(bpy.types.Panel):
     bl_parent_id = "CROSSCUT_PT_display"
     bl_options = {'DEFAULT_CLOSED'}
 
+    @classmethod
+    def poll(cls, context):
+        return context.scene.crosscut.cap_style != 'BACKFACES'
+
     def draw_header(self, context):
         self.layout.prop(context.scene.crosscut, "interference", text="")
 
     def draw(self, context):
         s = context.scene.crosscut
-        layout = self.layout
-        layout.use_property_split = True
-        layout.use_property_decorate = False
-        col = layout.column()
-        col.active = s.interference and s.cap_style != 'BACKFACES'
+        col = _split(self.layout)
+        if not s.interference:
+            col.label(text="Off: overlaps show as Blend or Stripes")
+            return
         col.prop(s, "interference_style")
         col.prop(s, "interference_color")
-        sub = col.column()
-        sub.active = s.interference_style != 'SOLID'
-        sub.prop(s, "interference_line_color")
+        if s.interference_style != 'SOLID':
+            col.prop(s, "interference_line_color")
         col.prop(s, "interference_opacity", slider=True)
 
 
@@ -154,11 +173,14 @@ class CROSSCUT_PT_settings(bpy.types.Panel):
 
     def draw(self, context):
         s = context.scene.crosscut
-        layout = self.layout
-        layout.use_property_split = True
-        layout.use_property_decorate = False
-        col = layout.column()
+        col = _split(self.layout)
         col.prop(s, "plane_display")
+        if s.plane_display != 'NONE':
+            col.prop(s, "plane_color")
+            if s.mode == 'SLICE':
+                col.prop(s, "plane_color_2")
+            if s.plane_display in {'TINT', 'HATCH'}:
+                col.prop(s, "plane_opacity", slider=True)
         col.prop(s, "show_readout")
         col.separator()
         col.prop(s, "scrub_distance")
@@ -169,20 +191,34 @@ class CROSSCUT_PT_targets(bpy.types.Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = "Crosscut"
-    bl_label = "Targets & Scrub Range"
-    bl_parent_id = "CROSSCUT_PT_main"
+    bl_label = "Cap Targets"
+    bl_parent_id = "CROSSCUT_PT_settings"
     bl_options = {'DEFAULT_CLOSED'}
 
     def draw(self, context):
         s = context.scene.crosscut
-        layout = self.layout
-        layout.use_property_split = True
-        layout.use_property_decorate = False
-        col = layout.column()
+        col = _split(self.layout)
         col.prop(s, "targets")
         if s.targets == 'COLLECTION':
             col.prop(s, "target_collection")
-        col.separator()
+        names = engine.hidden_from_caps(context, s)
+        if names:
+            more = f" (+{len(names) - 2})" if len(names) > 2 else ""
+            self.layout.label(text="Not capped (Wire/Bounds display): " + ", ".join(names[:2]) + more,
+                              icon='INFO')
+
+
+class CROSSCUT_PT_range(bpy.types.Panel):
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "Crosscut"
+    bl_label = "Scrub Range"
+    bl_parent_id = "CROSSCUT_PT_settings"
+    bl_options = {'DEFAULT_CLOSED'}
+
+    def draw(self, context):
+        s = context.scene.crosscut
+        col = _split(self.layout)
         col.prop(s, "range_source")
         if s.range_source == 'OBJECT':
             r = col.row(align=True)
@@ -190,7 +226,6 @@ class CROSSCUT_PT_targets(bpy.types.Panel):
             r.operator("crosscut.use_bounds", text="", icon='EYEDROPPER')
         lo, hi = engine.scrub_range(s)
         col.label(text=f"Range {draw.fmt_length(context.scene, lo)} → {draw.fmt_length(context.scene, hi)}")
-        layout.label(text="Wire/Bounds-display objects are never capped", icon='INFO')
 
 
 class CROSSCUT_PT_popover(bpy.types.Panel):
@@ -240,9 +275,15 @@ classes = (
     CROSSCUT_PT_interference,
     CROSSCUT_PT_settings,
     CROSSCUT_PT_targets,
+    CROSSCUT_PT_range,
     CROSSCUT_PT_popover,
     CROSSCUT_MT_pie,
 )
+
+
+def kc_active_select_mouse():
+    prefs = bpy.context.window_manager.keyconfigs.active.preferences
+    return getattr(prefs, "select_mouse", 'LEFT')
 
 
 def _add_keymaps():
@@ -253,6 +294,17 @@ def _add_keymaps():
     kmi = km.keymap_items.new("wm.call_menu_pie", 'B', 'PRESS', shift=True, alt=True)
     kmi.properties.name = "CROSSCUT_MT_pie"
     _keymaps.append((km, kmi))
+    # click-select by section in a zero-thickness slice (the operator passes the
+    # click on to Blender's own selection everywhere else)
+    try:
+        right = kc_active_select_mouse() == 'RIGHT'
+    except (AttributeError, KeyError):
+        right = False
+    button, value = ('RIGHTMOUSE', 'PRESS') if right else ('LEFTMOUSE', 'CLICK')
+    for shift in (False, True):
+        kmi = km.keymap_items.new("crosscut.select_section", button, value, shift=shift)
+        kmi.properties.extend = shift
+        _keymaps.append((km, kmi))
     for event, direction in (('WHEELUPMOUSE', 1), ('WHEELDOWNMOUSE', -1)):
         kmi = km.keymap_items.new("crosscut.step", event, 'PRESS', shift=True, alt=True)
         kmi.properties.direction = direction

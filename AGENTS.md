@@ -8,7 +8,7 @@ The human-facing overview is in [README.md](README.md).
 - **What it is:** a Blender add-on that adds filled (solid or hatched) caps to viewport
   clipping, plus section and slice views with a scrub slider. It drives the same
   `RegionView3D.clip_planes` that Alt+B uses and draws the caps with the `gpu` module.
-- **Status:** experimental (0.4.0, 2026-10-29): UI reworked after the maintainer's tests; nearly 1.0; tested in Blender (4.2.23 and 5.2.3,
+- **Status:** 1.0 release candidate (0.9.0, 2026-10-29), awaiting the maintainer's review; tested in Blender (4.2.23 and 5.2.3,
   OpenGL; 5.2 on Vulkan too) with the in-viewport suite below. Waiting for the maintainer's
   test on real work. See "State and next steps".
 - **Runs in:** Blender 4.2+ as an extension (`crosscut/blender_manifest.toml`); Python 3.11
@@ -21,7 +21,8 @@ The human-facing overview is in [README.md](README.md).
   `ln -s "$PWD/crosscut" ~/.config/blender/<version>/extensions/user_default/crosscut`,
   then enable "Crosscut" in Preferences > Add-ons.
 - **Run tests (no Blender needed):** `python tests/test_section_math.py && python tests/test_addon_logic.py`
-- **Run the in-Blender viewport tests:** `blender --factory-startup --python tests/blender/run_viewport_tests.py`
+- **Run the in-Blender viewport tests:** `blender --factory-startup --enable-event-simulate --python tests/blender/run_viewport_tests.py`
+  (`--enable-event-simulate` lets the selection test send clicks; without it that test is skipped)
   (add `-- --only <name>` for one test, `-- --keep` to leave Blender open; `--gpu-backend vulkan`
   before `--python` for Vulkan on 5.x). Needs a real display: draw handlers do not run in
   `--background`; on the workstation use `DISPLAY=:0`. It builds synthetic scenes, checks pixels
@@ -29,7 +30,8 @@ The human-facing overview is in [README.md](README.md).
   Look at the screenshots too: the checks cannot judge looks. Takes about a minute.
 - **Showcase screenshots:** `blender --python tools/showcase.py` with Crosscut enabled. Writes
   PNGs to `~/crosscut_showcase/`; the README images in `docs/images/screenshots/` are crops of
-  these.
+  these (`convert X.png -gravity center -crop 1500x1300+0+0 +repage -resize 900x`), plus the
+  sidebar crop from the viewport tests.
 - **Lint:** `ruff check --select F,E9,B --line-length 120 .`
 - **Build a release zip:** `cd crosscut && zip -r ../dist/crosscut-<version>.zip . -x "__pycache__/*"`
   (the manifest must sit at the root of the zip). Bump `version` in the manifest first.
@@ -82,8 +84,11 @@ this file, the reasons behind decisions and the approaches that were dropped go 
   on 4.2.23 and 5.2.3 (5.2 also on Vulkan).
 - 0.4.0 (second maintainer test): overlap stripes, interference settings, leftover Alt+B shading
   fixed. 107 viewport checks pass on 4.2.23 and 5.2.3 (and Vulkan).
-- Next: the maintainer tests 0.4.0 and decides on 1.0. Open questions Q-030 to Q-038 in
-  DECISIONS.md. Then the Issues.
+- 0.9.0 is the 1.0 candidate: README, docs/USER_GUIDE.md and CHANGELOG.md are written for the
+  release. Releasing: set the manifest to 1.0.0, rebuild the zip, tag v1.0.0, create a GitHub
+  Release with the zip attached (only after the maintainer's go).
+- Next: the maintainer reviews 0.9.0. Open questions Q-030 to Q-042 in DECISIONS.md. Then the
+  Issues.
 - Not tested yet: macOS/Windows, HiDPI scaling above 1, Metal, very large multi-object scenes.
 
 ## Before you change things

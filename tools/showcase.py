@@ -115,7 +115,8 @@ def configure(s, **kw):
                     cap_style='HATCH', targets='VISIBLE', color_source='AUTO', hatch_vary=True,
                     range_source='TARGETS', range_object=None,
                     interference=True, outline=True, plane_display='NONE', show_readout=True,
-                    hatch_space='SCREEN', hatch_pitch_px=10.0)
+                    hatch_space='SCREEN', hatch_pitch_px=10.0, overlap_style='BLEND',
+                    plane_opacity=0.10)
     defaults.update(kw)
     for k, v in defaults.items():
         setattr(s, k, v)
@@ -169,6 +170,9 @@ def main():
     shoot(area, region, "06_multibody_interference")
     configure(s, mode='SECTION', orientation='Z', offset=0.0, hatch_vary=False, interference=False)
     shoot(area, region, "07_multibody_no_interference")
+    configure(s, mode='SECTION', orientation='Z', offset=0.0, cap_style='SOLID', interference=False,
+              overlap_style='STRIPES')
+    shoot(area, region, "11_multibody_stripes")
 
     # 8: open (non-manifold) mesh is flagged
     for ob in (a, b, c):
@@ -195,10 +199,25 @@ def main():
         ob.hide_set(ob.name not in {"hollow-sphere"})
     vol = box("build-volume", (120, 120, 120), (0, 0, 0), (0.5, 0.5, 0.5))
     vol.display_type = 'WIRE'
-    configure(s, mode='SECTION', orientation='Z', offset=12.0, plane_display='FRAME',
+    configure(s, mode='SECTION', orientation='Z', offset=12.0, plane_display='TINT',
               range_source='OBJECT', range_object=vol, step=0.08)
     look(area, (0, 0, 0), 300, (60, 0, 30))
     shoot(area, region, "10_range_object_readout")
+    vol.hide_set(True)
+
+    # 12: a slab with both planes tinted, each in its own colour
+    configure(s, mode='SLICE', orientation='Z', offset=0.0, thickness=12.0, plane_display='TINT',
+              plane_opacity=0.25)
+    look(area, (0, 0, 0), 230, (60, 0, 30))
+    shoot(area, region, "12_slab_tinted_planes")
+
+    # 13: a View plane: set facing the view, then orbited to show it stays put
+    look(area, (0, 0, 0), 190, (60, 0, 50))
+    configure(s, mode='OFF', plane_display='TINT', plane_opacity=0.15)
+    with bpy.context.temp_override(area=area, region=region):
+        bpy.ops.crosscut.from_view()
+    look(area, (0, 0, 0), 190, (60, 0, 95))
+    shoot(area, region, "13_view_plane_orbited")
 
     configure(s, mode='OFF')
     with bpy.context.temp_override(area=area, region=region):

@@ -133,15 +133,15 @@ def _planes_of(r):
     return np.array(r.clip_planes, dtype=np.float64)
 
 
-def test_take_over_and_restore_native_state():
+def test_take_over_and_release_leaves_no_clipping():
     user_box = [[1.0, 0, 0, 5]] + [[0.0, 0, 0, 1]] * 5
     r = FakeRV3D(on=True, planes=[list(p) for p in user_box])
     want = [np.array([0, 0, -1.0, 3.0])]
     assert draw.sync_clip(r, want) is True
     assert r.use_clip_planes and np.allclose(_planes_of(r)[0], want[0])
     assert draw.sync_clip(r, want) is True  # stable
-    assert draw.sync_clip(r, None) is False  # hand back
-    assert r.use_clip_planes and np.allclose(_planes_of(r), user_box)
+    assert draw.sync_clip(r, None) is False  # release: no clipping, not the old Alt+B box
+    assert not r.use_clip_planes
 
 
 def test_user_alt_b_turns_crosscut_off():

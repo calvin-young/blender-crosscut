@@ -5,7 +5,7 @@ Live, non-destructive **section** and **slice** views for Blender's 3D viewport.
 Blender's clipping region (Alt+B) shows you the backfaces of whatever it cuts. Crosscut
 uses the same viewport clip planes and adds **caps**: the cut is filled (and optionally
 hatched) wherever the plane passes through solid material, so a cut part reads as a solid
-cross-section, the way section views work in CAD. One key toggles back to the plain
+cross-section, the way section views work in CAD. One click switches back to the plain
 backface look.
 
 | Backfaces (plain Alt+B) | Hatched section | Slice |
@@ -17,53 +17,57 @@ the maintainer's hand-made mock-ups in [docs/images/reference/](docs/images/refe
 
 ## Features
 
-- **Section**: cut along X, Y, Z, an Empty you place with G/R, or **View**: a plane facing the
-  view as it is when you click, which stays put when you orbit (click again to re-aim).
-- **Slice**: show only the cross-section (thickness 0) or a slab of any thickness.
+- **Section** (keep one side) or **Slice** (only the cross-section, or a slab of any thickness).
+- **Planes** along X, Y, Z, an object's local Z (an Empty you move with G/R, or the part
+  itself), or **View**: facing the view as it is when you click, and staying put when you orbit.
 - **Cap styles**: Backfaces (native look), Solid, Hatched. They apply to Section, Slice and
   Blender's own Alt+B box alike; Backfaces turns capping off everywhere.
-- **Scrub**: drag a slider to sweep the plane across the targets' bounds, or across any
-  object's bounds (for example a build volume), as 0-1 or as a distance. Step buttons and
-  **Shift+Alt+Wheel** move it by a fixed step (default 0.08, one MJF layer at 1 unit = 1 mm);
-  add Ctrl for 10 steps.
-- **Plane display**: frame, tinted (default) or hatched, so you can see where the plane is.
-- **Several bodies**: hatch direction then spacing alternates per object (ISO 128-50 style), and
-  where two or more objects' sections overlap the overlap is cross-hatched in red
-  (interference; style, colours and opacity adjustable). Overlapping caps either blend their
-  colours or share the area in stripes.
-- **Watertightness hint**: an open (non-manifold) section is outlined in orange and listed in the
-  viewport readout.
-- **Works with Alt+B**: Blender's own clipping box gets caps too. Pressing Alt+B while Crosscut
-  is active hands clipping back to Blender (and turns Crosscut off).
+- **Scrub** the plane across the parts, or across any object's bounds (for example a build
+  volume), as a 0-1 slider or as a distance. Step buttons and **Shift+Alt+Wheel** move it by a
+  fixed step (default 0.08, one MJF layer at 1 unit = 1 mm); add Ctrl for 10 steps.
+- **Several parts**: hatching alternates per part (ISO 128-50 style); where sections overlap,
+  an adjustable interference highlight (red cross-hatching by default), and underneath it the
+  overlapping caps either blend their colours or share the area in stripes.
+- **Plane display**: frame, tint or hatching, in colours you choose; a slab's two planes get
+  different colours.
+- **Open meshes** are outlined in orange and named in the viewport readout; their gaps are
+  closed so the fill still makes sense.
+- **Selectable in a zero-thickness slice**: click a section to select its part.
 - Colours follow the Solid shading colour (Object or Material); white or grey parts get the Cap
-  Color (green by default) so the cut stands out. Or use a per-object palette or a single colour.
-- A new section keeps the far side of the part, so you look at the cut face, not at the uncut
-  outside. Flip swaps sides.
-- Caps are drawn on the GPU every frame; the mesh/plane intersection is cached and only
-  recomputed when the plane or the mesh changes (scrubbing a 1.3M-triangle mesh redraws in
-  about 15 ms on the test machine). Nothing is added to or changed in your meshes.
+  Color (green by default) so the cut stands out.
+- **Fast and non-destructive**: the mesh/plane intersection is cached and only recomputed when
+  the plane or the mesh changes; nothing is added to or changed in your meshes.
 
-| Several bodies with interference | Scrub range from a build-volume object |
-|---|---|
-| ![Several bodies](docs/images/screenshots/06_multibody_interference.png) | ![Range object](docs/images/screenshots/10_range_object_readout.png) |
+| Several parts with interference | Overlap as stripes | Scrub range from a build volume |
+|---|---|---|
+| ![Several parts](docs/images/screenshots/06_multibody_interference.png) | ![Stripes](docs/images/screenshots/11_multibody_stripes.png) | ![Range object](docs/images/screenshots/10_range_object_readout.png) |
+
+| Slab with tinted planes | View plane, orbited after setting it | The panel |
+|---|---|---|
+| ![Slab](docs/images/screenshots/12_slab_tinted_planes.png) | ![View plane](docs/images/screenshots/13_view_plane_orbited.png) | ![Panel](docs/images/screenshots/20_sidebar_panel.png) |
 
 ## Install
 
-Blender 4.2 or newer. Edit > Preferences > Get Extensions > (menu) > Install from Disk, pick
-`crosscut-<version>.zip`.
+Blender 4.2 or newer. Download `crosscut-<version>.zip` from
+[Releases](https://github.com/calvin-young/blender-crosscut/releases), then in Blender:
+Edit > Preferences > Get Extensions > (menu, top right) > Install from Disk.
 
 ## Use
 
+Open the sidebar (N) > **Crosscut**, click **Section** or **Slice**, drag **Scrub**. The full
+walk-through is in the [user guide](docs/USER_GUIDE.md).
+
 | Where | What |
 |---|---|
-| **Shift+Alt+B** (3D View) | Pie: Section X / Y / Z, Off, Backfaces/Caps, Section/Slice, Flip, Section from View |
+| Sidebar (N) > Crosscut | Section / Slice, cap style, plane, scrub; Caps and Settings below |
+| **Shift+Alt+B** (3D View) | Pie: Section X / Y / Z, On/Off, Backfaces/Caps, Section/Slice, Flip, Section from View |
 | Header button (right) | Toggle on/off, popover with the main controls |
-| Sidebar (N) > Crosscut | Section / Slice, cap style, axis, scrub; Caps, Settings and Targets & Scrub Range below |
 | **Shift+Alt+Wheel** | Step the plane (Ctrl for x10) while Crosscut is on |
 
-Clipping and caps show in **Solid** and **Wireframe** shading (Blender does not clip Material
-Preview or Rendered views). Objects displayed as Wire or Bounds, the plane object and the range
-object are never capped, so a build-volume box does not fill the whole section.
+Caps show in **Solid** shading; Wireframe is clipped but not capped, and Blender does not clip
+Material Preview or Rendered views. Objects displayed as Wire or Bounds and the scrub range
+object are never capped (the readout lists them), so a build-volume box does not fill the
+whole section.
 
 ## How it works
 
@@ -77,7 +81,8 @@ object are never capped, so a build-volume box does not fill the whole section.
    inside the section (even-odd rule): holes and islands work without any triangulation or
    contour chaining.
 4. A quad on the plane is drawn with the scene's depth buffer, keeping only lit mask pixels, and
-   paints the fill and hatching. A second offscreen counts overlaps for interference.
+   paints the fill and hatching. Further offscreens count overlaps, for blending, stripes and
+   the interference highlight.
 
 ### Alternatives considered
 
@@ -90,11 +95,12 @@ object are never capped, so a build-volume box does not fill the whole section.
 
 ## Status
 
-**Experimental (0.4.0).** 0.1.0 was written without access to Blender; 0.2.0 was the first build
-run and tested in Blender, with an automated in-viewport test suite
-([`tests/blender/`](tests/blender/run_viewport_tests.py)); 0.3.0 and 0.4.0 rework the UI and fix
-what the maintainer's real tests found. Tested on Blender 4.2.23 LTS and 5.2.3 LTS (Linux, OpenGL;
-5.2 also on Vulkan). Expect rough edges.
+**1.0 release candidate (0.9.0).** 0.1.0 was written without access to Blender; since 0.2.0
+every build is run and tested in Blender with an automated in-viewport test suite
+([`tests/blender/`](tests/blender/run_viewport_tests.py)), and 0.3.0 to 0.9.0 followed the
+maintainer's tests on real parts. Tested on Blender 4.2.23 LTS and 5.2.3 LTS (Linux, OpenGL;
+5.2 also on Vulkan). Not yet tested on macOS or Windows. Changes are listed in
+[CHANGELOG.md](CHANGELOG.md).
 
 The project is developed almost entirely by an AI assistant (Claude) with minimal human code
 review; the maintainer sets the direction, tests each build on real work and reviews the

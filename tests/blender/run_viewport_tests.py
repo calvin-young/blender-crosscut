@@ -249,7 +249,8 @@ def settings(s, **kw):
                 hatch_vary=True, interference=True, outline=True, plane_display='NONE',
                 show_readout=True, range_source='TARGETS', range_object=None,
                 hatch_space='SCREEN', hatch_pitch_px=10.0, scrub_distance=False, overlap_style='BLEND',
-                interference_style='CROSS', interference_opacity=1.0)
+                interference_style='CROSS', interference_opacity=1.0, plane_opacity=0.10,
+                stripe_width_px=12.0)
     base.update(kw)
     for k, v in base.items():
         setattr(s, k, v)
@@ -604,7 +605,7 @@ def handoff(view):
     yield from settle()
     check(T, "toggle off: clipping restored to off", not view.rv3d.use_clip_planes and s.mode == 'OFF')
 
-    # 2) An Alt+B box exists: Crosscut on replaces it, off restores it. Blender
+    # 2) An Alt+B box exists: Crosscut on replaces it, off leaves no clipping. Blender
     # shades the Alt+B box volume, which shows once you orbit; it must go too.
     view.look((0, 0, 0), 220, (55, 0, 75))
     yield from settle()
@@ -618,7 +619,6 @@ def handoff(view):
     yield 0.05
     yield from settle()
     boxed = Shot(view, "handoff_altb_box")
-    saved = [tuple(p) for p in view.rv3d.clip_planes]
     with view.override():
         bpy.ops.crosscut.set_mode(mode='SECTION')
     yield 0.1
@@ -637,11 +637,12 @@ def handoff(view):
     check(T, "Alt+B box volume is shaded (test sees it)", shaded(boxed) > 2000, f"{shaded(boxed)} px")
     check(T, "on over Alt+B: no leftover box shading", shaded(on) < 200, f"{shaded(on)} px")
     with view.override():
-        bpy.ops.crosscut.toggle()
+        bpy.ops.crosscut.set_mode(mode='SECTION')
     yield 0.1
     yield from settle()
-    now = [tuple(p) for p in view.rv3d.clip_planes]
-    check(T, "off: Alt+B box restored", view.rv3d.use_clip_planes and np.allclose(saved, now, atol=1e-4))
+    off = Shot(view, "handoff_off_after_altb")
+    check(T, "off: no clipping left, not the old Alt+B box", not view.rv3d.use_clip_planes)
+    check(T, "off: no box shading", shaded(off) < 200, f"{shaded(off)} px")
     view.rv3d.use_clip_planes = False
 
     # 3) User presses Alt+B while Crosscut is on: Crosscut hands back and turns off
@@ -814,6 +815,118 @@ def engine_coord(s):
 
 
 @test
+def select_slice(view):
+    """Parts stay click-selectable in a zero-thickness slice (needs --enable-event-simulate)."""
+    T = "select_slice"
+    if not bpy.app.use_event_simulate:
+        print("    skipped: run Blender with --enable-event-simulate")
+        return
+    scene = new_scene("cc-select")
+    a = box("part-001", (30, 30, 30), (-25, 0, 0))
+    b = box("part-002", (30, 30, 30), (25, 0, 0))
+    s = scene.crosscut
+    view.look((0, 0, 0), 200, (0, 0, 0), ortho=True)  # top view
+    settings(s, mode='SLICE', orientation='Z', offset=0.0, thickness=0.0)
+    for o in scene.objects:
+        o.select_set(False)
+    yield from settle()
+    win = view.window
+
+    def click(co, shift=False):
+        x, y = view.px(co)
+        x += view.region.x
+        y += view.region.y
+        win.event_simulate(type='MOUSEMOVE', value='NOTHING', x=x, y=y)
+        win.event_simulate(type='LEFTMOUSE', value='PRESS', x=x, y=y, shift=shift)
+        win.event_simulate(type='LEFTMOUSE', value='RELEASE', x=x, y=y, shift=shift)
+
+    click((-25, 0, 0))
+    yield 0.3
+    check(T, "click on a section selects that part", a.select_get() and not b.select_get(),
+          f"{a.select_get()} {b.select_get()}")
+    click((25, 0, 0), shift=True)
+    yield 0.3
+    check(T, "shift-click adds the other part", a.select_get() and b.select_get()
+          and bpy.context.view_layer.objects.active == b)
+    # empty space: the click goes on to Blender's own select, so it must do
+    # whatever Blender does with Crosscut off
+    click((0, 60, 0))
+    yield 0.3
+    ours = (a.select_get(), b.select_get())
+    a.select_set(True)
+    b.select_set(True)
+    s.mode = 'OFF'
+    yield from settle()
+    click((0, 60, 0))
+    yield 0.3
+    plain = (a.select_get(), b.select_get())
+    check(T, "click on empty space: same as Blender without Crosscut", ours == plain, f"{ours} vs {plain}")
+    check(T, "no draw errors", not errors(), str(errors()))
+
+
+@test
+def object_plane_and_plane_tint(view):
+    T = "object_plane_and_plane_tint"
+    scene = new_scene("cc-objplane")
+    part = hollow_sphere("part-001", 40, 25)
+    s = scene.crosscut
+    view.look((0, 0, 0), 220, (55, 0, 30))
+    settings(s, mode='SECTION', orientation='Z', offset=0.0)
+    yield from settle()
+    # one visible object, no Empty: it becomes its own plane (local Z through its origin), still capped
+    s.plane_object = None
+    s.orientation = 'OBJECT'
+    check(T, "only object visible: picked as the plane", s.plane_object == part, str(s.plane_object))
+    yield from settle()
+    shot = Shot(view, "object_plane_self")
+    check(T, "part used as its own plane is still capped", is_green(shot.at(view.px((0, -32, 0)))),
+          f"{shot.at(view.px((0, -32, 0)))}")
+    # no object at all: nothing is cut, and the readout says why
+    s.plane_object = None
+    yield from settle()
+    info = cc("draw").last_info(view.region)
+    check(T, "no plane object: no clipping", not view.rv3d.use_clip_planes, str(info))
+    lines, warn = cc("draw").readout_lines(scene, s, info)
+    check(T, "no plane object: readout asks for one", any("pick an object" in w for w in warn), str(warn))
+    # one Empty among parts: the Empty is picked, and the plane goes through it
+    e = bpy.data.objects.new("plane-empty", None)
+    scene.collection.objects.link(e)
+    e.location = (0, 0, 10)
+    s.orientation = 'Z'
+    s.orientation = 'OBJECT'
+    check(T, "one Empty: picked, plane through it", s.plane_object == e and abs(s.offset) < 1e-6,
+          f"{s.plane_object} {s.offset}")
+
+    # wire-display solids aren't capped: the readout says so
+    w = box("bucket-01", (120, 120, 120), color=(0.5, 0.5, 0.5))
+    w.display_type = 'WIRE'
+    settings(s, mode='SECTION', orientation='Z', offset=0.0)
+    yield from settle()
+    lines, warn = cc("draw").readout_lines(scene, s, cc("draw").last_info(view.region))
+    check(T, "wire object: readout warns it isn't capped", any("bucket-01" in x for x in warn), str(warn))
+    s.plane_object = None
+    bpy.data.objects.remove(w)
+    bpy.data.objects.remove(e)
+
+    # slab tint: second plane in its own colour, and no double tint where you look through both
+    settings(s, mode='SLICE', orientation='Z', offset=0.0, thickness=10.0, plane_display='NONE')
+    yield from settle()
+    plain = Shot(view, "slab_no_plane")
+    settings(s, mode='SLICE', orientation='Z', offset=0.0, thickness=10.0, plane_display='TINT',
+             plane_opacity=0.3)
+    yield from settle()
+    tint = Shot(view, "slab_tint")
+    both = view.px((44, 10, 5))       # off the part, on the upper plane with the lower one behind it
+    lower = view.px((0, -44, -5))     # in front of the part, only the lower plane
+    db = [t - p for t, p in zip(tint.at(both), plain.at(both), strict=True)]
+    dl = [t - p for t, p in zip(tint.at(lower), plain.at(lower), strict=True)]
+    check(T, "slab: upper plane bluish, lower plane amber", db[2] > db[0] and dl[0] > dl[2], f"both {db} lower {dl}")
+    mb, ml = max(map(abs, db)), max(map(abs, dl))
+    check(T, "slab: no double tint through both planes", 0.5 < mb / max(ml, 1) < 2.0, f"{mb} vs {ml}")
+    check(T, "no draw errors", not errors(), str(errors()))
+
+
+@test
 def live_updates(view):
     T = "live_updates"
     scene = new_scene("cc-live")
@@ -943,6 +1056,10 @@ def shading_modes(view):
         yield 0.3
         yield from settle()
         Shot(view, f"shading_{st.lower()}")
+        if st == 'WIREFRAME':
+            info = cc("draw").last_info(view.region)
+            check(T, "wireframe: still clipped, no caps or outlines",
+                  view.rv3d.use_clip_planes and not info.get("count"), str(info))
     view.space.shading.type = 'SOLID'
     view.space.shading.show_xray = True
     yield from settle()
