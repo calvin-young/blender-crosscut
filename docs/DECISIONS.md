@@ -10,6 +10,7 @@ this list is an assumption, tracked in the table at the end.
 
 | ID | Requirement | Status in 0.1.0 |
 | --- | --- | --- |
+| R-014 | After testing 0.9.0 (2026-10-29): plane tint default 0.03, slider 0 to 0.1 but typing up to 1; choosing Object with a plane object that's no longer visible must clear it (and pick the only visible object); show selection outlines in a zero-thickness slice; stop Blender's selection outline clashing with Crosscut's outline in a slab; move Caps and everything below into a separate, collapsed settings panel; line "Range" up with the Scrub Range row; list open follow-ups at the end of every reply | 0.9.1, see below |
 | R-013 | After testing 0.4.0 (2026-10-29): no outline in Wireframe; show the Wire/Bounds note only when such objects exist, and warn in the readout; stripe width and plane colour/opacity settings; Object with no object must not cut, and the only visible object should be picked automatically; Cap Targets and Scrub Range under Settings; parts selectable in a zero-thickness slice; a slab's second plane in another colour or without stacked tint; hide rather than grey out (except Flip); turning off must not bring back the Alt+B box; prep everything for 1.0, release after review | 0.9.0 (1.0 candidate), see below |
 | R-012 | After testing 0.3.0 (2026-10-29): stutter fixed. A toggle between blending and striping overlapping colours; hide Cap Color when Auto doesn't use it; bug: switching Section/Slice on over Alt+B left Alt+B's box shading; Center as the middle button; settings for the interference look; maybe rename "Targets & Range"; "just about ready for a 1.0" | 0.4.0, see below |
 | R-011 | After testing 0.2.0 (2026-10-29): defaults Hatch Space Model, Spacing 0.5, Scrub 0.5, everything but the main panel collapsed. Bugs: Alt+B outlines run past the box; dragging parts stutters under Alt+B. UI: Section and Slice as two buttons, one or neither on; cap style row right below; drop "Cap Alt+B Clipping" (Backfaces does that); Backfaces + zero-thickness Slice must show something (outline, maybe backface-red fill); bury Step in a collapsed settings panel; replace Offset with a scrub-by-distance toggle there; add a View button for a static plane parallel to the view; blend overlapping colours when interference is off; optional tint/hatch on the plane frame | 0.3.0, see below |
@@ -25,6 +26,40 @@ this list is an assumption, tracked in the table at the end.
 | R-001 | Main use: while modelling parts. Secondary: finding interferences when packing buckets | Drives defaults |
 
 ## Decisions
+
+### Changes after the maintainer's test of 0.9.0 (0.9.1, 2026-10-29)
+
+- **Plane tint opacity**: default 0.03; the slider runs 0 to 0.1 and typed values go up to 1.
+- **Stale Object plane**: choosing Object when the plane object is hidden or no longer in the
+  view layer clears it and picks again (only visible Empty, else only visible object, else none).
+  Hiding the plane object while Object stays chosen keeps cutting with it (*assumed*: hiding a
+  cutter Empty is normal; the reset is only when Object is chosen).
+- **Selection outlines on cuts** (D-021).
+- **Caps write depth**, so a slab's far contour can no longer show through its near cap. This
+  was a thin dark line across the near cap, visible in the maintainer's slab, and it got mixed up
+  with Blender's selection outline.
+- **The plane frame is depth-tested** and lifted slightly toward the viewer, so parts and a
+  slab's near cap hide it. It used to draw over everything.
+- **Line colours were off**: Blender's built-in line shader takes sRGB and converts it itself,
+  so the `_lin()` from D-009 made outline, open-contour orange and frame colours too dark and
+  red. Lines now get sRGB; our own shaders stay linear (D-009 amended).
+- **Panels**: the main panel holds only the controls you use while cutting. Everything else is
+  in a separate top-level **Settings** panel, closed by default: Readout, Scrub by Distance and
+  Step at the top, then sub-panels Caps (with Interference), Plane, Cap Targets and Scrub Range
+  (*assumed* split: plane display got its own sub-panel). "Range" sits in the label column.
+
+### D-021: Selected parts' contours use the selection colour (2026-10-29)
+
+- **Context:** Blender can't draw its selection outline for clipped geometry, so a
+  zero-thickness slice showed no selection at all. In a slab, Blender's orange outline runs
+  along the cut edge right next to our dark contour, which reads as a double line.
+- **Decision:** a selected part's contour is drawn in the theme's Object Selected colour (the
+  active object in Active Object), at least 2 px wide, after the other contours. It joins
+  Blender's own outline along the cut instead of competing with it. It follows the viewport's
+  overlay toggles (Overlays and Outline Selected), only in Object Mode, and draws even with
+  Crosscut's Outline off (*assumed*: selection feedback shouldn't depend on a style option).
+  A selected open (non-manifold) part shows the selection colour, not orange; the readout still
+  names it.
 
 ### Changes after the maintainer's test of 0.4.0 (0.9.0, 2026-10-29)
 
@@ -210,12 +245,15 @@ What `tests/blender/run_viewport_tests.py` and the screenshots showed in 0.1.0, 
   facing the viewer is cut away. Changing the mode or axis in the panel enum does not flip (no
   view there). Supersedes Q-004 for the operators.
 
-### D-009: Colours sent to shaders are linear (2026-10-29)
+### D-009: Colours sent to shaders are linear (2026-10-29; amended in 0.9.1)
 
 - **Context:** Measured in 4.2 and 5.2: a fill of sRGB-intended 0.85 displayed as 237, i.e. the
   POST_VIEW overlay buffer is scene-linear and gets the display transform afterwards.
 - **Decision:** All shader colours are linear. Object and material colours are used as stored;
   the Cap Color (COLOR_GAMMA), the palette and constants go through `_lin()`.
+- **Amended (0.9.1):** this holds for our own shaders only. Blender's built-in
+  `POLYLINE_UNIFORM_COLOR` takes an sRGB colour and converts it itself, so line colours are
+  passed as sRGB (`_srgb()` converts linear object colours).
 
 ### D-008: Create the view's clipping box with an empty Alt+B (2026-10-29)
 
@@ -352,6 +390,10 @@ What `tests/blender/run_viewport_tests.py` and the screenshots showed in 0.1.0, 
 | Q-037 | Panel named "Targets & Scrub Range" instead of "Scrub Targets & Range" | assumption | 0.4.0 | open |
 | Q-038 | Next release numbered 0.4.0, not 1.0: 1.0 waits for the maintainer's go | assumption | 0.4.0 | confirmed: release after review (R-013) |
 | Q-039 | Object auto-pick fills the plane object (only visible Empty, else only visible object) | assumption | 0.9.0 | open |
-| Q-040 | Plane colours: amber first, blue second plane; tint opacity 10 % | assumption | 0.9.0 | open |
+| Q-040 | Plane colours: amber first, blue second plane; tint opacity 10 % | assumption | 0.9.0 | colours open; opacity set to 3 % by the maintainer (R-014) |
 | Q-041 | The 1.0 candidate is numbered 0.9.0 | assumption | 0.9.0 | open |
 | Q-042 | Whether to publish on the Blender Extensions platform for 1.0 | unasked question | 0.9.0 | open |
+| Q-043 | Selection-coloured contours draw even with Outline off, follow the viewport's Outline Selected overlay, Object Mode only | assumption | 0.9.1 | open |
+| Q-044 | Settings layout: Readout, Scrub by Distance, Step at the top of Settings; Plane as its own sub-panel | assumption | 0.9.1 | open |
+| Q-045 | A hidden plane object keeps cutting while Object stays chosen; it's only replaced when Object is chosen again | assumption | 0.9.1 | open |
+| Q-046 | Plane frame hidden behind parts and the near cap (it used to draw on top of everything) | assumption | 0.9.1 | open |

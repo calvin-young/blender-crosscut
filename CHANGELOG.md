@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.9.1 (2026-10-29)
+
+- Selected parts' cut contours show in the selection colour, so selection is visible in a
+  zero-thickness slice and matches Blender's outline in a slab.
+- A slab's far contour no longer shows through the near cap; the plane frame is hidden behind
+  parts.
+- Outline, open-contour and frame colours now match the colours set (they came out darker).
+- Choosing Object with a plane object that is hidden or gone picks again instead of keeping it.
+- Plane tint: default opacity 3 %, slider up to 10 % (type up to 100 %).
+- Panels: everything beyond the main controls is in a separate Settings panel, closed by
+  default, with Caps, Plane, Cap Targets and Scrub Range inside.
+
 ## 0.9.0 (2026-10-29): 1.0 release candidate
 
 - Turning Crosscut off leaves no clipping, instead of bringing back an earlier Alt+B box.

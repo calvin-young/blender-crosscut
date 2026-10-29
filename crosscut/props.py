@@ -41,10 +41,9 @@ def _start_offset(s):
 
 
 def _orientation_changed(self, context):
-    if self.orientation == 'OBJECT' and self.plane_object is None:
-        ob = engine.obvious_plane_object(bpy.context)
-        if ob is not None:
-            self.plane_object = ob
+    if self.orientation == 'OBJECT' and not engine.is_shown(bpy.context, self.plane_object):
+        # none chosen, or the old one is hidden or gone: don't stay stuck on it
+        self.plane_object = engine.obvious_plane_object(bpy.context)
     # a position along the old axis means nothing along the new one: start afresh
     self.offset = _start_offset(self)
     tag_redraw(self, context)
@@ -246,8 +245,8 @@ class CrosscutSettings(bpy.types.PropertyGroup):
         description="Colour of the second plane of a Slice slab, so the two read apart", update=tag_redraw,
     )
     plane_opacity: FloatProperty(
-        name="Opacity", subtype='FACTOR', min=0.0, max=1.0, default=0.10, update=tag_redraw,
-        description="Tint opacity",
+        name="Opacity", subtype='FACTOR', min=0.0, max=1.0, soft_max=0.1, default=0.03, update=tag_redraw,
+        description="Tint opacity (the slider goes to 0.1; type a value up to 1)",
     )
     show_readout: BoolProperty(name="Readout", default=True, update=tag_redraw,
                                description="Show the plane position and warnings in the viewport")

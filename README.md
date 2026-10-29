@@ -59,7 +59,7 @@ walk-through is in the [user guide](docs/USER_GUIDE.md).
 
 | Where | What |
 |---|---|
-| Sidebar (N) > Crosscut | Section / Slice, cap style, plane, scrub; Caps and Settings below |
+| Sidebar (N) > Crosscut | Section / Slice, cap style, plane, scrub; everything else in Settings below (closed) |
 | **Shift+Alt+B** (3D View) | Pie: Section X / Y / Z, On/Off, Backfaces/Caps, Section/Slice, Flip, Section from View |
 | Header button (right) | Toggle on/off, popover with the main controls |
 | **Shift+Alt+Wheel** | Step the plane (Ctrl for x10) while Crosscut is on |
@@ -95,7 +95,7 @@ whole section.
 
 ## Status
 
-**1.0 release candidate (0.9.0).** 0.1.0 was written without access to Blender; since 0.2.0
+**1.0 release candidate (0.9.1).** 0.1.0 was written without access to Blender; since 0.2.0
 every build is run and tested in Blender with an automated in-viewport test suite
 ([`tests/blender/`](tests/blender/run_viewport_tests.py)), and 0.3.0 to 0.9.0 followed the
 maintainer's tests on real parts. Tested on Blender 4.2.23 LTS and 5.2.3 LTS (Linux, OpenGL;

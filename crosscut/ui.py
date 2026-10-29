@@ -94,7 +94,7 @@ class CROSSCUT_PT_display(bpy.types.Panel):
     bl_region_type = 'UI'
     bl_category = "Crosscut"
     bl_label = "Caps"
-    bl_parent_id = "CROSSCUT_PT_main"
+    bl_parent_id = "CROSSCUT_PT_settings"
     bl_options = {'DEFAULT_CLOSED'}
 
     def draw(self, context):
@@ -164,27 +164,39 @@ class CROSSCUT_PT_interference(bpy.types.Panel):
 
 
 class CROSSCUT_PT_settings(bpy.types.Panel):
+    """Every option beyond the main controls, in its own closed panel."""
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = "Crosscut"
     bl_label = "Settings"
-    bl_parent_id = "CROSSCUT_PT_main"
     bl_options = {'DEFAULT_CLOSED'}
 
     def draw(self, context):
         s = context.scene.crosscut
         col = _split(self.layout)
-        col.prop(s, "plane_display")
+        col.prop(s, "show_readout")
+        col.prop(s, "scrub_distance")
+        col.prop(s, "step")
+
+
+class CROSSCUT_PT_plane(bpy.types.Panel):
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "Crosscut"
+    bl_label = "Plane"
+    bl_parent_id = "CROSSCUT_PT_settings"
+    bl_options = {'DEFAULT_CLOSED'}
+
+    def draw(self, context):
+        s = context.scene.crosscut
+        col = _split(self.layout)
+        col.prop(s, "plane_display", text="Display")
         if s.plane_display != 'NONE':
             col.prop(s, "plane_color")
             if s.mode == 'SLICE':
                 col.prop(s, "plane_color_2")
             if s.plane_display in {'TINT', 'HATCH'}:
                 col.prop(s, "plane_opacity", slider=True)
-        col.prop(s, "show_readout")
-        col.separator()
-        col.prop(s, "scrub_distance")
-        col.prop(s, "step")
 
 
 class CROSSCUT_PT_targets(bpy.types.Panel):
@@ -225,7 +237,12 @@ class CROSSCUT_PT_range(bpy.types.Panel):
             r.prop(s, "range_object", text="Object")
             r.operator("crosscut.use_bounds", text="", icon='EYEDROPPER')
         lo, hi = engine.scrub_range(s)
-        col.label(text=f"Range {draw.fmt_length(context.scene, lo)} → {draw.fmt_length(context.scene, hi)}")
+        # a label in the property-split columns, lined up with the rows above
+        sp = col.split(factor=0.4)
+        r = sp.row()
+        r.alignment = 'RIGHT'
+        r.label(text="Range")
+        sp.label(text=f"{draw.fmt_length(context.scene, lo)} → {draw.fmt_length(context.scene, hi)}")
 
 
 class CROSSCUT_PT_popover(bpy.types.Panel):
@@ -271,9 +288,10 @@ def _header_button(self, context):
 
 classes = (
     CROSSCUT_PT_main,
+    CROSSCUT_PT_settings,
     CROSSCUT_PT_display,
     CROSSCUT_PT_interference,
-    CROSSCUT_PT_settings,
+    CROSSCUT_PT_plane,
     CROSSCUT_PT_targets,
     CROSSCUT_PT_range,
     CROSSCUT_PT_popover,

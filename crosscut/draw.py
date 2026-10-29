@@ -391,6 +391,17 @@ def _lin(rgba):
     return tuple(_srgb_to_linear(c) for c in rgba[:3]) + tuple(rgba[3:])
 
 
+def _linear_to_srgb(c):
+    c = min(max(c, 0.0), 1.0)
+    return c * 12.92 if c <= 0.0031308 else 1.055 * c ** (1.0 / 2.4) - 0.055
+
+
+def _srgb(rgba):
+    """Linear -> sRGB, for Blender's built-in line shader, which takes sRGB
+    colours and converts them itself (unlike our own shaders, D-009)."""
+    return tuple(_linear_to_srgb(c) for c in rgba[:3]) + tuple(rgba[3:])
+
+
 def _is_plain(rgb):
     """Unsaturated (white / grey / black): Blender's defaults for objects and materials."""
     return max(rgb) - min(rgb) < 0.08
@@ -578,6 +589,38 @@ def backface_color():
     return _lin((c[0] * 0.75, c[1] * 0.75, c[2] * 0.75, 1.0))
 
 
+SELECT_WIDTH = 2.0  # px, about the width of Blender's selection outline
+
+
+def _selection_colors(context):
+    """(selected, active) outline colours from the theme, or None when the
+    viewport doesn't show selection outlines."""
+    overlay = getattr(context.space_data, "overlay", None)
+    if overlay is None or not overlay.show_overlays or not overlay.show_outline_selected:
+        return None
+    if context.mode != 'OBJECT':
+        return None  # Edit and paint modes show no object outline
+    try:
+        th = bpy.context.preferences.themes[0].view_3d
+        sel, act = th.object_selected, th.object_active
+    except (AttributeError, IndexError):
+        sel, act = (0.93, 0.34, 0.0), (1.0, 0.67, 0.25)
+    return tuple(sel[:3]) + (1.0,), tuple(act[:3]) + (1.0,)  # sRGB, as the line shader wants
+
+
+def _selection_rank(target, selection):
+    """0 unselected (or no outlines shown), 1 selected, 2 active."""
+    if not selection:
+        return 0
+    ob = target.owner
+    try:
+        if not ob.select_get():
+            return 0
+    except RuntimeError:
+        return 0
+    return 2 if bpy.context.view_layer.objects.active == ob else 1
+
+
 def _draw_caps(context, s, rv3d, caps, show_fill, style, fill_override=None):
     """Draw caps and outlines. fill_override: one fill colour for every target
     (no interference highlight), used for the Backfaces slice outline."""
@@ -657,7 +700,8 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style, fill_override=None):
                     fill = (col[0], col[1], col[2], 1.0)
                     linec = (col[0] * 0.02, col[1] * 0.02, col[2] * 0.02, 1.0)  # ~18% in sRGB
                     gpu.state.depth_test_set('LESS_EQUAL')
-                    gpu.state.depth_mask_set(False)
+                    # write depth, so a slab's far contour can't show through the near cap
+                    gpu.state.depth_mask_set(True)
                     gpu.state.blend_set('ALPHA')
                     _cap_uniforms(cap_sh, vp, fill, linec, _hatch_vec(s, idx, style), 0.5, s.hatch_width,
                                   mask_off.texture_color, accum_off.texture_color if several else None,
@@ -686,25 +730,38 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style, fill_override=None):
                 info["open"].append(t.owner.name)
             lines.append((t, ci, segs, serial, plane, bounds, n_open))
 
-    # outlines last, on top of every cap
-    if s.outline and lines:
+    # outlines last, on top of every cap. Selected parts get the selection
+    # colour: it continues Blender's own outline along the cut, and in a
+    # zero-thickness slice (everything clipped) it is the only sign of selection
+    selection = _selection_colors(context)
+    if lines and (s.outline or selection):
         gpu.state.depth_test_set('LESS_EQUAL')
         gpu.state.depth_mask_set(False)
         gpu.state.blend_set('ALPHA')
         line_sh.bind()
         line_sh.uniform_float("viewportSize", (w, h))
-        line_sh.uniform_float("lineWidth", s.outline_width * bpy.context.preferences.system.ui_scale)
+        ui = bpy.context.preferences.system.ui_scale
+        # selected last, so they win where contours meet
+        lines.sort(key=lambda ln: _selection_rank(ln[0], selection))
         for t, ci, segs, serial, plane, bounds, n_open in lines:
+            rank = _selection_rank(t, selection)
+            if not rank and not s.outline:
+                continue
             b = _line_batch(t, ci, segs, serial, plane, bounds, toward, eps)
             if b is None:
                 continue
+            width = s.outline_width
             col = fill_override or colors.get(t.key) or target_color(s, t, shading)
-            if n_open:
-                c = _lin((1.0, 0.55, 0.0, 1.0))  # orange: open / non-manifold contour
+            if rank:
+                c = selection[rank - 1]
+                width = max(width, SELECT_WIDTH)
+            elif n_open:
+                c = (1.0, 0.55, 0.0, 1.0)  # orange: open / non-manifold contour
             elif show_fill:
-                c = (col[0] * 0.01, col[1] * 0.01, col[2] * 0.01, 1.0)  # ~12% in sRGB
+                c = _srgb((col[0] * 0.01, col[1] * 0.01, col[2] * 0.01, 1.0))  # ~12% in sRGB
             else:
-                c = (col[0], col[1], col[2], 1.0)
+                c = _srgb((col[0], col[1], col[2], 1.0))
+            line_sh.uniform_float("lineWidth", width * ui)
             line_sh.uniform_float("color", c)
             b.draw(line_sh)
 
@@ -781,14 +838,24 @@ def _draw_frame(context, s, quads):
         return
     sh = _shader("line")
     region = context.region
-    gpu.state.depth_test_set('NONE')
+    rv3d = context.region_data
+    toward = _view_dir_to_viewer(rv3d)
+    lift = max(rv3d.view_distance, 1e-6) * 4e-4
+    # depth-tested like the contours, so the parts and a slab's near cap hide it
+    gpu.state.depth_test_set('LESS_EQUAL')
+    gpu.state.depth_mask_set(False)
     gpu.state.blend_set('ALPHA')
     sh.bind()
     sh.uniform_float("viewportSize", (region.width, region.height))
     sh.uniform_float("lineWidth", 1.0)
     for (c, _uv), col in zip(quads, _plane_colors(s, len(quads)), strict=True):
+        n = np.cross(c[1] - c[0], c[2] - c[0])
+        n = sm.normalize(n) if np.linalg.norm(n) > 1e-12 else np.zeros(3)
+        if float(np.dot(n, toward)) < 0:
+            n = -n
+        c = np.asarray(c) + n * lift
         segs = [tuple(c[(i + j) % 4]) for i in range(4) for j in (0, 1)]
-        sh.uniform_float("color", _lin(col + (0.6,)))
+        sh.uniform_float("color", col + (0.6,))  # sRGB: the built-in shader converts
         batch_for_shader(sh, 'LINES', {"pos": segs}).draw(sh)
 
 

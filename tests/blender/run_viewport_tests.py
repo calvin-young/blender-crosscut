@@ -848,6 +848,18 @@ def select_slice(view):
     yield 0.3
     check(T, "shift-click adds the other part", a.select_get() and b.select_get()
           and bpy.context.view_layer.objects.active == b)
+    # everything is clipped, so the cut contour has to show the selection
+    yield from settle()
+    shot = Shot(view, "select_slice_outlines")
+    th = bpy.context.preferences.themes[0].view_3d
+    sel = tuple(int(round(c * 255)) for c in th.object_selected)
+    act = tuple(int(round(c * 255)) for c in th.object_active)
+
+    def edge_has(co, ref):
+        x, y = view.px(co)
+        return any(near(shot.at((x + dx, y), r=0), ref, 40) for dx in range(-3, 4))
+    check(T, "selected part's contour in the selection colour", edge_has((-40, 0, 0), sel), str(sel))
+    check(T, "active part's contour in the active colour", edge_has((40, 0, 0), act), str(act))
     # empty space: the click goes on to Blender's own select, so it must do
     # whatever Blender does with Crosscut off
     click((0, 60, 0))
@@ -896,6 +908,15 @@ def object_plane_and_plane_tint(view):
     s.orientation = 'OBJECT'
     check(T, "one Empty: picked, plane through it", s.plane_object == e and abs(s.offset) < 1e-6,
           f"{s.plane_object} {s.offset}")
+    # the chosen object is hidden later: choosing Object again doesn't stay stuck on it
+    e.hide_set(True)
+    s.orientation = 'Z'
+    s.orientation = 'OBJECT'
+    check(T, "hidden plane object: replaced by the only visible object", s.plane_object == part,
+          str(s.plane_object))
+    e.hide_set(False)
+    s.orientation = 'Z'
+    s.orientation = 'OBJECT'
 
     # wire-display solids aren't capped: the readout says so
     w = box("bucket-01", (120, 120, 120), color=(0.5, 0.5, 0.5))
@@ -923,6 +944,23 @@ def object_plane_and_plane_tint(view):
     check(T, "slab: upper plane bluish, lower plane amber", db[2] > db[0] and dl[0] > dl[2], f"both {db} lower {dl}")
     mb, ml = max(map(abs, db)), max(map(abs, dl))
     check(T, "slab: no double tint through both planes", 0.5 < mb / max(ml, 1) < 2.0, f"{mb} vs {ml}")
+    op = s.bl_rna.properties["plane_opacity"]
+    check(T, "tint opacity: default 0.03, slider to 0.1, typed up to 1",
+          abs(op.default - 0.03) < 1e-6 and abs(op.soft_max - 0.1) < 1e-6 and op.hard_max == 1.0)
+
+    # a slab's far contour stays hidden behind the near cap
+    for o in list(scene.objects):
+        bpy.data.objects.remove(o)
+    box("part-002", (30, 30, 30))
+    settings(s, mode='SLICE', orientation='Z', offset=0.0, thickness=10.0)
+    yield from settle()
+    cam = view.rv3d.view_rotation @ Vector((0, 0, 1))
+    far = min([(15, 0, -5), (-15, 0, -5), (0, 15, -5), (0, -15, -5)], key=lambda p: Vector(p).dot(cam))
+    shot = Shot(view, "slab_far_contour_hidden")
+    x, y = view.px(far)
+    patch = [shot.at((x + dx, y + dy), r=0) for dx in range(-3, 4) for dy in range(-3, 4)]
+    dark = [c for c in patch if not is_green(c)]
+    check(T, "slab: far contour doesn't show through the near cap", not dark, f"{dark[:3]} at {far}")
     check(T, "no draw errors", not errors(), str(errors()))
 
 

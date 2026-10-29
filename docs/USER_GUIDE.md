@@ -44,7 +44,8 @@ The cap style applies to Section, Slice and Alt+B alike.
 - **X / Y / Z**: the plane is perpendicular to that world axis.
 - **Object**: the plane is the chosen object's local XY plane, through its origin. Move and
   rotate the object to move the plane. If only one Empty, or only one object, is visible when
-  you choose Object, it is picked for you. **+** adds an Empty facing the view. Nothing is cut
+  you choose Object, it is picked for you; if the chosen object has since been hidden or
+  deleted, choosing Object picks again. **+** adds an Empty facing the view. Nothing is cut
   until an object is chosen. A part can be its own plane and is still capped; a flat mesh used
   as the plane is not.
 - **View**: the plane faces the view as it is when you click. It stays where it is when you
@@ -65,7 +66,15 @@ for an Object plane).
 - **Cursor**, **Center** and **Selection** put the plane through the 3D cursor, the middle of
   the range, or the selection (selected vertices in Edit Mode).
 
-## Caps panel
+## Settings panel
+
+Everything beyond the main controls lives in the **Settings** panel below the main one,
+closed by default.
+
+- **Readout**: plane position and warnings in the viewport's bottom-left corner.
+- **Scrub by Distance** and **Step**: see Scrub above.
+
+### Caps
 
 - **Colors**:
   - **Auto** follows the viewport's Solid colour setting (Object or Material colour). White
@@ -81,24 +90,24 @@ for an Object plane).
   - **Vary per Object** alternates direction, then spacing, between parts, so touching
     sections stay distinguishable.
 - **Outline** draws the cut contour. An orange outline means the mesh is open
-  (non-manifold) there; the readout names the part.
+  (non-manifold) there; the readout names the part. Selected parts' contours are drawn in the
+  theme's selection colours (when the viewport shows selection outlines), whether or not
+  Outline is on.
 - **Overlaps**: where parts' sections overlap, **Blend** mixes their colours equally, and
   **Stripes** gives each part an equal share of stripes (**Stripe Width** in the hatch space).
 
-### Interference
+#### Interference
 
 With the header checkbox on, overlapping sections are highlighted. You can set the **Style**
 (Solid, Hatched, Cross), **Color**, **Line Color** and **Opacity**. Below full opacity, the
 blended or striped overlap shows through.
 
-## Settings panel
+### Plane
 
-- **Plane**: how the plane itself is drawn:
-  - None, Frame, Tint or Hatched.
-  - **Color** sets its colour, and **Second Plane** the colour of a slab's other plane.
-  - **Opacity** sets the tint. Looking through both planes of a slab doesn't double the tint.
-- **Readout**: plane position and warnings in the viewport's bottom-left corner.
-- **Scrub by Distance** and **Step**: see Scrub above.
+- **Display**: None, Frame, Tint or Hatched.
+- **Color** sets its colour, and **Second Plane** the colour of a slab's other plane.
+- **Opacity** sets the tint (default 3 %; the slider goes to 10 %, type a value for more).
+  Looking through both planes of a slab doesn't double the tint.
 
 ### Cap Targets
 
@@ -123,7 +132,8 @@ off. Clicking Section or Slice while an Alt+B box is on replaces it.
 Blender can't select clipped geometry, and a zero-thickness slice clips everything. Crosscut
 handles the click itself there: click a section to select its part, Shift+click to add or
 remove it, and click again where parts overlap to cycle through them. Clicks on empty space go
-to Blender as usual. Box select doesn't work in this mode.
+to Blender as usual. Selected parts show their contour in the selection colour. Box select
+doesn't work in this mode.
 
 ## Pie menu (Shift+Alt+B)
 

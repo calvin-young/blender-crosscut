@@ -8,7 +8,7 @@ The human-facing overview is in [README.md](README.md).
 - **What it is:** a Blender add-on that adds filled (solid or hatched) caps to viewport
   clipping, plus section and slice views with a scrub slider. It drives the same
   `RegionView3D.clip_planes` that Alt+B uses and draws the caps with the `gpu` module.
-- **Status:** 1.0 release candidate (0.9.0, 2026-10-29), awaiting the maintainer's review; tested in Blender (4.2.23 and 5.2.3,
+- **Status:** 1.0 release candidate (0.9.1, 2026-10-29), awaiting the maintainer's review; tested in Blender (4.2.23 and 5.2.3,
   OpenGL; 5.2 on Vulkan too) with the in-viewport suite below. Waiting for the maintainer's
   test on real work. See "State and next steps".
 - **Runs in:** Blender 4.2+ as an extension (`crosscut/blender_manifest.toml`); Python 3.11
@@ -62,8 +62,9 @@ docs/                     DECISIONS.md, PROMPT_STATS.md, images (concepts + main
   handler (`draw.sync_views`); the draw callback only catches what those miss (D-002, D-008).
 - Our overlay is not clipped by Blender: anything drawn on a cap plane must be trimmed to the
   other active planes (`bounds`) by us, as the fill polygon and outlines are.
-- Colours sent to shaders must be scene-linear: the POST_VIEW buffer gets the view transform
-  afterwards (D-009). Convert sRGB values with `draw._lin()`.
+- Colours sent to our own shaders must be scene-linear: the POST_VIEW buffer gets the view
+  transform afterwards (D-009). Convert sRGB values with `draw._lin()`. Blender's built-in line
+  shader is the exception: it takes sRGB (`draw._srgb()` converts linear colours).
 - `section_math.py` stays free of `bpy` so it can be tested anywhere.
 - SPDX `GPL-3.0-or-later` header on every source file.
 - UI/UX matters more to the maintainer than code style: keep labels short, tooltips useful,
@@ -87,8 +88,11 @@ this file, the reasons behind decisions and the approaches that were dropped go 
 - 0.9.0 is the 1.0 candidate: README, docs/USER_GUIDE.md and CHANGELOG.md are written for the
   release. Releasing: set the manifest to 1.0.0, rebuild the zip, tag v1.0.0, create a GitHub
   Release with the zip attached (only after the maintainer's go).
-- Next: the maintainer reviews 0.9.0. Open questions Q-030 to Q-042 in DECISIONS.md. Then the
-  Issues.
+- 0.9.1 (maintainer's review of 0.9.0): selection-coloured contours, caps write depth, depth-
+  tested frame, sRGB line colours, separate Settings panel. 127 viewport checks pass on 4.2.23
+  and 5.2.3 (and Vulkan).
+- Next: the maintainer keeps using 0.9.1 before the 1.0 go. Open questions Q-030 to Q-046 in
+  DECISIONS.md. Then the Issues.
 - Not tested yet: macOS/Windows, HiDPI scaling above 1, Metal, very large multi-object scenes.
 
 ## Before you change things

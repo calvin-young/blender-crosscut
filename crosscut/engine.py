@@ -103,6 +103,12 @@ def is_helper(ob, s):
     return ob.display_type in {'WIRE', 'BOUNDS'}
 
 
+def is_shown(context, ob):
+    """True if ob is in the current view layer and visible."""
+    view_layer = context.view_layer
+    return ob is not None and view_layer is not None and _visible(ob, view_layer, None)
+
+
 def obvious_plane_object(context):
     """The only visible Empty, else the only visible object, else None."""
     view_layer = context.view_layer
