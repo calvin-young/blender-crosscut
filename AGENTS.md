@@ -91,6 +91,9 @@ this file, the reasons behind decisions and the approaches that were dropped go 
 - 0.9.1 (maintainer's review of 0.9.0): selection-coloured contours, caps write depth, depth-
   tested frame, sRGB line colours, separate Settings panel. 127 viewport checks pass on 4.2.23
   and 5.2.3 (and Vulkan).
+- Branch `mjf-preview` (worktree `~/dev/blender-crosscut-mjf`, experimental, not for 1.0):
+  Print Preview (D-022). Used by the demo reel in the `demo-reels` repo. Merge only on the
+  maintainer's go.
 - Next: the maintainer keeps using 0.9.1 before the 1.0 go. Open questions Q-030 to Q-046 in
   DECISIONS.md. Then the Issues.
 - Not tested yet: macOS/Windows, HiDPI scaling above 1, Metal, very large multi-object scenes.

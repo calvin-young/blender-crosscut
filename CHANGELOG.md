@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased: `mjf-preview` branch (experimental)
+
+- Print Preview (sidebar > Crosscut > Print Preview): in Section or Slice, shows the build as it
+  looks inside a powder-bed printer. Powder fills the bed up to the plane and hides the parts below
+  it; the cut through each part is the fused layer, in one colour. Powder and fused colours and
+  powder grain are adjustable. The bed is the Scrub Range object, or the targets' bounds plus a
+  margin. The readout counts layers ("layer 512 / 1150") at the Step size (0.08 mm).
+
 ## 0.9.1 (2026-10-29)
 
 - Selected parts' cut contours show in the selection colour, so selection is visible in a

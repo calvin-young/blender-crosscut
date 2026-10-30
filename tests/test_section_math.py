@@ -215,6 +215,19 @@ def test_box_section_polygon():
     assert len(sm.box_section_polygon(np.array([0, 0, 1.0, -2.0]), (0, 0, 0), (1, 1, 1))) == 0
 
 
+def test_clipped_box_faces():
+    # unit box filled up to z = 0.25 (kept side: -z + 0.25 >= 0)
+    faces = sm.clipped_box_faces((0, 0, 0), (1, 1, 1), [np.array([0, 0, -1.0, 0.25])])
+    assert len(faces) == 6                              # bottom, 4 sides, the surface on the plane
+    tops = [f for f in faces if f[2] == 0]
+    assert len(tops) == 1 and np.allclose(tops[0][0][:, 2], 0.25) and np.allclose(tops[0][1], (0, 0, 1))
+    for poly, n, _cut in faces:                         # all on or below the plane, outward-wound
+        assert poly[:, 2].max() <= 0.25 + 1e-9
+        assert np.dot(np.cross(poly[1] - poly[0], poly[2] - poly[0]), n) > 0
+    # a plane below the box leaves nothing
+    assert sm.clipped_box_faces((0, 0, 0), (1, 1, 1), [np.array([0, 0, -1.0, -0.5])]) == []
+
+
 def test_section_segments_with_cached_columns():
     v = np.array([[0, 0, -1], [1, 0, 1], [0, 1, 1], [1, 1, -1]], dtype=np.float64)
     t = np.array([[0, 1, 2], [1, 3, 2]])

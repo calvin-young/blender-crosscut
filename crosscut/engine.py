@@ -73,6 +73,36 @@ def compute_planes(s):
     return [lo, hi], [(lo, [hi]), (hi, [lo])]
 
 
+def powder_planes(s):
+    """Print Preview: the half-spaces the powder fills (kept side n.p + d >= 0),
+    i.e. up to the plane, or up to the top of a slab. None when inactive."""
+    if s.mode == 'OFF':
+        return None
+    f = plane_frame(s)
+    if f is None:
+        return None
+    n, base = f
+    c = base + s.offset
+    if s.mode == 'SECTION':
+        keep = np.concatenate([-n, [c]])
+        return [-keep if s.flip else keep]
+    return [np.concatenate([-n, [c + max(s.thickness, 0.0) / 2]])]
+
+
+def bed_bounds(context, s):
+    """Print Preview: (lo, hi) of the powder bed, the Scrub Range object's
+    bounds, or the targets' bounds plus the bed margin (not below them)."""
+    if s.range_source == 'OBJECT' and s.range_object is not None:
+        pts = _corners(s.range_object)
+        return pts.min(0), pts.max(0)
+    pts = target_points(context, s)
+    if len(pts) == 0:
+        return None
+    m = s.bed_margin
+    lo, hi = pts.min(0), pts.max(0)
+    return lo - np.array([m, m, 0.0]), hi + m
+
+
 def native_caps(rv3d):
     """Caps for Blender's own Alt+B clipping region."""
     planes = [np.array(p, dtype=np.float64) for p in rv3d.clip_planes]

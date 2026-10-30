@@ -121,6 +121,16 @@ What Scrub sweeps across: the **Targets**' bounds, or an **Object**'s bounds, su
 volume. The eyedropper uses the active object. The range object is never capped, and with
 it the readout counts steps (for example `step 150 / 1500`).
 
+## Print Preview (experimental branch)
+
+On the `mjf-preview` branch only. Tick **Print Preview** under the main panel while Section or
+Slice is on, with the Z plane and a build volume as the Scrub Range object. The bed fills with
+powder up to the plane, the parts below are buried in it, and each part's cut is drawn as the
+fused layer. Scrub to watch the build come up layer by layer; the readout counts layers at the
+Step size. **Powder** and **Fused** set the colours (white and black by default, as on a
+Multi Jet Fusion printer), **Grain** the speckle in the powder. Without a Scrub Range object the
+bed is the parts' bounds plus **Bed Margin**.
+
 ## Alt+B
 
 Blender's own clipping box gets caps too, in the current cap style (Backfaces turns this

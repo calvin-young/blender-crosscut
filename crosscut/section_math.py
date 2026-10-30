@@ -305,6 +305,40 @@ def cap_polygon(segments, plane, bound_planes=(), margin=0.02):
     return poly, uv
 
 
+def clipped_box_faces(lo, hi, planes):
+    """Faces of the axis-aligned box [lo, hi] cut down to the kept side of
+    every plane (a convex solid). Returns [(poly (P,3), outward normal (3,), cut)],
+    where cut is the index of the plane a face lies on, or -1 for a box side."""
+    lo = np.asarray(lo, dtype=np.float64)
+    hi = np.asarray(hi, dtype=np.float64)
+    x0, y0, z0 = lo
+    x1, y1, z1 = hi
+    sides = [  # counter-clockwise seen from outside
+        ([(x0, y0, z0), (x0, y1, z0), (x1, y1, z0), (x1, y0, z0)], (0, 0, -1)),
+        ([(x0, y0, z1), (x1, y0, z1), (x1, y1, z1), (x0, y1, z1)], (0, 0, 1)),
+        ([(x0, y0, z0), (x1, y0, z0), (x1, y0, z1), (x0, y0, z1)], (0, -1, 0)),
+        ([(x0, y1, z0), (x0, y1, z1), (x1, y1, z1), (x1, y1, z0)], (0, 1, 0)),
+        ([(x0, y0, z0), (x0, y0, z1), (x0, y1, z1), (x0, y1, z0)], (-1, 0, 0)),
+        ([(x1, y0, z0), (x1, y1, z0), (x1, y1, z1), (x1, y0, z1)], (1, 0, 0)),
+    ]
+    planes = [np.asarray(p, dtype=np.float64) for p in planes if not plane_is_degenerate(p)]
+    out = []
+    for poly, n in sides:
+        q = clip_convex_polygon(np.array(poly, dtype=np.float64), planes)
+        if len(q) >= 3:
+            out.append((q, np.array(n, dtype=np.float64), -1))
+    for i, pl in enumerate(planes):
+        q = box_section_polygon(pl, lo, hi)
+        q = clip_convex_polygon(q, [p for j, p in enumerate(planes) if j != i]) if len(q) else q
+        if len(q) < 3:
+            continue
+        n = -normalize(pl[:3])  # the kept side is n.p + d >= 0, so outward is -n
+        if np.dot(np.cross(q[1] - q[0], q[2] - q[0]), n) < 0:
+            q = q[::-1]
+        out.append((q, n, i))
+    return out
+
+
 def fan_triangulate(poly):
     """Index-free triangle list for a convex polygon (P,3) -> ((P-2)*3, 3)."""
     if len(poly) < 3:

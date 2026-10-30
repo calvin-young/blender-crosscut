@@ -124,6 +124,25 @@ void main() {
 """
 
 
+_POWDER_FS = """
+float hash(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
+
+float speckle(vec2 uv, float cell) {
+    // fades out where a cell gets smaller than about two pixels, so it never shimmers
+    float px = max(fwidth(uv.x), fwidth(uv.y));
+    float k = smoothstep(0.5, 2.0, cell / max(px, 1e-6));
+    return (hash(floor(uv / cell)) - 0.5) * k;
+}
+
+void main() {
+    float n = 0.7 * speckle(vUV, 0.4) + 0.3 * speckle(vUV + 17.0, 1.6);
+    fragColor = vec4(fillColor.rgb * (1.0 + grain * 0.22 * n), 1.0);
+}
+"""
+
+
 # Coverage count per pixel, accumulated additively in an 8-bit texture: each
 # cap adds COUNT_UNITS/255, so up to 15 overlapping objects are counted exactly.
 COUNT_UNITS = 16.0
@@ -169,6 +188,11 @@ def _shader(kind):
              ('VEC4', "stripe")],
             samplers=["maskTex", "countTex", "totalTex"], varyings=[('VEC2', "vUV")],
         )
+    elif kind == "powder":
+        sh = _make_shader("crosscut_powder", _CAP_VS, _POWDER_FS,
+                          [('VEC3', "pos"), ('VEC2', "uv")],
+                          [('MAT4', "viewProj"), ('VEC4', "fillColor"), ('FLOAT', "grain")],
+                          varyings=[('VEC2', "vUV")])
     elif kind == "line":
         sh = gpu.shader.from_builtin('POLYLINE_UNIFORM_COLOR')
     _shaders[kind] = sh
@@ -859,6 +883,41 @@ def _draw_frame(context, s, quads):
         batch_for_shader(sh, 'LINES', {"pos": segs}).draw(sh)
 
 
+# light for the powder bed's sides (world space, from above and front-left)
+_POWDER_LIGHT = np.array([-0.3, -0.45, 0.84])
+
+
+def _draw_powder(context, s, rv3d):
+    """Print Preview: the powder bed, an opaque box filled up to the plane. It
+    hides the parts below the plane (they are buried in powder); the caps drawn
+    afterwards are the fused layer on its surface."""
+    planes = engine.powder_planes(s)
+    bed = engine.bed_bounds(context, s)
+    if not planes or bed is None:
+        return
+    lo, hi = bed
+    sh = _shader("powder")
+    vp = rv3d.perspective_matrix
+    base = np.array(_lin(tuple(s.powder_color) + (1.0,))[:3])
+    light = _POWDER_LIGHT / np.linalg.norm(_POWDER_LIGHT)
+    gpu.state.depth_test_set('LESS_EQUAL')
+    gpu.state.blend_set('NONE')
+    sh.bind()
+    sh.uniform_float("viewProj", vp)
+    sh.uniform_float("grain", s.powder_grain)
+    for poly, n, cut in sm.clipped_box_faces(lo, hi, planes):
+        # The surface on the plane writes no depth: the caps drawn next lie in the
+        # same plane and must win there without z-fighting (they test against the
+        # parts, which are all below it). The bed's sides do write depth.
+        gpu.state.depth_mask_set(cut < 0)
+        shade = 0.74 + 0.26 * max(float(np.dot(n, light)), 0.0)
+        u, v = sm.plane_basis(n)
+        tri = sm.fan_triangulate(poly)
+        uv = np.stack([tri @ u, tri @ v], axis=1)
+        sh.uniform_float("fillColor", tuple(base * shade) + (1.0,))
+        _vbatch('TRIS', {"pos": (tri, 3), "uv": (uv, 2)}).draw(sh)
+
+
 def draw_view():
     context = bpy.context
     rv3d = context.region_data
@@ -890,7 +949,12 @@ def draw_view():
             _draw_plane_fill(context, s, rv3d, quads)
         # caps are for Solid shading; Wireframe gets no caps or outlines
         solid = shading_type == 'SOLID'
-        if caps and solid and style != 'BACKFACES':
+        preview = s.print_preview and ours and solid
+        if preview:
+            _draw_powder(context, s, rv3d)
+            fused = _lin(tuple(s.fused_color) + (1.0,))
+            info.update(_draw_caps(context, s, rv3d, caps, True, 'SOLID', fill_override=fused))
+        elif caps and solid and style != 'BACKFACES':
             info.update(_draw_caps(context, s, rv3d, caps, True, style))
         elif caps and solid and ours and s.mode == 'SLICE' and s.thickness <= 1e-9:
             # a zero-thickness slice clips everything, so with Backfaces there
@@ -957,12 +1021,12 @@ def readout_lines(scene, s, info):
         head = f"{_enum_name(s, 'mode')} {axis}  {fmt_length(scene, c)}"
         if s.mode == 'SLICE' and s.thickness > 0:
             head += f"  ±{fmt_length(scene, s.thickness / 2)}"
-        if s.range_source == 'OBJECT' and s.range_object is not None and s.step > 0:
+        if (s.print_preview or (s.range_source == 'OBJECT' and s.range_object is not None)) and s.step > 0:
             lo, hi = engine.scrub_range(s)
             k = int(round((c - lo) / s.step))
             total = int(round((hi - lo) / s.step))
-            head += f"   step {k} / {total}"
-        head += f"   {_enum_name(s, 'cap_style')}"
+            head += f"   {'layer' if s.print_preview else 'step'} {k} / {total}"
+        head += "   Print Preview" if s.print_preview else f"   {_enum_name(s, 'cap_style')}"
         lines.append(head)
     elif info.get("native"):
         lines.append(f"Alt+B clipping   {_enum_name(s, 'cap_style')}")

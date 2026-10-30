@@ -1223,6 +1223,40 @@ def ui_panels(view):
 
 
 @test
+def print_preview(view):
+    T = "print_preview"
+    scene = new_scene("cc-print")
+    hollow_sphere("part-001", 40, 25)
+    bed = box("bucket-01", (120, 120, 120))
+    bed.display_type = 'WIRE'
+    s = scene.crosscut
+    view.look((0, 0, 0), 300, (55, 0, 30))
+    settings(s, mode='SECTION', orientation='Z', offset=0.0, range_source='OBJECT', range_object=bed)
+    s.print_preview = True
+    yield from settle()
+    shot = Shot(view, "print_preview")
+
+    def powder(c):
+        return min(c) > 195 and c[0] >= c[2]
+    c = shot.at(view.px((0, -32, 0)), r=2)
+    check(T, "the cut through the wall is the fused colour", max(c) < 60, f"{c}")
+    c = shot.at(view.px((45, 45, 0)), r=2)
+    check(T, "the bed surface is powder", powder(c), f"{c}")
+    c = shot.at(view.px((0, 0, 0)), r=2)
+    check(T, "powder inside the hollow part too", powder(c), f"{c}")
+    c = shot.at(view.px((0, -45, -45)), r=2)
+    check(T, "the part below the plane is buried (bed side or surface shows)", min(c) > 150, f"{c}")
+    lines = cc("draw").readout_lines(scene, s, cc("draw").last_info(view.region))[0]
+    check(T, "readout counts layers", bool(lines) and "layer " in lines[0] and "Print Preview" in lines[0],
+          str(lines))
+    s.print_preview = False
+    yield from settle()
+    c = Shot(view, "print_preview_off").at(view.px((0, -32, 0)), r=2)
+    check(T, "off again: the normal cap colour", is_green(c), f"{c}")
+    check(T, "no draw errors", not errors(), str(errors()))
+
+
+@test
 def zz_pie(view):
     # last: an open pie menu (or the popover above) would swallow the following tests' events
     T = "pie"

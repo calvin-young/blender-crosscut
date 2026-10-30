@@ -163,6 +163,30 @@ class CROSSCUT_PT_interference(bpy.types.Panel):
         col.prop(s, "interference_opacity", slider=True)
 
 
+class CROSSCUT_PT_print_preview(bpy.types.Panel):
+    """What a layer looks like inside a powder-bed printer (MJF, SLS)."""
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "Crosscut"
+    bl_label = "Print Preview"
+    bl_options = {'DEFAULT_CLOSED'}
+
+    def draw_header(self, context):
+        self.layout.prop(context.scene.crosscut, "print_preview", text="")
+
+    def draw(self, context):
+        s = context.scene.crosscut
+        col = _split(self.layout)
+        col.active = s.print_preview
+        if s.mode == 'OFF':
+            col.label(text="Needs Section or Slice", icon='INFO')
+        col.prop(s, "powder_color")
+        col.prop(s, "fused_color")
+        col.prop(s, "powder_grain", slider=True)
+        if not (s.range_source == 'OBJECT' and s.range_object is not None):
+            col.prop(s, "bed_margin")
+
+
 class CROSSCUT_PT_settings(bpy.types.Panel):
     """Every option beyond the main controls, in its own closed panel."""
     bl_space_type = 'VIEW_3D'
@@ -288,6 +312,7 @@ def _header_button(self, context):
 
 classes = (
     CROSSCUT_PT_main,
+    CROSSCUT_PT_print_preview,
     CROSSCUT_PT_settings,
     CROSSCUT_PT_display,
     CROSSCUT_PT_interference,

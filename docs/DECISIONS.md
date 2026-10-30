@@ -48,6 +48,22 @@ this list is an assumption, tracked in the table at the end.
   Step at the top, then sub-panels Caps (with Interference), Plane, Cap Targets and Scrub Range
   (*assumed* split: plane display got its own sub-panel). "Range" sits in the label column.
 
+### D-022: Print Preview, on a branch (2026-10-30)
+
+- **Context:** the maintainer wanted a view of what each layer physically looks like in an MJF
+  printer (white powder, black fused cross-sections) for a demo video, and isn't sure it belongs
+  in the 1.0 release.
+- **Decision:** built on the `mjf-preview` branch. The powder is the bed box cut down to the kept
+  side of the plane (`section_math.clipped_box_faces`), drawn opaque before the caps so it hides
+  the parts below; the caps are drawn in the fused colour without hatching or interference.
+  The surface on the plane writes no depth, so the caps in the same plane win without
+  z-fighting (with Blender's default clip start a small offset still fought); the bed's sides do
+  write depth. Grain is a hash of plane-local millimetres, faded out where it would be smaller
+  than two pixels, so it doesn't shimmer.
+- **Alternatives considered:** a separate add-on extending Crosscut (would need a public hook
+  API); drawing it only in the demo script (no use to anyone else).
+- **Revisit if:** the maintainer wants it in main, or as its own add-on.
+
 ### D-021: Selected parts' contours use the selection colour (2026-10-29)
 
 - **Context:** Blender can't draw its selection outline for clipped geometry, so a

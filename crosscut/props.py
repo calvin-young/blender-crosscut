@@ -261,6 +261,29 @@ class CrosscutSettings(bpy.types.PropertyGroup):
     )
     range_object: PointerProperty(name="Range Object", type=bpy.types.Object, update=tag_redraw)
 
+    print_preview: BoolProperty(
+        name="Print Preview", default=False, update=tag_redraw,
+        description="Show the build as it looks inside a powder-bed printer: powder fills the bed up to "
+                    "the plane and the cut through each part is the fused, inked layer. For Section and "
+                    "Slice; the bed is the Scrub Range object, or the targets' bounds",
+    )
+    powder_color: FloatVectorProperty(
+        name="Powder", subtype='COLOR_GAMMA', size=3, min=0.0, max=1.0, default=(0.93, 0.92, 0.89),
+        description="Colour of the unfused powder", update=tag_redraw,
+    )
+    fused_color: FloatVectorProperty(
+        name="Fused", subtype='COLOR_GAMMA', size=3, min=0.0, max=1.0, default=(0.09, 0.09, 0.10),
+        description="Colour of the fused (inked) cross-sections", update=tag_redraw,
+    )
+    powder_grain: FloatProperty(
+        name="Grain", subtype='FACTOR', min=0.0, max=1.0, default=0.4, update=tag_redraw,
+        description="Speckle in the powder, so the bed reads as powder rather than a flat surface",
+    )
+    bed_margin: FloatProperty(
+        name="Bed Margin", subtype='DISTANCE', unit='LENGTH', min=0.0, default=5.0, update=tag_redraw,
+        description="Powder around the targets on every side but the bottom, when there is no Scrub Range object",
+    )
+
 
 def register():
     bpy.utils.register_class(CrosscutSettings)
