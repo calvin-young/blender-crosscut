@@ -23,6 +23,7 @@ steering lines matters more than the count of prompts.
 
 | Date | Tool and model | Prompts | Steering lines | Notes |
 |---|---|---|---|---|
+| 2026-10-30 | Claude Code (workstation), Opus 5.5 | 3 | 3 | `mjf-preview` branch: Print Preview, for the demo reel in the demo-reels repo |
 | 2026-10-29 | Claude Code (workstation), Opus 5.5 | 5 | 17 | First in-Blender test pass: viewport test suite, 0.2.0 fixes, zip; then 0.3.0, 0.4.0, the 0.9.0 release candidate and 0.9.1 from the maintainer's tests |
 | 2026-10-26 | Claude (cloud session), Opus 5.5 | 1 | 3 | Repo created; first user test; handoff to Claude Code |
 | 2026-10-22 | Claude (cloud session), Opus 5.5 | 1 | 6 | Initial spec with 3 mock-ups; 0.1.0 built without Blender access |
@@ -32,6 +33,9 @@ steering lines matters more than the count of prompts.
 One line for each thing the human contributed that the AI would not have done on its own,
 newest first, tagged with its kind (decide, correct, domain, tested, scope).
 
+- 2026-10-30 [domain]: an MJF print preview: the powder bed is white, the fused cross-sections black; scrub through a build layer by layer, ending top-down.
+- 2026-10-30 [decide]: Print Preview may not belong in the 1.0 release: keep it on a fork or branch.
+- 2026-10-30 [scope]: made for a demo video (demo-reels repo), ~60 s, for a team slide deck.
 - 2026-10-29 [tested]: found selected parts showing no outline in a zero-thickness slice, and Blender's selection outline clashing with Crosscut's in a slab.
 - 2026-10-29 [decide]: plane tint default 0.03 with a 0 to 0.1 slider; re-pick a stale plane object when Object is chosen.
 - 2026-10-29 [decide]: Caps and everything below into a separate settings panel, closed by default; "Range" aligned with its row.
