@@ -38,7 +38,7 @@ _clip_lit = {}         # rv3d pointer -> whether the sidebar's Clip button shoul
 _tint_gone = set()     # rv3d pointers whose clipping region has had Blender's tinted box removed
 _tint_pending = set()
 _saved_clip = {}       # rv3d pointer -> the clipping region's planes when Section or Slice took over
-_measure = {"on": False, "region": None, "a": None, "b": None, "text": ""}
+_measure = {"on": False, "region": None, "a": None, "b": None, "text": "", "la": None, "lb": None, "ltext": ""}
 
 
 # ------------------------------------------------------------------ shaders
@@ -740,6 +740,7 @@ def backface_color():
     return _lin((c[0] * 0.75, c[1] * 0.75, c[2] * 0.75, 1.0))
 
 
+CLIP_TINT_COLOR = (1.0, 1.0, 1.0, 0.012)
 SELECT_WIDTH = 2.0  # px, about the width of Blender's selection outline
 WARNING_RED = (1.0, 0.25, 0.2, 1.0)  # sRGB, for the readout
 
@@ -800,9 +801,10 @@ def _write_cap_depth(sh, vp, batch, threshold, tex):
     gpu.state.color_mask_set(True, True, True, True)
 
 
-def _draw_caps(context, s, rv3d, caps, show_fill, style, fill_override=None):
+def _draw_caps(context, s, rv3d, caps, show_fill, style, fill_override=None, outlines=True):
     """Draw caps and outlines. fill_override: one fill colour for every target
-    (no interference highlight), used for the Backfaces slice outline."""
+    (no interference highlight), used for the Backfaces slice outline. Without
+    outlines, only selected parts' contours are drawn."""
     region = context.region
     w, h = region.width, region.height
     if w < 2 or h < 2:
@@ -957,7 +959,7 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style, fill_override=None):
     # outlines last, on top of every cap. Selected parts get the selection
     # colour: it continues Blender's own outline along the cut, and in a
     # zero-thickness slice (everything clipped) it is the only sign of selection
-    if lines and (s.outline or selection):
+    if lines and ((s.outline and outlines) or selection):
         gpu.state.depth_test_set(depth_test)
         gpu.state.depth_mask_set(False)
         gpu.state.blend_set('ALPHA')
@@ -968,7 +970,7 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style, fill_override=None):
         lines.sort(key=lambda ln: _selection_rank(ln[0], selection))
         for t, ci, segs, serial, plane, bounds, _n_open in lines:
             rank = _selection_rank(t, selection)
-            if not rank and not s.outline:
+            if not rank and not (s.outline and outlines):
                 continue
             b = _line_batch(t, ci, segs, serial, plane, bounds, toward, eps)
             if b is None:
@@ -1106,7 +1108,10 @@ def _draw_powder(context, s, rv3d):
     sh.uniform_float("viewProj", vp)
     sh.uniform_float("grain", s.powder_grain)
     sh.uniform_float("depthBias", 0.0)
-    for poly, n, cut in sm.clipped_box_faces(lo, hi, planes):
+    faces = sm.clipped_box_faces(lo, hi, planes)
+    if s.mode == 'SLICE' and s.thickness <= 1e-9:
+        faces = [f for f in faces if f[2] >= 0]  # a slice is one layer: the powder's surface alone
+    for poly, n, cut in faces:
         # The surface on the plane writes no depth: the caps drawn next lie in the
         # same plane and must win there without z-fighting (they test against the
         # parts, which are all below it). The bed's sides do write depth.
@@ -1117,6 +1122,64 @@ def _draw_powder(context, s, rv3d):
         uv = np.stack([tri @ u, tri @ v], axis=1)
         sh.uniform_float("fillColor", tuple(base * shade) + (1.0,))
         _vbatch('TRIS', {"pos": (tri, 3), "uv": (uv, 2)}).draw(sh)
+
+
+def _clip_prism(context, rv3d):
+    """A clipping region's volume as triangles facing outward: its four walls, running
+    from the viewer (or across the view, in orthographic) to well past the scene, plus ends."""
+    walls = [np.array(p, dtype=np.float64) for p in rv3d.clip_planes
+             if not sm.plane_is_degenerate(np.array(p, dtype=np.float64))]
+    axes = engine.clip_axes(rv3d)
+    if len(walls) != 4 or len(axes) != 2:
+        return None
+    w = sm.normalize(np.cross(axes[0][0], axes[1][0]))
+    reach = context.space_data.clip_end * 0.45
+    centre = float(np.array(rv3d.view_location) @ w)
+    normals = np.array([p[:3] for p in walls])
+    offsets = -np.array([p[3] for p in walls])
+    apex, _res, rank, _sv = np.linalg.lstsq(normals, offsets, rcond=None)
+    if rank == 3:  # walls that meet at the eye the box was drawn from
+        start = float(apex @ w)
+        ahead = apex + w * max(reach, 1.0)
+        toward = 1.0 if all(float(n @ ahead) >= o for n, o in zip(normals, offsets, strict=True)) else -1.0
+        heights = (start + toward * reach * 1e-3, start + toward * reach)
+    else:
+        heights = (centre - reach, centre + reach)
+    rings = []
+    for h in heights:
+        ring = []
+        for i in range(4):
+            j = (i + 1) % 4
+            ring.append(np.linalg.solve(np.array([normals[i], normals[j], w]), np.array([offsets[i], offsets[j], h])))
+        rings.append(ring)
+    near, far = rings
+    quads = [[near[i], far[i], far[(i + 1) % 4], near[(i + 1) % 4]] for i in range(4)] + [near, far]
+    middle = np.mean(near + far, axis=0)
+    tris = []
+    for q in quads:
+        centre_q = np.mean(q, axis=0)
+        for a, b, c in ((q[0], q[1], q[2]), (q[0], q[2], q[3])):
+            if float(np.cross(b - a, c - a) @ (centre_q - middle)) < 0.0:
+                b, c = c, b
+            tris += [tuple(a), tuple(b), tuple(c)]
+    return tris
+
+
+def _draw_clip_tint(context, rv3d):
+    """The faint tint Blender gives a clipping region's volume, on the background only.
+    Ours follows the region, and survives Section and Slice, as Blender's box can't."""
+    tris = _clip_prism(context, rv3d)
+    if tris is None:
+        return
+    sh = gpu.shader.from_builtin('UNIFORM_COLOR')
+    gpu.state.depth_test_set('LESS_EQUAL')
+    gpu.state.depth_mask_set(False)
+    gpu.state.blend_set('ALPHA')
+    gpu.state.face_culling_set('FRONT')  # the far side only, once per pixel, so parts hide it
+    sh.bind()
+    sh.uniform_float("color", CLIP_TINT_COLOR)
+    batch_for_shader(sh, 'TRIS', {"pos": tris}).draw(sh)
+    gpu.state.face_culling_set('NONE')
 
 
 def _draw_annotations(context):
@@ -1154,11 +1217,15 @@ def measure_running():
 
 
 def measure_start():
-    _measure.update(on=True, region=None, a=None, b=None, text="")
+    _measure.update(on=True, region=None, a=None, b=None, text="", la=None, lb=None, ltext="")
 
 
 def measure_stop():
-    _measure.update(on=False, region=None, a=None, b=None, text="")
+    _measure.update(on=False, region=None, a=None, b=None, text="", la=None, lb=None, ltext="")
+
+
+def native_or_lit(s, rv3d):
+    return s.mode == 'OFF' and bool(rv3d.use_clip_planes)
 
 
 def _caps_for(s, rv3d):
@@ -1185,7 +1252,8 @@ def _view_under_mouse(context, x, y):
 
 
 def _measure_at(context, region, x, y):
-    """The greatest overlap depth under the mouse: (end, end, depth) in the world, or None."""
+    """The overlap under the mouse, in the world: (end, end, greatest depth, local) or None,
+    where local is (end, end, width at the mouse), or None."""
     from bpy_extras import view3d_utils
     scene = context.scene
     s = scene.crosscut
@@ -1218,14 +1286,15 @@ def _measure_at(context, region, x, y):
         # the search starts about 32 pixels across, whatever the zoom
         px = float(np.linalg.norm(np.array(view3d_utils.region_2d_to_location_3d(region, rv3d, (xy[0] + 16, xy[1]), p))
                                   - np.array(view3d_utils.region_2d_to_location_3d(region, rv3d, xy, p))))
-        res = sm.overlap_span(sa @ basis.T, sb @ basis.T, p @ basis.T,
-                              (engine.is_oriented(ta, depsgraph), engine.is_oriented(tb, depsgraph)),
-                              half=max(px, 1e-6))
+        res, near = sm.overlap_measures(sa @ basis.T, sb @ basis.T, p @ basis.T,
+                                        (engine.is_oriented(ta, depsgraph), engine.is_oriented(tb, depsgraph)),
+                                        half=max(px, 1e-6), local=s.measure_local)
         if res is None:
             return None
-        depth, a, b = res
-        height = float(p @ n)
-        return (a[0] * u + a[1] * v + n * height, b[0] * u + b[1] * v + n * height, depth)
+        lift = n * float(p @ n)
+        world = [(m[1][0] * u + m[1][1] * v + lift, m[2][0] * u + m[2][1] * v + lift, m[0])
+                 if m is not None else None for m in (res, near)]
+        return (*world[0], world[1])
     return None
 
 
@@ -1244,10 +1313,20 @@ def measure_update(context, x, y):
             traceback.print_exc()
     had = _measure["a"] is not None
     if res is None:
-        _measure.update(region=None, a=None, b=None, text="")
+        _measure.update(region=None, a=None, b=None, text="", la=None, lb=None, ltext="")
     else:
+        local = res[3]
+        # the same line twice would only collide: show it once
+        same = local is not None and abs(local[2] - res[2]) <= 0.01 * max(res[2], 1e-12) and (
+            np.linalg.norm(np.asarray(local[0]) - res[0]) + np.linalg.norm(np.asarray(local[1]) - res[1]) < 2.0 * res[2]
+            or np.linalg.norm(np.asarray(local[0]) - res[1]) + np.linalg.norm(np.asarray(local[1]) - res[0]) < 2.0 * res[2])
+        if same:
+            local = None
+        length = fmt_length(context.scene, res[2])
         _measure.update(region=found[1].as_pointer(), a=res[0], b=res[1],
-                        text=fmt_length(context.scene, res[2]))
+                        text="max " + length if local is not None else length,
+                        la=None if local is None else local[0], lb=None if local is None else local[1],
+                        ltext="" if local is None else fmt_length(context.scene, local[2]))
     if found is not None and (had or res is not None):
         found[0].tag_redraw()
 
@@ -1258,6 +1337,8 @@ def _draw_measure(context):
     sh = _shader("line")
     region = context.region
     seg = [tuple(_measure["a"]), tuple(_measure["b"])]
+    if _measure["la"] is not None:
+        seg += [tuple(_measure["la"]), tuple(_measure["lb"])]
     gpu.state.depth_test_set('NONE')
     gpu.state.depth_mask_set(False)
     gpu.state.blend_set('ALPHA')
@@ -1266,7 +1347,7 @@ def _draw_measure(context):
     ui = bpy.context.preferences.system.ui_scale
     batch = batch_for_shader(sh, 'LINES', {"pos": seg})
     # dark under light, so it shows on any hatch
-    for width, color in ((4.0, (0.0, 0.0, 0.0, 0.9)), (2.0, (1.0, 1.0, 1.0, 1.0))):
+    for width, color in ((4.0, (0.0, 0.0, 0.0, 0.9)), (2.0, tuple(context.scene.crosscut.measure_color) + (1.0,))):
         sh.uniform_float("lineWidth", width * ui)
         sh.uniform_float("color", color)
         batch.draw(sh)
@@ -1290,8 +1371,8 @@ def draw_view():
             context.area.tag_redraw()
         if lit:
             _saved_clip.pop(rv3d.as_pointer(), None)  # a box is on: nothing to bring back
-        if lit and not s.clip_tint:
-            request_tint_removal(rv3d)
+        if lit:
+            request_tint_removal(rv3d)  # it can't follow the region; _draw_clip_tint can
         elif not rv3d.use_clip_planes:
             _tint_gone.discard(rv3d.as_pointer())
         style = s.cap_style
@@ -1309,6 +1390,8 @@ def draw_view():
         # Blender only applies viewport clipping in Solid and Wireframe shading
         clips = shading_type in {'SOLID', 'WIREFRAME'}
         info["shading_note"] = bool(caps) and not clips
+        if native_or_lit(s, rv3d) and s.clip_tint and context.space_data.overlay.show_overlays:
+            _draw_clip_tint(context, rv3d)
         plane_shown = ours and s.plane_display != 'NONE' and context.space_data.overlay.show_overlays
         quads = _frame_quads(context, s, caps) if plane_shown and caps else []
         if quads and s.plane_display in {'TINT', 'HATCH'}:
@@ -1319,7 +1402,8 @@ def draw_view():
         if preview:
             _draw_powder(context, s, rv3d)
             fused = _lin(tuple(s.fused_color) + (1.0,))
-            info.update(_draw_caps(context, s, rv3d, caps, True, 'SOLID', fill_override=fused))
+            # one fused colour with no outlines: a part's inner shells shouldn't show
+            info.update(_draw_caps(context, s, rv3d, caps, True, 'SOLID', fill_override=fused, outlines=False))
         elif caps and solid and style != 'BACKFACES':
             info.update(_draw_caps(context, s, rv3d, caps, True, style))
         elif caps and solid and ours and s.mode == 'SLICE' and s.thickness <= 1e-9:
@@ -1437,14 +1521,18 @@ def draw_readout():
     blf.shadow(font, 3, 0.0, 0.0, 0.0, 0.85)
     if _measure["a"] is not None and _measure["region"] == context.region.as_pointer():
         from bpy_extras.view3d_utils import location_3d_to_region_2d
-        p = location_3d_to_region_2d(context.region, context.region_data,
-                                     tuple(0.5 * (np.asarray(_measure["a"]) + np.asarray(_measure["b"]))))
-        if p is not None:
-            blf.size(font, 14 * ui)
-            blf.color(font, 1.0, 1.0, 1.0, 1.0)
-            blf.position(font, p.x + 12 * ui, p.y + 8 * ui, 0)
-            blf.draw(font, _measure["text"])
-            blf.size(font, 12 * ui)
+        blf.size(font, s.measure_text_size * ui)
+        blf.color(font, *s.measure_color, 1.0)
+        for a, b, text in ((_measure["a"], _measure["b"], _measure["text"]),
+                           (_measure["la"], _measure["lb"], _measure["ltext"])):
+            if a is None:
+                continue
+            p = location_3d_to_region_2d(context.region, context.region_data,
+                                         tuple(0.5 * (np.asarray(a) + np.asarray(b))))
+            if p is not None:
+                blf.position(font, p.x + 12 * ui, p.y + 8 * ui, 0)
+                blf.draw(font, text)
+        blf.size(font, 12 * ui)
     if not s.show_readout:
         blf.disable(font, blf.SHADOW)
         return

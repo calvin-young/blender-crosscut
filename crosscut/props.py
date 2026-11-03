@@ -9,6 +9,7 @@ from bpy.props import (
     EnumProperty,
     FloatProperty,
     FloatVectorProperty,
+    IntProperty,
     PointerProperty,
     StringProperty,
 )
@@ -207,16 +208,32 @@ class CrosscutSettings(bpy.types.PropertyGroup):
     )
     clip_tint: BoolProperty(
         name="Clip Tint", default=False, update=tag_redraw,
-        description="Keep the faint box Blender tints for a clipping region. It can't follow the region, "
-                    "so it goes as soon as you scrub, whatever this says",
+        description="Show a clipping region's volume as a faint tint on the background",
     )
+    measure_color: FloatVectorProperty(
+        name="Color", subtype='COLOR_GAMMA', size=3, min=0.0, max=1.0, default=(1.0, 1.0, 1.0),
+        description="Colour of Measure Overlap's lines and lengths", update=tag_redraw,
+    )
+    measure_text_size: IntProperty(
+        name="Text Size", min=8, max=48, default=14, update=tag_redraw,
+        description="Size of Measure Overlap's lengths",
+    )
+    measure_local: BoolProperty(
+        name="Local Width", default=True, update=tag_redraw,
+        description="As well as the overlap's greatest depth, show its width right where the mouse is",
+    )
+    ui_settings: BoolProperty(name="Settings", default=False, options={'HIDDEN'})
+    ui_cut_faces: BoolProperty(name="Cut Faces", default=False, options={'HIDDEN'})
+    ui_plane: BoolProperty(name="Section/Slice Plane", default=False, options={'HIDDEN'})
+    ui_measure: BoolProperty(name="Measure Overlap", default=False, options={'HIDDEN'})
+    ui_print_preview: BoolProperty(name="Print Preview", default=False, options={'HIDDEN'})
     scrub_distance: BoolProperty(
         name="Scrub by Distance", default=False,
         description="Show the plane position as a distance instead of a 0-1 slider across the range",
     )
     flip: BoolProperty(name="Flip", description="Keep the other side of the plane", update=tag_redraw)
     thickness: FloatProperty(
-        name="Thickness", subtype='DISTANCE', unit='LENGTH', min=0.0, default=0.0, precision=3,
+        name="Slice Thickness", subtype='DISTANCE', unit='LENGTH', min=0.0, default=0.0, precision=3,
         description="Slab thickness for Slice mode, centred on the plane. 0 shows only the cross-section",
         update=tag_redraw,
     )
@@ -230,8 +247,8 @@ class CrosscutSettings(bpy.types.PropertyGroup):
     last_cap_style: StringProperty(default='HATCH', options={'HIDDEN'})
 
     targets: EnumProperty(
-        name="Cap", default='VISIBLE', update=tag_redraw,
-        description="Which objects get caps",
+        name="Fill", default='VISIBLE', update=tag_redraw,
+        description="Which objects' cut faces get filled",
         items=[
             ('VISIBLE', "Visible Objects", "Cap every visible solid object"),
             ('SELECTED', "Selected Objects", "Cap only selected objects (everything is still clipped)"),
@@ -244,7 +261,7 @@ class CrosscutSettings(bpy.types.PropertyGroup):
         name="Colors", default='AUTO', update=tag_redraw,
         items=[
             ('AUTO', "Auto", "Follow the Solid shading colour (Object, Material or Random); white or grey parts get "
-                             "the Cap Color so the cut stands out; other shading colours use a per-object palette"),
+                             "the Fill Color so the cut stands out; other shading colours use a per-object palette"),
             ('OBJECT', "Object", "Object viewport display colour"),
             ('MATERIAL', "Material", "First material's viewport display colour"),
             ('PALETTE', "Palette", "Distinct colour per object"),
@@ -252,7 +269,7 @@ class CrosscutSettings(bpy.types.PropertyGroup):
         ],
     )
     single_color: FloatVectorProperty(
-        name="Cap Color", description="Cap colour for Single, and for white or grey parts in Auto", subtype='COLOR_GAMMA', size=3, min=0.0, max=1.0,
+        name="Fill Color", description="Fill colour for Single, and for white or grey parts in Auto", subtype='COLOR_GAMMA', size=3, min=0.0, max=1.0,
         default=(0.29, 0.47, 0.25), update=tag_redraw,
     )
     hatch_space: EnumProperty(

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.12.0 (2026-11-03)
+
+- **Measure Overlap** shows two measures: the overlap's greatest depth (labelled "max") and its width right
+  where the mouse is, roughly tangent to tangent (**Local Width**, on by default). It has its own settings for
+  color and text size.
+- **Print Preview**: no outlines through parts' interiors. **Slice** now differs from Section: one layer
+  of powder, or with Slice Thickness a band of it, rather than the whole bed.
+- **Clip Tint** can be turned off and on at any time, survives Section and Slice, and follows a scrub.
+- Back on its own **Crosscut** tab, as one panel. Settings sits closer to the main controls, and its first
+  three options are left-aligned.
+- **Slice Thickness** moved into Section/Slice Plane.
+- Scrub row: left, cursor, center, selection, right, as small buttons; the row below is gone.
+- The **Caps** section is now **Cut Faces**, its **Cap** row **Fill**, and **Cap Color** **Fill Color**.
+
 ## 0.11.0 (2026-11-03)
 
 - **Clip remembers**: switching to Section or Slice and clicking Clip again brings your box back, where

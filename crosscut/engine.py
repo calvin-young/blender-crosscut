@@ -86,7 +86,9 @@ def powder_planes(s):
     if s.mode == 'SECTION':
         keep = np.concatenate([-n, [c]])
         return [-keep if s.flip else keep]
-    return [np.concatenate([-n, [c + max(s.thickness, 0.0) / 2]])]
+    t = max(s.thickness, 0.0)
+    hi = np.concatenate([-n, [c + t / 2]])
+    return [hi, np.concatenate([n, [-(c - t / 2)]])] if t > 1e-9 else [hi]
 
 
 def bed_bounds(context, s):

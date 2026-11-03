@@ -8,7 +8,7 @@ from . import draw, engine
 _keymaps = []
 
 
-def _draw_main(layout, context, compact=False):
+def _draw_main(layout, context):
     s = context.scene.crosscut
     col = layout.column()
     # Clip / Section / Slice: one or none (Clip is Blender's own clipping region)
@@ -46,8 +46,6 @@ def _draw_main(layout, context, compact=False):
         r.prop(s, "object_axis", expand=True)
 
     clipping = s.mode == 'OFF' and rv3d is not None and rv3d.use_clip_planes
-    if s.mode == 'OFF' and not clipping:
-        return  # hide, don't grey out, what doesn't apply (Flip above is the exception)
     if clipping:
         box = col.column(align=True)
         for i, (axis, _centre, _half) in enumerate(engine.clip_axes(rv3d)[:2]):
@@ -61,54 +59,23 @@ def _draw_main(layout, context, compact=False):
                 st = r.operator("crosscut.step", text="", icon=icon)
                 st.direction = direction
                 st.clip_axis = i
-        _measure_button(col)
-        return
-    box = col.column(align=True)
-    r = box.row(align=True)
-    if s.scrub_distance:
-        r.prop(s, "offset")
-    else:
-        r.prop(s, "position", slider=True)
-    st = r.operator("crosscut.step", text="", icon='TRIA_LEFT')
-    st.direction = -1
-    r.operator("crosscut.center", text="", icon='SNAP_MIDPOINT')
-    st = r.operator("crosscut.step", text="", icon='TRIA_RIGHT')
-    st.direction = 1
-    if s.mode == 'SLICE':
-        box.prop(s, "thickness")
-    if not compact:
-        r = box.row(align=True)
-        r.operator("crosscut.to_cursor", text="Cursor")
-        r.operator("crosscut.center", text="Center")
-        r.operator("crosscut.to_selection", text="Selection")
-    _measure_button(col)
-
-
-def _measure_button(col):
-    col.operator("crosscut.measure", text="Measure Overlap", icon='DRIVER_DISTANCE', depress=draw.measure_running())
-
-
-class CROSSCUT_PT_main(bpy.types.Panel):
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'UI'
-    bl_category = "View"
-    bl_label = "Crosscut"
-
-    def draw(self, context):
-        _draw_main(self.layout, context)
-        info = draw.last_info(_window_region(context))
-        if info:
-            col = self.layout.column(align=True)
-            if info.get("error"):
-                col.label(text="Draw error (see console)", icon='ERROR')
-            for name in info.get("open", [])[:5]:
-                col.label(text=f"Open section: {name}", icon='ERROR')
-            for name in info.get("open_mesh", [])[:5]:
-                col.label(text=f"Open mesh: {name}", icon='INFO')
-            for name in info.get("inside_out", [])[:5]:
-                col.label(text=f"Inside out: {name}", icon='ERROR')
-            for name in info.get("mixed_normals", [])[:5]:
-                col.label(text=f"Flipped faces: {name}", icon='INFO')
+    elif s.mode != 'OFF':  # hide, don't grey out, what doesn't apply (Flip above is the exception)
+        r = col.row(align=True)
+        if s.scrub_distance:
+            r.prop(s, "offset")
+        else:
+            r.prop(s, "position", slider=True)
+        st = r.operator("crosscut.step", text="", icon='TRIA_LEFT')
+        st.direction = -1
+        r.operator("crosscut.to_cursor", text="", icon='PIVOT_CURSOR')
+        r.operator("crosscut.center", text="", icon='SNAP_MIDPOINT')
+        r.operator("crosscut.to_selection", text="", icon='RESTRICT_SELECT_OFF')
+        st = r.operator("crosscut.step", text="", icon='TRIA_RIGHT')
+        st.direction = 1
+    if clipping or s.mode != 'OFF':
+        col.separator()
+        col.operator("crosscut.measure", text="Measure Overlap", icon='DRIVER_DISTANCE',
+                     depress=draw.measure_running())
 
 
 def _window_region(context):
@@ -127,59 +94,50 @@ def _split(layout):
     return layout.column()
 
 
-class CROSSCUT_PT_display(bpy.types.Panel):
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'UI'
-    bl_category = "View"
-    bl_label = "Caps"
-    bl_parent_id = "CROSSCUT_PT_settings"
-    bl_options = {'DEFAULT_CLOSED'}
-
-    def draw(self, context):
-        s = context.scene.crosscut
-        col = _split(self.layout)
-        if s.cap_style == 'BACKFACES':
-            col.label(text="Backfaces: no caps", icon='INFO')
-            if s.mode == 'SLICE':
-                _outline_row(col, s)  # a zero-thickness slice still shows its outline
-            return
-        col.prop(s, "targets")
-        if s.targets == 'COLLECTION':
-            col.prop(s, "target_collection")
-        names = engine.hidden_from_caps(context, s)
-        if names:
-            more = f" (+{len(names) - 2})" if len(names) > 2 else ""
-            self.layout.label(text="Not capped (Wire/Bounds display): " + ", ".join(names[:2]) + more,
-                              icon='INFO')
-        col.prop(s, "color_source")
-        if s.color_source == 'SINGLE' or (s.color_source == 'AUTO' and draw.auto_uses_cap_color(context, s)):
-            col.prop(s, "single_color")
-        if s.cap_style == 'HATCH':
-            col.prop(s, "hatch_space")
-            if s.hatch_space == 'SCREEN':
-                col.prop(s, "hatch_pitch_px", text="Spacing (px)")
-            else:
-                col.prop(s, "hatch_pitch")
-                col.prop(s, "hatch_scale", slider=True)
-            col.prop(s, "hatch_angle")
-            col.prop(s, "hatch_width")
-            col.prop(s, "hatch_vary")
-        _outline_row(col, s)
-        col.prop(s, "overlap_style", expand=True)
-        if s.overlap_style == 'STRIPES':
-            if s.cap_style != 'HATCH':
-                col.prop(s, "hatch_space", text="Stripe Space")
-            if s.hatch_space == 'SCREEN':
-                col.prop(s, "stripe_width_px", text="Stripe Width (px)")
-            else:
-                col.prop(s, "stripe_width")
-        elif s.overlap_style == 'HIGHLIGHT':
-            col.prop(s, "interference_style")
-            col.prop(s, "interference_color")
-            if s.interference_style != 'SOLID':
-                col.prop(s, "interference_line_color")
-            col.prop(s, "interference_opacity", slider=True)
-        col.prop(s, "open_opacity", slider=True)
+def _draw_cut_faces(layout, context):
+    s = context.scene.crosscut
+    col = _split(layout)
+    if s.cap_style == 'BACKFACES':
+        col.label(text="Backfaces: cut faces aren't filled", icon='INFO')
+        if s.mode == 'SLICE':
+            _outline_row(col, s)  # a zero-thickness slice still shows its outline
+        return
+    col.prop(s, "targets")
+    if s.targets == 'COLLECTION':
+        col.prop(s, "target_collection")
+    names = engine.hidden_from_caps(context, s)
+    if names:
+        more = f" (+{len(names) - 2})" if len(names) > 2 else ""
+        layout.label(text="Not filled (Wire/Bounds display): " + ", ".join(names[:2]) + more, icon='INFO')
+    col.prop(s, "color_source")
+    if s.color_source == 'SINGLE' or (s.color_source == 'AUTO' and draw.auto_uses_cap_color(context, s)):
+        col.prop(s, "single_color")
+    if s.cap_style == 'HATCH':
+        col.prop(s, "hatch_space")
+        if s.hatch_space == 'SCREEN':
+            col.prop(s, "hatch_pitch_px", text="Spacing (px)")
+        else:
+            col.prop(s, "hatch_pitch")
+            col.prop(s, "hatch_scale", slider=True)
+        col.prop(s, "hatch_angle")
+        col.prop(s, "hatch_width")
+        col.prop(s, "hatch_vary")
+    _outline_row(col, s)
+    col.prop(s, "overlap_style", expand=True)
+    if s.overlap_style == 'STRIPES':
+        if s.cap_style != 'HATCH':
+            col.prop(s, "hatch_space", text="Stripe Space")
+        if s.hatch_space == 'SCREEN':
+            col.prop(s, "stripe_width_px", text="Stripe Width (px)")
+        else:
+            col.prop(s, "stripe_width")
+    elif s.overlap_style == 'HIGHLIGHT':
+        col.prop(s, "interference_style")
+        col.prop(s, "interference_color")
+        if s.interference_style != 'SOLID':
+            col.prop(s, "interference_line_color")
+        col.prop(s, "interference_opacity", slider=True)
+    col.prop(s, "open_opacity", slider=True)
 
 
 def _outline_row(col, s):
@@ -189,83 +147,105 @@ def _outline_row(col, s):
         r.prop(s, "outline_width", text="")
 
 
-class CROSSCUT_PT_print_preview(bpy.types.Panel):
-    """What a layer looks like inside a powder-bed printer (MJF, SLS)."""
+def _draw_plane(layout, context):
+    s = context.scene.crosscut
+    col = _split(layout)
+    col.prop(s, "thickness")
+    col.prop(s, "range_source")
+    if s.range_source == 'OBJECT':
+        r = col.row(align=True)
+        r.prop(s, "range_object", text="Object")
+        r.operator("crosscut.use_bounds", text="", icon='EYEDROPPER')
+    lo, hi = engine.scrub_range(s)
+    # a label in the property-split columns, lined up with the rows above
+    sp = col.split(factor=0.4)
+    r = sp.row()
+    r.alignment = 'RIGHT'
+    r.label(text="Range")
+    sp.label(text=f"{draw.fmt_length(context.scene, lo)} → {draw.fmt_length(context.scene, hi)}")
+    col.prop(s, "scrub_distance")
+    col.prop(s, "step")
+    col.separator()
+    col.prop(s, "plane_display", text="Display")
+    if s.plane_display != 'NONE':
+        col.prop(s, "plane_color")
+        if s.mode == 'SLICE':
+            col.prop(s, "plane_color_2")
+        if s.plane_display in {'TINT', 'HATCH'}:
+            col.prop(s, "plane_opacity", slider=True)
+
+
+def _draw_measure(layout, context):
+    s = context.scene.crosscut
+    col = _split(layout)
+    col.prop(s, "measure_color")
+    col.prop(s, "measure_text_size")
+    col.prop(s, "measure_local")
+
+
+def _draw_print_preview(layout, context):
+    s = context.scene.crosscut
+    col = _split(layout)
+    col.active = s.print_preview
+    if s.mode == 'OFF':
+        col.label(text="Needs Section or Slice", icon='INFO')
+    col.prop(s, "powder_color")
+    col.prop(s, "fused_color")
+    col.prop(s, "powder_grain", slider=True)
+    if not (s.range_source == 'OBJECT' and s.range_object is not None):
+        col.prop(s, "bed_margin")
+
+
+def _draw_settings(layout, context):
+    """Every option beyond the main controls. Layout panels rather than sub-panels:
+    they sit closer to the controls above, and their open state can be set."""
+    s = context.scene.crosscut
+    header, body = layout.panel_prop(s, "ui_settings")
+    header.label(text="Settings")
+    if body is None:
+        return
+    col = body.column()
+    col.prop(s, "show_readout")
+    overlay = getattr(context.space_data, "overlay", None)
+    if overlay is not None:
+        col.prop(overlay, "show_face_orientation", text="Face Orientation")
+    col.prop(s, "clip_tint")
+    for prop, label, fn in (("ui_cut_faces", "Cut Faces", _draw_cut_faces),
+                            ("ui_plane", "Section/Slice Plane", _draw_plane),
+                            ("ui_measure", "Measure Overlap", _draw_measure)):
+        header, sub = body.panel_prop(s, prop)
+        header.label(text=label)
+        if sub is not None:
+            fn(sub, context)
+    header, sub = body.panel_prop(s, "ui_print_preview")
+    header.prop(s, "print_preview", text="")
+    header.label(text="Print Preview")
+    if sub is not None:
+        _draw_print_preview(sub, context)
+
+
+class CROSSCUT_PT_main(bpy.types.Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_category = "View"
-    bl_label = "Print Preview"
-    bl_parent_id = "CROSSCUT_PT_settings"
-    bl_options = {'DEFAULT_CLOSED'}
-
-    def draw_header(self, context):
-        self.layout.prop(context.scene.crosscut, "print_preview", text="")
+    bl_category = "Crosscut"
+    bl_label = "Crosscut"
 
     def draw(self, context):
-        s = context.scene.crosscut
-        col = _split(self.layout)
-        col.active = s.print_preview
-        if s.mode == 'OFF':
-            col.label(text="Needs Section or Slice", icon='INFO')
-        col.prop(s, "powder_color")
-        col.prop(s, "fused_color")
-        col.prop(s, "powder_grain", slider=True)
-        if not (s.range_source == 'OBJECT' and s.range_object is not None):
-            col.prop(s, "bed_margin")
-
-
-class CROSSCUT_PT_settings(bpy.types.Panel):
-    """Every option beyond the main controls, in its own closed panel."""
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'UI'
-    bl_category = "View"
-    bl_label = "Settings"
-    bl_parent_id = "CROSSCUT_PT_main"
-    bl_options = {'DEFAULT_CLOSED'}
-
-    def draw(self, context):
-        s = context.scene.crosscut
-        col = _split(self.layout)
-        col.prop(s, "show_readout")
-        overlay = getattr(context.space_data, "overlay", None)
-        if overlay is not None:
-            col.prop(overlay, "show_face_orientation", text="Face Orientation")
-        col.prop(s, "clip_tint")
-
-
-class CROSSCUT_PT_plane(bpy.types.Panel):
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'UI'
-    bl_category = "View"
-    bl_label = "Section/Slice Plane"
-    bl_parent_id = "CROSSCUT_PT_settings"
-    bl_options = {'DEFAULT_CLOSED'}
-
-    def draw(self, context):
-        s = context.scene.crosscut
-        col = _split(self.layout)
-        col.prop(s, "range_source")
-        if s.range_source == 'OBJECT':
-            r = col.row(align=True)
-            r.prop(s, "range_object", text="Object")
-            r.operator("crosscut.use_bounds", text="", icon='EYEDROPPER')
-        lo, hi = engine.scrub_range(s)
-        # a label in the property-split columns, lined up with the rows above
-        sp = col.split(factor=0.4)
-        r = sp.row()
-        r.alignment = 'RIGHT'
-        r.label(text="Range")
-        sp.label(text=f"{draw.fmt_length(context.scene, lo)} → {draw.fmt_length(context.scene, hi)}")
-        col.prop(s, "scrub_distance")
-        col.prop(s, "step")
-        col.separator()
-        col.prop(s, "plane_display", text="Display")
-        if s.plane_display != 'NONE':
-            col.prop(s, "plane_color")
-            if s.mode == 'SLICE':
-                col.prop(s, "plane_color_2")
-            if s.plane_display in {'TINT', 'HATCH'}:
-                col.prop(s, "plane_opacity", slider=True)
+        _draw_main(self.layout, context)
+        _draw_settings(self.layout, context)
+        info = draw.last_info(_window_region(context))
+        if info:
+            col = self.layout.column(align=True)
+            if info.get("error"):
+                col.label(text="Draw error (see console)", icon='ERROR')
+            for name in info.get("open", [])[:5]:
+                col.label(text=f"Open section: {name}", icon='ERROR')
+            for name in info.get("open_mesh", [])[:5]:
+                col.label(text=f"Open mesh: {name}", icon='INFO')
+            for name in info.get("inside_out", [])[:5]:
+                col.label(text=f"Inside out: {name}", icon='ERROR')
+            for name in info.get("mixed_normals", [])[:5]:
+                col.label(text=f"Flipped faces: {name}", icon='INFO')
 
 
 class CROSSCUT_PT_popover(bpy.types.Panel):
@@ -275,7 +255,7 @@ class CROSSCUT_PT_popover(bpy.types.Panel):
     bl_ui_units_x = 12
 
     def draw(self, context):
-        _draw_main(self.layout, context, compact=True)
+        _draw_main(self.layout, context)
 
 
 class CROSSCUT_MT_pie(bpy.types.Menu):
@@ -311,10 +291,6 @@ def _header_button(self, context):
 
 classes = (
     CROSSCUT_PT_main,
-    CROSSCUT_PT_settings,
-    CROSSCUT_PT_display,
-    CROSSCUT_PT_plane,
-    CROSSCUT_PT_print_preview,
     CROSSCUT_PT_popover,
     CROSSCUT_MT_pie,
 )

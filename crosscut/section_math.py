@@ -516,17 +516,52 @@ def _farthest(points, seg):
     return float(dist[p, k[p]]), points[p], near[p, k[p]]
 
 
+def _chord(sa, sb, point, angles=60):
+    """The shortest line through `point` from one part's contour to the other's
+    (or between any two contours if no such line exists): (length, end, end)."""
+    seg = np.concatenate([sa, sb])
+    part = np.concatenate([np.zeros(len(sa), dtype=bool), np.ones(len(sb), dtype=bool)])
+    a = seg[:, 0] - point
+    e = seg[:, 1] - seg[:, 0]
+    th = np.linspace(0.0, np.pi, angles, endpoint=False)
+    dx, dy = np.cos(th)[:, None], np.sin(th)[:, None]
+    with np.errstate(divide='ignore', invalid='ignore'):
+        denom = dx * e[:, 1] - dy * e[:, 0]
+        t = (a[:, 0] * e[:, 1] - a[:, 1] * e[:, 0]) / denom
+        u = (a[:, 0] * dy - a[:, 1] * dx) / denom
+    ok = np.isfinite(t) & (u >= 0.0) & (u <= 1.0)
+    ahead = np.where(ok & (t > 0.0), t, np.inf)
+    behind = np.where(ok & (t < 0.0), -t, np.inf)
+    i_a, i_b = ahead.argmin(axis=1), behind.argmin(axis=1)
+    rows = np.arange(angles)
+    ta, tb = ahead[rows, i_a], behind[rows, i_b]
+    length = ta + tb
+    if not np.isfinite(length).any():
+        return None
+    across = np.isfinite(length) & (part[i_a] != part[i_b])
+    k = int(np.where(across, length, np.inf).argmin()) if across.any() else int(np.nan_to_num(length, posinf=1e300).argmin())
+    d = np.array([dx[k, 0], dy[k, 0]])
+    return float(length[k]), point + d * ta[k], point - d * tb[k]
+
+
 def overlap_span(seg_a, seg_b, point, oriented=(True, True), half=1.0, cells=160, limit=2000):
+    """The overlap's greatest depth: (distance, end, end), or None. See overlap_measures."""
+    return overlap_measures(seg_a, seg_b, point, oriented, half, cells, limit, local=False)[0]
+
+
+def overlap_measures(seg_a, seg_b, point, oriented=(True, True), half=1.0, cells=160, limit=2000, local=True):
     """How deep two parts' sections overlap at `point` (all 2D, in the plane).
 
     Finds the overlap island under the point on a grid that grows until it holds
-    the whole island, then the greatest distance from its boundary on one part's
-    contour to its boundary on the other's. Returns (distance, end, end), or None
-    when the point isn't inside both. A very long, thin island can break up on
-    the grid, and then only the piece under the point is measured.
+    the whole island. Returns (greatest, local): `greatest` is the greatest
+    distance from the island's boundary on one part's contour to its boundary on
+    the other's, `local` the shortest line through the point from one contour to
+    the other, roughly tangent to tangent. Each is (distance, end, end) or None;
+    both are None when the point isn't inside both. A very long, thin island can
+    break up on the grid, and then only the piece under the point is measured.
     """
     if not len(seg_a) or not len(seg_b):
-        return None
+        return None, None
     px, py = float(point[0]), float(point[1])
     all_pts = np.concatenate([seg_a.reshape(-1, 2), seg_b.reshape(-1, 2)])
     most = float(np.abs(all_pts - (px, py)).max()) * 1.01 + 1e-9
@@ -539,7 +574,7 @@ def overlap_span(seg_a, seg_b, point, oriented=(True, True), half=1.0, cells=160
         if not both[j, i]:
             near = np.argwhere(both[j - 1:j + 2, i - 1:i + 2])
             if not len(near):
-                return None
+                return None, None
             j, i = j - 1 + near[0][0], i - 1 + near[0][1]
         island = _flood(both, j, i)
         at_edge = island[0].any() or island[-1].any() or island[:, 0].any() or island[:, -1].any()
@@ -573,7 +608,7 @@ def overlap_span(seg_a, seg_b, point, oriented=(True, True), half=1.0, cells=160
     pa, sa = on_island(seg_a)
     pb, sb = on_island(seg_b)
     if not len(pa) and not len(pb):
-        return None
+        return None, None
     # one part wholly inside the other: the island's edge is all one contour
     if not len(sa):
         sa = seg_a
@@ -587,7 +622,8 @@ def overlap_span(seg_a, seg_b, point, oriented=(True, True), half=1.0, cells=160
             r = _farthest(pts, other)
             if best is None or r[0] > best[0]:
                 best = r
-    return best
+    near = _chord(sa, sb, np.array([px, py], dtype=np.float64)) if local else None
+    return best, near
 
 
 def palette_color(key):

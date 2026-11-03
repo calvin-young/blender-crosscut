@@ -305,6 +305,20 @@ def test_overlap_span_crescent():
     assert abs(d1 - 1.0) < 0.05 and abs(d2 - 5.0) < 0.05, (d1, d2)
 
 
+def test_overlap_local_width():
+    # a wedge: A's right side is at x = 5, B's left side slopes from x = 0 at the bottom to x = 4 at the top
+    a = _rect(-10, 0, 5, 20)
+    p = [(0, 0), (30, 0), (30, 20), (4, 20)]
+    b = np.array([[p[i], p[(i + 1) % 4]] for i in range(4)], dtype=np.float64)
+    pt = (4.0, 10.0)  # inside both: B's edge is at x = 2 here, so about 3 wide
+    best, near = sm.overlap_measures(a, b, pt, (False, False))
+    assert 4.0 < best[0] < 4.3, best[0]        # the greatest depth, held down by B's flat bottom
+    assert 2.8 < near[0] < 3.1, near[0]        # the local width is here, tangent to tangent
+    assert sm.overlap_span(a, b, pt, (False, False))[0] == best[0]
+    assert sm.overlap_measures(a, b, (-5, 10), (False, False)) == (None, None)
+    assert sm.overlap_measures(a, b, pt, (False, False), local=False)[1] is None
+
+
 def test_overlap_span_contained():
     d, _p, _q = sm.overlap_span(_rect(4, 4, 6, 6), _rect(0, 0, 10, 10), (5, 5))
     assert d > 3.9  # from the small part to the big part's nearest wall

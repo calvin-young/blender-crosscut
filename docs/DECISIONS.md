@@ -10,6 +10,7 @@ this list is an assumption, tracked in the table at the end.
 
 | ID | Requirement | Status in 0.1.0 |
 | --- | --- | --- |
+| R-020 | After 0.11.0 (2026-11-03): no outlines through interiors in Print Preview; Slice looks the same as Section there; Slice Thickness into Section/Slice Plane; cursor, center, selection as small buttons between the arrows; even out the gaps around Measure Overlap, closer to Settings; settings for Measure Overlap (color, text size) and a local width at the mouse, on by default; is "Caps" too unintuitive; Clip Tint doesn't come back after off/on or after Section; left-align the three settings; back on its own tab, as a single panel | 0.12.0, see below |
 | R-019 | After 0.10.0 (2026-11-03): outlines stay black on problem parts; a 0.5 button in the scrub row; Targets inside Caps as "Cap: Visible Objects..."; Interference becomes a third Overlaps option, Highlight, its settings right below; Plane renamed Section/Slice Plane with the scrub settings at its top; Clip remembers the last box; the release plan accepted, with no full release until the maintainer signals | 0.11.0, see below |
 | R-018 | After 0.9.4 (2026-11-03): in development rather than test-only; a steering tally on the status page; guidance on releases; overlays off hide the plane; orange outlines stuck on; hatch scales with part size; caps match Random shading; move to the View tab with Settings folded in; annotations stay over caps; inside-out warning and a Face Orientation toggle; no "Alt+B" wording; drop the faint box, at least once scrubbing; two sliders or a toggle for the clip walls; an easy way to measure an overlap; a translucent cap seen from behind should read red like from outside | 0.10.0, see below |
 | R-017 | After 0.9.3 (2026-11-02): a slider that slides the two Alt+B walls closest to parallel with the view along their normals, the box keeping its size (bounds and reset behaviour left to judgment); X/Y/Z/Object start a section while off; overlapping manifold shells inside one object must not cancel; Print Preview as a toggle under Settings for now | 0.9.4, see below |
@@ -31,6 +32,39 @@ this list is an assumption, tracked in the table at the end.
 | R-001 | Main use: while modelling parts. Secondary: finding interferences when packing buckets | Drives defaults |
 
 ## Decisions
+
+### Changes after the maintainer's notes on 0.11.0 (0.12.0, 2026-11-03)
+
+- **Print Preview**: no contours except selected parts'. Slice wasn't a bug in the code: an opaque bed hides
+  everything below the plane, so Section and Slice drew the same. Now Slice draws only the layer: the
+  powder's surface, or with a thickness the bed between the slab's planes (*assumed* what Slice should mean).
+- **"Caps" renamed** Cut Faces, its row Fill and its colour Fill Color (*assumed*: "caps" is jargon; a
+  cut face is what a person sees). "Cap style" row labels are unchanged.
+- **One panel, own tab** (reverses 0.10.0's View tab, maintainer's call). Settings and its sections are layout
+  panels (D-033).
+- **Local width** (D-034). **Clip Tint** (D-032).
+
+### D-034: Local width is the shortest line through the mouse, one part's contour to the other's (2026-11-03)
+
+- **Decision:** 60 directions through the point, each to the first contour hit either way; the shortest whose ends
+  are on different parts, else the shortest of any. It reads as tangent to tangent, and near a corner it
+  doesn't just cut the corner. Labels: "max" on the greatest depth. The same line twice shows once.
+- **Limits:** a part's own inner shells count as contours (the eyes in a head), so a chord can stop at one.
+
+### D-033: Settings as layout panels, not sub-panels (2026-11-03)
+
+- **Context:** A sub-panel's gap from the main controls is Blender's and can't be changed.
+- **Decision:** `layout.panel_prop` in the single panel, open state in `ui_*` properties. This shrinks the gap,
+  and tests can open them to screenshot and draw them. Open state saves with the scene (*assumed* harmless).
+
+### D-032: Crosscut draws its own clipping tint (2026-11-03)
+
+- **Context:** Blender's tint comes from a box made when the region is drawn. Python can't rebuild it from the
+  planes, so once gone (for scrubbing, or for Section) it couldn't come back.
+- **Decision:** Blender's box is always swapped for an empty one (D-008). With Clip Tint on, Crosscut draws
+  the region's volume itself: a prism of the four walls, only its far side, depth-tested, so it shows on the
+  background as Blender's does. It follows a scrub (the earlier wish was for it to go on scrubbing; that was
+  because Blender's couldn't follow, *assumed*). Colour is a very faint white, close to Blender's by eye.
 
 ### Changes after the maintainer's notes on 0.10.0 (0.11.0, 2026-11-03)
 
@@ -619,3 +653,6 @@ What `tests/blender/run_viewport_tests.py` and the screenshots showed in 0.1.0, 
 | Q-061 | Two fixed sliders for a clipping region, labelled by nearest world axis | assumption | 0.10.0 | feels good so far, per the maintainer |
 | Q-062 | Numbering jumps to 0.10.0, and the release guidance in chat | unasked question | 0.10.0 | agreed (R-019) |
 | Q-063 | A kept clipping box isn't saved with the file | assumption | 0.11.0 | open |
+| Q-064 | "Caps" renamed Cut Faces, Cap to Fill | assumption | 0.12.0 | open |
+| Q-065 | Slice in Print Preview means one layer of powder, or a band | assumption | 0.12.0 | open |
+| Q-066 | Our Clip Tint follows a scrub rather than disappearing | assumption | 0.12.0 | open |

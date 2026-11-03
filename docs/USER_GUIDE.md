@@ -9,7 +9,7 @@ Units below assume 1 Blender unit = 1 mm, but Crosscut works in any unit.
 
 ## Quick start
 
-1. Open the sidebar (N), pick the **View** tab, and find the **Crosscut** panel.
+1. Open the sidebar (N) and pick the **Crosscut** tab.
 2. Click **Section**. The plane starts in the middle of your parts and cuts away the half
    facing you.
 3. Drag **Scrub** to sweep the plane through the parts.
@@ -22,7 +22,7 @@ Units below assume 1 Blender unit = 1 mm, but Crosscut works in any unit.
 ### Section and Slice
 
 - **Section** keeps one side of the plane: a half section.
-- **Slice** keeps only what is near the plane. With **Thickness** 0 you see just the
+- **Slice** keeps only what is near the plane. With **Slice Thickness** 0 (Settings > Section/Slice Plane) you see just the
   cross-section itself; with a thickness you see a slab, centred on the plane.
 - **Clip** is Blender's own clipping region, with caps (see below). The button is lit while the view
   has a box. Click it to turn Section or Slice off and bring back the box they replaced, or draw a new
@@ -64,10 +64,10 @@ for an Object plane).
 - **Scrub** sweeps the plane across the scrub range from 0 to 1. With **Scrub by Distance**
   (Settings > Section/Slice Plane) it shows the position as a distance instead: the world coordinate for X / Y / Z,
   the distance from the object's origin for Object, and from where it was placed for View.
-- The button between the arrows puts it at 0.5. The arrows, and **Shift+Alt+Wheel** in the viewport, move the plane by one **Step**
+- The arrows, and **Shift+Alt+Wheel** in the viewport, move the plane by one **Step**
   (Settings > Section/Slice Plane; default 0.08, one MJF layer). Hold Ctrl as well for 10 steps.
-- **Cursor**, **Center** and **Selection** put the plane through the 3D cursor, the middle of
-  the range, or the selection (selected vertices in Edit Mode).
+- The small buttons between the arrows put the plane through the 3D cursor, the middle of the range
+  (0.5), or the selection (selected vertices in Edit Mode).
 
 ## Settings panel
 
@@ -80,18 +80,21 @@ closed by default.
   seen from inside a part draws in the backface colour.
 - **Clip Tint**: see Clipping region.
 
-### Caps
+### Cut Faces
 
-- **Cap**: which parts get caps: **Visible Objects**, **Selected Objects** (everything is still clipped)
+The faces Crosscut fills where the plane cuts a part (its "caps").
+
+
+- **Fill**: which parts get filled: **Visible Objects**, **Selected Objects** (everything is still clipped)
   or a **Collection**. Objects displayed as Wire or Bounds are never capped; the panel and readout list
   any that are visible.
 - **Colors**:
   - **Auto** follows the viewport's Solid colour setting (Object or Material colour). White
-    or grey parts get the **Cap Color** instead, so the cut stands out; the Cap Color only
+    or grey parts get the **Fill Color** instead, so the cut stands out; the Fill Color only
     shows in the panel when a part uses it.
   - **Object**, **Material**: the object's or first material's viewport colour.
   - **Palette**: a distinct colour per part.
-  - **Single**: the Cap Color everywhere.
+  - **Single**: the Fill Color everywhere.
 - **Hatching** (Hatched only):
   - **Hatch Space**: **Model** keeps the spacing in scene units, locked to the part. **Screen**
     keeps it in pixels at any zoom.
@@ -132,7 +135,7 @@ contours.
 Tick **Print Preview** in **Settings** while Section or Slice is on, with the Z plane and a build volume as the Scrub Range object. The bed fills with
 powder up to the plane, the parts below are buried in it, and each part's cut is drawn as the
 fused layer. Scrub to watch the build come up layer by layer; the readout counts layers at the
-Step size. **Powder** and **Fused** set the colours (white and black by default, as on a
+Step size. **Slice** shows one layer of powder (a band, with Slice Thickness), not the whole bed. **Powder** and **Fused** set the colours (white and black by default, as on a
 Multi Jet Fusion printer), **Grain** the speckle in the powder. Without a Scrub Range object the
 bed is the parts' bounds plus **Bed Margin**.
 
@@ -149,16 +152,17 @@ axis, each labelled with the world axis it's closest to. Each has its own step a
 **Shift+Alt+Wheel** uses the axis facing you most. At 0 and 1 the box is just clear of the Scrub
 Range. **Scrub by Distance** shows where the box's middle is, as a distance.
 
-Blender tints a clipping box very faintly. Crosscut removes that, since it can't follow the box when
-you scrub; tick **Clip Tint** in Settings to keep it until you first scrub.
+**Clip Tint** in Settings shows the region's volume as a faint tint on the background. Blender's own tint
+is always removed, since it can't follow the box; Crosscut's follows it.
 
 ## Measure Overlap
 
-Click **Measure Overlap**, then hover over a place where two parts overlap on a cut. A line and a
-length show how deep the overlap goes: the greatest distance between the two parts' contours around
-that overlap. It runs until you click it again or press Esc. Where more than two parts overlap, it measures
-the first two. A very long, thin overlap can read as several short ones: hover over its deepest
-part.
+Click **Measure Overlap**, then hover over a place where two parts overlap on a cut. Two lines show
+how much they overlap: the overlap's greatest depth anywhere (labelled "max"), which can be away from the mouse,
+and its width right where the mouse is, across from one part's edge to the other's. It runs until you click it
+again or press Esc. Where more than two parts overlap, it measures the first two. A very long, thin overlap can
+read as several short ones: hover over its deepest part. In Settings > Measure Overlap you can set the **Color**
+and **Text Size**, and turn **Local Width** off.
 
 ## Selecting in a zero-thickness slice
 

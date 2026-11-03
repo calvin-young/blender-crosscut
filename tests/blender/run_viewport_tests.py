@@ -787,7 +787,7 @@ def clip_button_follows_key(view):
     for c in reversed(panels):
         bpy.utils.unregister_class(c)
     for c in panels:
-        c.bl_category = "View"
+        c.bl_category = "Crosscut"
         bpy.utils.register_class(c)
     check(T, "no draw errors", not errors(), str(errors()))
 
@@ -1034,7 +1034,7 @@ def clip_tint(view):
         print("    skipped: run Blender with --enable-event-simulate")
         return
     scene = new_scene("cc-tint")
-    box("part-001", (20, 20, 20), (70, 0, 0))   # clear of the box, which then shows the bare background
+    box("part-001", (20, 20, 20), (200, 0, 0))   # clear of the box, which then shows the bare background
     s = scene.crosscut
     view.look((0, 0, 0), 300, (0, 0, 0), ortho=True)
     win = bpy.context.window
@@ -1057,30 +1057,51 @@ def clip_tint(view):
         yield from settle()
 
     far = (view.region.width // 8, view.region.height // 2)  # plain background
-    settings(s, clip_tint=True)
-    yield from draw_box()
-    shot = Shot(view, "tint_on")
-    bg, inside = shot.at(far, r=2), shot.at(view.px((0, 0, 0)), r=2)
-    check(T, "with the setting on, Blender's tint is there", not near(inside, bg, 0), f"{bg} {inside}")
-    with view.override():
-        bpy.ops.crosscut.step(direction=1, clip_axis=0)
-    yield 0.2
-    yield from settle()
-    shot = Shot(view, "tint_after_scrub")
-    a = shot.at(far, r=2)
-    b = shot.at(view.px((0, 0, 0)), r=2)
-    check(T, "scrubbing removes it, clipping stays", near(a, b, 0) and view.rv3d.use_clip_planes, f"{a} {b}")
-    with view.override():
-        bpy.ops.view3d.clip_border('INVOKE_DEFAULT')  # removes the region
-    yield 0.1
+
+    def tinted(name):
+        shot = Shot(view, name)
+        inside, bg = shot.at(view.px((0, 0, 0)), r=2), shot.at(far, r=2)
+        return not near(inside, bg, 0), f"{inside} {bg}"
+
     settings(s, clip_tint=False)
     yield from draw_box()
-    shot = Shot(view, "tint_off")
-    a = shot.at(far, r=2)
-    b = shot.at(view.px((0, 0, 0)), r=2)
-    check(T, "by default there's no tint", near(a, b, 0) and view.rv3d.use_clip_planes, f"{a} {b}")
+    on, d = tinted("tint_off")
+    check(T, "by default there's no tint", not on and view.rv3d.use_clip_planes, d)
     n = len(cc("engine").clip_axes(view.rv3d))
     check(T, "the region's planes survive", n == 2, str(n))
+    s.clip_tint = True
+    yield 0.1
+    yield from settle()
+    on, d = tinted("tint_on")
+    check(T, "turning it on shows it, without a new box", on, d)
+    s.clip_tint = False
+    yield from settle()
+    on, d = tinted("tint_off_again")
+    check(T, "off again hides it", not on, d)
+    s.clip_tint = True
+    yield from settle()
+    on, d = tinted("tint_on_again")
+    check(T, "and back on shows it", on, d)
+    with view.override():
+        bpy.ops.crosscut.set_mode(mode='SLICE')
+    yield 0.2
+    yield from settle()
+    on, d = tinted("tint_during_slice")
+    with view.override():
+        bpy.ops.crosscut.clip('INVOKE_DEFAULT')
+    yield 0.2
+    yield from settle()
+    on, d = tinted("tint_after_slice")
+    check(T, "Slice and back keeps it", on and view.rv3d.use_clip_planes, d)
+    # it follows a scrub
+    axes = cc("engine").clip_axes(view.rv3d)
+    with view.override():
+        s.clip_position_1 = axes[0][1] + 40.0
+        s.clip_position_2 = axes[1][1] + 40.0
+    yield 0.1
+    yield from settle()
+    on, d = tinted("tint_scrubbed")
+    check(T, "it moves with the box: the old place is clear", not on, d)
     view.rv3d.use_clip_planes = False
     check(T, "no draw errors", not errors(), str(errors()))
 
@@ -1264,6 +1285,10 @@ def measure_overlap(view):
     with view.override():
         res = dr._measure_at(bpy.context, r, r.x + view.px((2.5, 0, 0))[0], r.y + view.px((2.5, 0, 0))[1])
         check(T, "the overlap's depth", res is not None and abs(res[2] - 5.0) < 0.1, str(res and res[2]))
+        s.measure_local = False
+        res2 = dr._measure_at(bpy.context, r, r.x + view.px((2.5, 0, 0))[0], r.y + view.px((2.5, 0, 0))[1])
+        check(T, "Local Width off: one measure", res2 is not None and res2[3] is None)
+        s.measure_local = True
         px = view.px((-20, 0, 0))
         check(T, "over one part: nothing", dr._measure_at(bpy.context, r, r.x + px[0], r.y + px[1]) is None)
     if bpy.app.use_event_simulate:
@@ -1282,6 +1307,30 @@ def measure_overlap(view):
         win.event_simulate('MOUSEMOVE', 'NOTHING', x=r.x + x, y=r.y + y)
         yield 0.3
         check(T, "leaving clears it", dr._measure["a"] is None)
+        # two round parts: away from the deepest place, the local width is less than the greatest depth
+        for ob in list(scene.objects):
+            bpy.data.objects.remove(ob)
+        cylinder("part-001", 30, 30, (-26, 0, 0), (0.3, 0.55, 0.85))
+        cylinder("part-002", 30, 30, (26, 0, 0), (0.9, 0.6, 0.2))
+        view.look((0, 0, 0), 120, (0, 0, 0), ortho=True)
+        s.overlap_style = 'BLEND'
+        yield 0.1
+        yield from settle()
+        x, y = view.px((0, 11, 0))
+        win.event_simulate('MOUSEMOVE', 'NOTHING', x=r.x + x, y=r.y + y)
+        yield 0.3
+        yield from settle()
+        Shot(view, "measure_two_lines")
+        m = dr._measure
+        check(T, "two measures, labelled", m["la"] is not None and m["text"].startswith("max ") and bool(m["ltext"]),
+              f"{m['text']} / {m['ltext']}")
+        max_d = float(np.linalg.norm(np.asarray(m["a"]) - m["b"]))
+        loc_d = float(np.linalg.norm(np.asarray(m["la"]) - m["lb"])) if m["la"] is not None else 0.0
+        check(T, "the local width is narrower here", 0.0 < loc_d < max_d - 0.2, f"{loc_d} {max_d}")
+        x, y = view.px((-20, 0, 0))
+        win.event_simulate('MOUSEMOVE', 'NOTHING', x=r.x + x, y=r.y + y)
+        yield 0.3
+        check(T, "leaving clears both", dr._measure["a"] is None and dr._measure["la"] is None)
         win.event_simulate('ESC', 'PRESS', x=r.x + x, y=r.y + y)
         win.event_simulate('ESC', 'RELEASE', x=r.x + x, y=r.y + y)
         yield 0.2
@@ -2011,6 +2060,19 @@ def ui_panels(view):
         bpy.utils.register_class(c)
     yield 0.2
     yield from settle()
+    # every settings section opened, to see them and to run their drawing
+    s.overlap_style = 'HIGHLIGHT'
+    s.ui_settings = True
+    for name, prop in (("cut_faces", "ui_cut_faces"), ("plane", "ui_plane"), ("measure", "ui_measure"),
+                       ("print_preview", "ui_print_preview")):
+        setattr(s, prop, True)
+        yield 0.1
+        yield from settle()
+        Shot(view, f"ui_section_{name}")
+        setattr(s, prop, False)
+    s.ui_settings = False
+    yield 0.1
+    yield from settle()
     shot = Shot(view, "ui_sidebar")
     # crop the sidebar out of the area screenshot
     x0 = ui.x - view.area.x
@@ -2025,22 +2087,8 @@ def ui_panels(view):
     for c in reversed(panels):
         bpy.utils.unregister_class(c)
     for c in panels:
-        c.bl_category = "View"
+        c.bl_category = "Crosscut"
         bpy.utils.register_class(c)
-    # draw the closed sub-panels too, one at a time, in popups
-    s.overlap_style = 'HIGHLIGHT'
-    for name in ("display", "plane", "settings", "print_preview"):
-        with view.override():
-            bpy.ops.wm.call_panel(name=f"CROSSCUT_PT_{name}", keep_open=True)
-        yield 0.2
-        yield from settle()
-        Shot(view, f"ui_panel_{name}")
-        if bpy.app.use_event_simulate:
-            cx, cy = view.region.x + 40, view.region.y + 40
-            bpy.context.window.event_simulate('MOUSEMOVE', 'NOTHING', x=cx, y=cy)
-            bpy.context.window.event_simulate('ESC', 'PRESS', x=cx, y=cy)
-            bpy.context.window.event_simulate('ESC', 'RELEASE', x=cx, y=cy)
-            yield 0.2
     with view.override():
         bpy.ops.wm.call_panel(name="CROSSCUT_PT_popover", keep_open=True)
     yield 0.2
@@ -2073,6 +2121,25 @@ def print_preview(view):
     check(T, "powder inside the hollow part too", powder(c), f"{c}")
     c = shot.at(view.px((0, -45, -45)), r=2)
     check(T, "the part below the plane is buried (bed side or surface shows)", min(c) > 150, f"{c}")
+    # a slice is one layer: the powder's surface alone, with nothing below it
+    side = view.px((0, -60, -45))
+    check(T, "section: the bed's side shows", min(shot.at(side, r=2)) > 120, str(shot.at(side, r=2)))
+    settings(s, mode='SLICE', orientation='Z', offset=0.0, range_source='OBJECT', range_object=bed)
+    s.print_preview = True
+    yield from settle()
+    slice_shot = Shot(view, "print_preview_slice")
+    check(T, "slice: nothing below the layer", near(slice_shot.at(side, r=2), bg_of(slice_shot, view), 8),
+          str(slice_shot.at(side, r=2)))
+    c = slice_shot.at(view.px((45, 45, 0)), r=2)
+    check(T, "slice: the layer's powder is there", powder(c), f"{c}")
+    s.thickness = 20.0
+    yield from settle()
+    slab = Shot(view, "print_preview_slab")
+    check(T, "slab: a band of powder, its side showing", min(slab.at(view.px((0, -60, -5)), r=1)) > 120
+          and near(slab.at(side, r=2), bg_of(slab, view), 8), str(slab.at(view.px((0, -60, -5)), r=1)))
+    settings(s, mode='SECTION', orientation='Z', offset=0.0, range_source='OBJECT', range_object=bed)
+    s.print_preview = True
+    yield from settle()
     lines = cc("draw").readout_lines(scene, s, cc("draw").last_info(view.region))[0]
     check(T, "readout counts layers", bool(lines) and "layer " in lines[0] and "Print Preview" in lines[0],
           str(lines))
