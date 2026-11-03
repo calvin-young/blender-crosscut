@@ -24,9 +24,9 @@ Units below assume 1 Blender unit = 1 mm, but Crosscut works in any unit.
 - **Section** keeps one side of the plane: a half section.
 - **Slice** keeps only what is near the plane. With **Thickness** 0 you see just the
   cross-section itself; with a thickness you see a slab, centred on the plane.
-- **Clip** is Blender's own clipping region, with caps (see below). The button is lit
-  while the view has a box. Click it to turn Section or Slice off and draw a box in the viewport;
-  click it when lit to remove the box.
+- **Clip** is Blender's own clipping region, with caps (see below). The button is lit while the view
+  has a box. Click it to turn Section or Slice off and bring back the box they replaced, or draw a new
+  one; click it when lit to remove the box.
 
 Clicking a lit Section or Slice turns Crosscut off. Turning it off removes all clipping from the
 view, including a clipping region that was there before. With everything off, **X**, **Y**, **Z**,
@@ -62,10 +62,10 @@ for an Object plane).
 ### Scrub
 
 - **Scrub** sweeps the plane across the scrub range from 0 to 1. With **Scrub by Distance**
-  (Settings > Scrub Settings) it shows the position as a distance instead: the world coordinate for X / Y / Z,
+  (Settings > Section/Slice Plane) it shows the position as a distance instead: the world coordinate for X / Y / Z,
   the distance from the object's origin for Object, and from where it was placed for View.
-- The arrows, and **Shift+Alt+Wheel** in the viewport, move the plane by one **Step**
-  (Settings > Scrub Settings; default 0.08, one MJF layer). Hold Ctrl as well for 10 steps.
+- The button between the arrows puts it at 0.5. The arrows, and **Shift+Alt+Wheel** in the viewport, move the plane by one **Step**
+  (Settings > Section/Slice Plane; default 0.08, one MJF layer). Hold Ctrl as well for 10 steps.
 - **Cursor**, **Center** and **Selection** put the plane through the 3D cursor, the middle of
   the range, or the selection (selected vertices in Edit Mode).
 
@@ -82,6 +82,9 @@ closed by default.
 
 ### Caps
 
+- **Cap**: which parts get caps: **Visible Objects**, **Selected Objects** (everything is still clipped)
+  or a **Collection**. Objects displayed as Wire or Bounds are never capped; the panel and readout list
+  any that are visible.
 - **Colors**:
   - **Auto** follows the viewport's Solid colour setting (Object or Material colour). White
     or grey parts get the **Cap Color** instead, so the cut stands out; the Cap Color only
@@ -97,12 +100,13 @@ closed by default.
   - **Vary per Object** alternates direction, then spacing, between parts, so touching
     sections stay distinguishable. Each part keeps its variation when others are hidden, shown
     or added.
-- **Outline** draws the cut contour. A red outline means the mesh is open (non-manifold) there, or
-  inside out. Selected parts' contours are drawn in the
+- **Outline** draws the cut contour. Selected parts' contours are drawn in the
   theme's selection colours (when the viewport shows selection outlines), whether or not
   Outline is on.
-- **Overlaps**: where parts' sections overlap, **Blend** mixes their colours equally, and
-  **Stripes** gives each part an equal share of stripes (**Stripe Width** in the hatch space).
+- **Overlaps**: where parts' sections overlap, **Blend** mixes their colours equally, **Stripes** gives
+  each part an equal share of stripes (**Stripe Width** in the hatch space), and **Highlight** marks them,
+  in a **Style** (Solid, Hatched, Cross), **Color**, **Line Color** and **Opacity** you set. Below full
+  opacity, the blended overlap shows through.
 - **Open Part Opacity**: the cap's opacity on a part with holes in its mesh, since its cut may not
   show real material (default 50 %). The readout warns in amber when a cut goes through such a
   part, and in red when the hole is on the plane itself, where the gaps get closed by guesswork.
@@ -112,8 +116,12 @@ closed by default.
 In X-ray (Alt+Z) caps follow the viewport's X-ray opacity, and nothing hides them or their
 contours.
 
-### Plane
+### Section/Slice Plane
 
+- **Scrub Range** is what Scrub sweeps across: the targets' bounds, or an **Object**'s bounds, such as a
+  build volume. The eyedropper uses the active object. The range object is never capped, and with it
+  the readout counts steps (for example `step 150 / 1500`).
+- **Scrub by Distance** and **Step**: see Scrub above.
 - **Display**: None, Frame, Tint or Hatched.
 - **Color** sets its colour, and **Second Plane** the colour of a slab's other plane.
 - **Opacity** sets the tint (default 3 %; the slider goes to 10 %, type a value for more).
@@ -132,7 +140,9 @@ bed is the parts' bounds plus **Bed Margin**.
 
 **Clip** is Blender's own clipping region (the Alt+B shortcut works too). It gets caps in the current
 cap style (Backfaces turns this off). Pressing Alt+B while Section or Slice is on gives clipping back to
-Blender and turns them off. Clicking Section or Slice while a clipping region is on replaces it.
+Blender and turns them off. Clicking Section or Slice while a clipping region is on replaces it, and
+clicking **Clip** brings that box back, until you close the file. Clicking Clip while it's lit removes
+the box for good, so the next click draws a new one.
 
 With Clip on, two **Scrub** sliders slide the box through the parts without changing its size, one per
 axis, each labelled with the world axis it's closest to. Each has its own step arrows.

@@ -8,7 +8,7 @@ The human-facing overview is in [README.md](README.md).
 - **What it is:** a Blender add-on that adds filled (solid or hatched) caps to viewport
   clipping, plus section and slice views with a scrub slider. It drives the same
   `RegionView3D.clip_planes` that Alt+B uses and draws the caps with the `gpu` module.
-- **Status:** in development (0.10.0, 2026-11-03), used on real work, not close to 1.0; tested in Blender (4.2.23 and 5.2.3,
+- **Status:** in development (0.11.0, 2026-11-03), used on real work, not close to 1.0; tested in Blender (4.2.23 and 5.2.3,
   OpenGL; 5.2 on Vulkan too) with the in-viewport suite below. Waiting for the maintainer's
   test on real work. See "State and next steps".
 - **Runs in:** Blender 4.2+ as an extension (`crosscut/blender_manifest.toml`); Python 3.11
@@ -101,12 +101,14 @@ this file, the reasons behind decisions and the approaches that were dropped go 
   (D-022). 203 viewport checks. Branch `mjf-preview` is kept only for the demo reel in `demo-reels`;
   new work goes on `main`.
 - **Builds:** every build gets a tag, a GitHub pre-release with the zip attached, and a new download
-  link on the Workbench row (see ai-context, topics/workstation.md).
+  link on the Workbench row (see ai-context, topics/workstation.md). The zip is also attached at the
+  top of the reply. No full release until the maintainer signals it in a thread here.
 - 0.10.0: moved to the View tab, Measure Overlap (D-030), two clip sliders, annotations over caps (D-029),
   inside-out warnings, Random colours, hatch scale. 237+ viewport checks.
+- 0.11.0: Clip remembers its box (D-031), Highlight in Overlaps, panels simplified, dark outlines. 246 viewport checks.
 - **1.0 is not close (maintainer, 2026-11-02).** It's in development, not a test-only stretch (2026-11-03).
   Say so plainly when bugs and features are still coming; don't call it nearly done.
-- Next: the maintainer keeps testing. Open questions Q-030 to Q-062 in DECISIONS.md. Then the Issues.
+- Next: the maintainer keeps testing. Open questions Q-030 to Q-063 in DECISIONS.md. Then the Issues.
 - Not tested yet: macOS/Windows, HiDPI scaling above 1, Metal, very large multi-object scenes.
 
 ## Before you change things

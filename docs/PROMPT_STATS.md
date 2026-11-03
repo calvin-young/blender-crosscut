@@ -23,7 +23,7 @@ line below carries a category.
 
 | Bugs found | UI tweaks | New features | Direction | Total |
 |---|---|---|---|---|
-| 20 | 37 | 20 | 9 | 86 |
+| 20 | 42 | 21 | 10 | 93 |
 
 ## Sessions
 
@@ -33,7 +33,7 @@ steering lines matters more than the count of prompts.
 
 | Date | Tool and model | Prompts | Steering lines | Notes |
 |---|---|---|---|---|
-| 2026-11-02 | Claude Code (workstation), Opus 5.5 | 5 | 26 | 0.9.2 to 0.10.0 from the maintainer's notes after several days of real use |
+| 2026-11-02 | Claude Code (workstation), Opus 5.5 | 6 | 33 | 0.9.2 to 0.11.0 from the maintainer's notes after several days of real use |
 | 2026-10-30 | Claude Code (workstation), Opus 5.5 | 3 | 3 | `mjf-preview` branch: Print Preview, for the demo reel in the demo-reels repo |
 | 2026-10-29 | Claude Code (workstation), Opus 5.5 | 5 | 17 | First in-Blender test pass: viewport test suite, 0.2.0 fixes, zip; then 0.3.0, 0.4.0, the 0.9.0 release candidate and 0.9.1 from the maintainer's tests |
 | 2026-10-26 | Claude (cloud session), Opus 5.5 | 1 | 3 | Repo created; first user test; handoff to Claude Code |
@@ -45,6 +45,13 @@ One line for each thing the human contributed that the AI would not have done on
 newest first, tagged with its kind (decide, correct, domain, tested, scope) and, from 2026-11-03, its
 category (bug, ui, feature, direction).
 
+- 2026-11-03 [decide][direction]: release plan accepted; no full release until the maintainer signals it.
+- 2026-11-03 [correct][ui]: outlines on problem parts should be black, like a solid part's.
+- 2026-11-03 [decide][ui]: a 0.5 button between the scrub arrows.
+- 2026-11-03 [decide][ui]: Targets into Caps as "Cap: Visible Objects".
+- 2026-11-03 [decide][ui]: Interference as a third Overlaps option, Highlight, with its settings below.
+- 2026-11-03 [decide][ui]: Plane renamed Section/Slice Plane, scrub settings at its top.
+- 2026-11-03 [decide][feature]: Clip remembers the last box when coming back from Section or Slice.
 - 2026-11-03 [decide][direction]: treat it as in development, not a test-only stretch; asked for guidance on releases and the long game.
 - 2026-11-03 [decide][ui]: overlays off should hide the plane.
 - 2026-11-03 [tested][bug]: orange outlines stuck on for unselected parts, even with overlays off.

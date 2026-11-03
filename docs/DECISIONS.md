@@ -10,6 +10,7 @@ this list is an assumption, tracked in the table at the end.
 
 | ID | Requirement | Status in 0.1.0 |
 | --- | --- | --- |
+| R-019 | After 0.10.0 (2026-11-03): outlines stay black on problem parts; a 0.5 button in the scrub row; Targets inside Caps as "Cap: Visible Objects..."; Interference becomes a third Overlaps option, Highlight, its settings right below; Plane renamed Section/Slice Plane with the scrub settings at its top; Clip remembers the last box; the release plan accepted, with no full release until the maintainer signals | 0.11.0, see below |
 | R-018 | After 0.9.4 (2026-11-03): in development rather than test-only; a steering tally on the status page; guidance on releases; overlays off hide the plane; orange outlines stuck on; hatch scales with part size; caps match Random shading; move to the View tab with Settings folded in; annotations stay over caps; inside-out warning and a Face Orientation toggle; no "Alt+B" wording; drop the faint box, at least once scrubbing; two sliders or a toggle for the clip walls; an easy way to measure an overlap; a translucent cap seen from behind should read red like from outside | 0.10.0, see below |
 | R-017 | After 0.9.3 (2026-11-02): a slider that slides the two Alt+B walls closest to parallel with the view along their normals, the box keeping its size (bounds and reset behaviour left to judgment); X/Y/Z/Object start a section while off; overlapping manifold shells inside one object must not cancel; Print Preview as a toggle under Settings for now | 0.9.4, see below |
 | R-016 | After 0.9.2 (2026-11-02): put the plane row back while off (View is used to start a plane); Alt+B button first in the row and named Clip; fix the button staying lit after the Alt+B key; 1.0 is not close: keep user testing, and push back when bugs and features keep coming; download buttons on the status page. Asked whether vanilla Alt+B can be scrubbed | 0.9.3, see below |
@@ -30,6 +31,26 @@ this list is an assumption, tracked in the table at the end.
 | R-001 | Main use: while modelling parts. Secondary: finding interferences when packing buckets | Drives defaults |
 
 ## Decisions
+
+### Changes after the maintainer's notes on 0.10.0 (0.11.0, 2026-11-03)
+
+- **Dark outlines always** (replaces 0.10.0's red): warnings live in the readout only. So a part's open
+  places aren't marked on the cut any more.
+- **Highlight** replaces the `interference` switch: Blend under it, as when the highlight was on with
+  Blend. Default Highlight, the old default look. The settings are just below the choice, so the
+  Interference panel and the separate Scrub Settings and Cap Targets panels are gone.
+- **Clip memory** (D-031).
+- **Releases**, agreed: stay on 0.x with no 1.0 finish line; the middle number for features, the last for
+  fixes; `main` always usable; branches only for big or risky work; a pre-release per build. A full
+  release only when the maintainer signals it in the project's thread.
+- The **Center** button stays in its row beside the new 0.5 button (*assumed*, asked in chat).
+
+### D-031: Clip remembers the box Section or Slice replaced (2026-11-03)
+
+- **Decision:** When Crosscut takes over a view with clipping on, it keeps those planes, per view. Clip
+  brings them back on an empty box (D-008), so the tint doesn't come back. Lit, Clip removes the box and
+  nothing is kept, which is the way to a new box; any new box replaces what was kept.
+- **Limits:** in memory, not saved with the file (*assumed*).
 
 ### Changes after the maintainer's notes on 0.9.4 (0.10.0, 2026-11-03)
 
@@ -592,8 +613,9 @@ What `tests/blender/run_viewport_tests.py` and the screenshots showed in 0.1.0, 
 | Q-055 | Alt+B scrub: slider reads the current axis, range to just clear of the Scrub Range, positive toward the viewer (D-027) | assumption | 0.9.4 | open |
 | Q-056 | Print Preview is last in Settings, marked experimental | assumption | 0.9.4 | open |
 | Q-057 | Overlays off hide plane and readout but not caps or dark contours | assumption | 0.10.0 | open |
-| Q-058 | The stuck orange outline was the open contour | assumption | 0.10.0 | open |
-| Q-059 | A cap seen from behind with Face Orientation on draws in the backface colour | assumption | 0.10.0 | open |
+| Q-058 | The stuck orange outline was the open contour | assumption | 0.10.0 | moot: contours stay dark (R-019) |
+| Q-059 | A cap seen from behind with Face Orientation on draws in the backface colour | assumption | 0.10.0 | confirmed by the maintainer |
 | Q-060 | Clip Tint off by default; hatch Scale with Part 0.5 by default | assumption | 0.10.0 | open |
-| Q-061 | Two fixed sliders for a clipping region, labelled by nearest world axis | assumption | 0.10.0 | open |
-| Q-062 | Numbering jumps to 0.10.0, and the release guidance in chat | unasked question | 0.10.0 | open |
+| Q-061 | Two fixed sliders for a clipping region, labelled by nearest world axis | assumption | 0.10.0 | feels good so far, per the maintainer |
+| Q-062 | Numbering jumps to 0.10.0, and the release guidance in chat | unasked question | 0.10.0 | agreed (R-019) |
+| Q-063 | A kept clipping box isn't saved with the file | assumption | 0.11.0 | open |
