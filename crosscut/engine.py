@@ -103,34 +103,48 @@ def bed_bounds(context, s):
     return lo - np.array([m, m, 0.0]), hi + m
 
 
-def clip_axis(rv3d):
-    """For an Alt+B box: (axis, centre, half width) of the pair of opposite walls
-    closest to parallel with the view, where `axis` points from one wall to the
-    other, toward the viewer, and the centre and half width are measured along
-    it. None without such a pair."""
-    planes = [np.array(p, dtype=np.float64) for p in rv3d.clip_planes]
-    walls = [p for p in planes if not sm.plane_is_degenerate(p)]
-    toward = np.array(rv3d.view_matrix.inverted())[:3, 2]
-    best = None
-    for i, a in enumerate(walls):
-        for b in walls[i + 1:]:
-            if float(a[:3] @ b[:3]) >= 0.0:
-                continue
-            score = max(abs(float(a[:3] @ toward)), abs(float(b[:3] @ toward)))
-            if best is None or score > best[0] + 1e-6:
-                best = (score, a, b)
-    if best is None:
+def clip_axes(rv3d):
+    """For a clipping region: one (axis, centre, half width) per pair of opposite
+    walls, in a fixed order. Each axis runs from one wall of the pair to the other,
+    and points along the positive end of the world axis it's closest to, so it
+    doesn't flip as the view moves. Centre and half width are measured along it."""
+    walls = [np.array(p, dtype=np.float64) for p in rv3d.clip_planes
+             if not sm.plane_is_degenerate(np.array(p, dtype=np.float64))]
+    out = []
+    free = list(range(len(walls)))
+    while len(free) >= 2:
+        i = free.pop(0)
+        a = walls[i]
+        j = min(free, key=lambda k: float(a[:3] @ walls[k][:3]))
+        if float(a[:3] @ walls[j][:3]) >= 0.0:
+            continue
+        free.remove(j)
+        b = walls[j]
+        axis = sm.normalize(a[:3] - b[:3])
+        axis = axis * (1.0 if axis[int(np.abs(axis).argmax())] > 0.0 else -1.0)
+        ta, tb = -a[3] / float(a[:3] @ axis), -b[3] / float(b[:3] @ axis)
+        out.append((axis, 0.5 * (ta + tb), 0.5 * abs(ta - tb)))
+    return out
+
+
+def clip_axis_label(axis):
+    """The world axis a clipping region's axis is closest to, for its slider."""
+    return "XYZ"[int(np.abs(axis).argmax())]
+
+
+def clip_facing_axis(rv3d):
+    """The axis of the walls most facing the viewer, pointing toward the viewer:
+    which way the mouse wheel slides the region. None if it has no walls to slide."""
+    axes = clip_axes(rv3d)
+    if not axes:
         return None
-    _, a, b = best
-    axis = sm.normalize(a[:3] - b[:3])
-    if float(axis @ toward) < 0.0:
-        axis = -axis
-    ta, tb = -a[3] / float(a[:3] @ axis), -b[3] / float(b[:3] @ axis)
-    return axis, 0.5 * (ta + tb), 0.5 * abs(ta - tb)
+    toward = np.array(rv3d.view_matrix.inverted())[:3, 2]
+    axis = max(axes, key=lambda a: abs(float(a[0] @ toward)))[0]
+    return axis if float(axis @ toward) >= 0.0 else -axis
 
 
 def shift_clip(rv3d, axis, delta):
-    """Slide an Alt+B box along `axis` without changing its shape."""
+    """Slide a clipping region along `axis` without changing its shape."""
     move = axis * delta
     out = []
     for p in rv3d.clip_planes:
@@ -142,14 +156,14 @@ def shift_clip(rv3d, axis, delta):
 
 
 def clip_range(s, axis, half):
-    """(lo, hi) of an Alt+B box's centre: from just short of the scrub range to
-    just past it, so the box sweeps all the way through."""
+    """(lo, hi) of a clipping region's centre: from just short of the scrub range
+    to just past it, so the region sweeps all the way through."""
     lo, hi = _range_along(s, axis)
     return lo - half, hi + half
 
 
 def native_caps(rv3d):
-    """Caps for Blender's own Alt+B clipping region."""
+    """Caps for Blender's own clipping region."""
     planes = [np.array(p, dtype=np.float64) for p in rv3d.clip_planes]
     out = []
     for i, p in enumerate(planes):
@@ -447,25 +461,44 @@ def section(target, cap_index, plane, depsgraph, bounds=()):
     return res
 
 
-def is_open_mesh(target, depsgraph):
-    """True if the target's mesh has holes, wherever they are. Worked out once
-    per mesh version, and only for parts actually being cut."""
+def _mesh_facts(target, depsgraph):
+    """The mesh's cache entry with its open / oriented / inside-out facts, worked
+    out once per mesh version and only for parts actually being cut."""
     e = _mesh(target, depsgraph)
     if e is None:
-        return False
+        return None
     if "open" not in e:
         e["open"], e["oriented"] = sm.mesh_edge_state(e["v"], e["t"])
-    return e["open"]
+        size = np.prod(np.maximum(e["bbmax"] - e["bbmin"], 1e-12))
+        e["inside_out"] = sm.mesh_signed_volume(e["v"], e["t"]) < -1e-6 * float(size)
+    return e
+
+
+def is_open_mesh(target, depsgraph):
+    """True if the target's mesh has holes, wherever they are."""
+    e = _mesh_facts(target, depsgraph)
+    return e is not None and e["open"]
 
 
 def is_oriented(target, depsgraph):
     """True if the target's contours can be filled by winding number: overlapping
     shells inside it then add up instead of cancelling."""
+    e = _mesh_facts(target, depsgraph)
+    return e is not None and e["oriented"]
+
+
+def is_inside_out(target, depsgraph):
+    """True if the target's normals point inward overall."""
+    e = _mesh_facts(target, depsgraph)
+    return e is not None and e["inside_out"]
+
+
+def part_size(target, depsgraph):
+    """The target's size in the world: its bounding box's diagonal."""
     e = _mesh(target, depsgraph)
     if e is None:
-        return False
-    is_open_mesh(target, depsgraph)
-    return e["oriented"]
+        return 0.0
+    return float(np.linalg.norm(target.matrix[:3, :3] @ (e["bbmax"] - e["bbmin"])))
 
 
 def flush_section(target, cap_index, plane, depsgraph, bounds=()):
@@ -485,15 +518,15 @@ def flush_section(target, cap_index, plane, depsgraph, bounds=()):
     return None
 
 
-def objects_at(context, s, point, plane, depsgraph):
-    """Owners of the targets whose section on `plane` (cap index 0, as drawn)
-    contains the world point, in target order. Fills the way the cap does:
-    by winding number if the mesh allows it, else even-odd."""
+def targets_at(context, s, point, plane, depsgraph, cap_index=0, bounds=()):
+    """(target, segments) of the targets whose section on `plane` contains the
+    world point, in target order. Fills the way the cap does: by winding number if
+    the mesh allows it, else even-odd."""
     u, v = sm.plane_basis(sm.normalize(plane[:3]))
     px, py = float(point @ u), float(point @ v)
     out = []
     for t in collect_targets(context, s, depsgraph):
-        res = section(t, 0, plane, depsgraph)
+        res = section(t, cap_index, plane, depsgraph, bounds)
         if res is None:
             continue
         seg = res[0]
@@ -507,7 +540,17 @@ def objects_at(context, s, point, plane, depsgraph):
             inside = int(np.count_nonzero(by[right] > ay[right])) != int(np.count_nonzero(by[right] < ay[right]))
         else:
             inside = int(np.count_nonzero(right)) % 2 == 1
-        if inside and t.owner not in out:
+        if inside:
+            out.append((t, seg))
+    return out
+
+
+def objects_at(context, s, point, plane, depsgraph):
+    """Owners of the targets whose section on `plane` (cap index 0, as drawn)
+    contains the world point, in target order."""
+    out = []
+    for t, _seg in targets_at(context, s, point, plane, depsgraph):
+        if t.owner not in out:
             out.append(t.owner)
     return out
 
@@ -546,3 +589,5 @@ def on_depsgraph_update(_scene, depsgraph):
 
 def on_load(*_args):
     invalidate_all()
+    from . import draw
+    draw.measure_stop()

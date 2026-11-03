@@ -2,13 +2,13 @@
 
 Live, non-destructive **section** and **slice** views for Blender's 3D viewport.
 
-Blender's clipping region (Alt+B) shows you the backfaces of whatever it cuts. Crosscut
+Blender's clipping region shows you the backfaces of whatever it cuts. Crosscut
 uses the same viewport clip planes and adds **caps**: the cut is filled (and optionally
 hatched) wherever the plane passes through solid material, so a cut part reads as a solid
 cross-section, the way section views work in CAD. One click switches back to the plain
 backface look.
 
-| Backfaces (plain Alt+B) | Hatched section | Slice |
+| Backfaces (plain clipping) | Hatched section | Slice |
 |---|---|---|
 | ![Backfaces](docs/images/screenshots/01_section_backfaces.png) | ![Hatched section](docs/images/screenshots/03_section_hatched.png) | ![Slice](docs/images/screenshots/04_slice_section_only.png) |
 
@@ -21,7 +21,7 @@ the maintainer's hand-made mock-ups in [docs/images/reference/](docs/images/refe
 - **Planes** along X, Y, Z, an object's local X, Y or Z (an Empty you move with G/R, or the part
   itself), or **View**: facing the view as it is when you click, and staying put when you orbit.
 - **Cap styles**: Backfaces (native look), Solid, Hatched. They apply to Section, Slice and
-  Blender's own Alt+B box alike; Backfaces turns capping off everywhere.
+  Blender's own clipping region alike; Backfaces turns capping off everywhere.
 - **Scrub** the plane across the parts, or across any object's bounds (for example a build
   volume), as a 0-1 slider or as a distance. Step buttons and **Shift+Alt+Wheel** move it by a
   fixed step (default 0.08, one MJF layer at 1 unit = 1 mm); add Ctrl for 10 steps.
@@ -32,8 +32,9 @@ the maintainer's hand-made mock-ups in [docs/images/reference/](docs/images/refe
   different colours.
 - **Open meshes** are named in the viewport readout whenever a cut goes through one, and their
   caps go translucent, since the fill may not be real material. Where the hole is on the plane,
-  the contour turns orange and the warning red; gaps are closed so the fill still makes sense.
-- **Scrub an Alt+B box**: slide it through the parts without changing its size.
+  the contour and the warning turn red; gaps are closed so the fill still makes sense.
+- **Scrub a clipping region**: slide it through the parts along either axis, without changing its size.
+- **Measure Overlap**: hover over where two parts overlap on a cut to see how deep it goes.
 - **Print Preview** (experimental): powder up to the plane and the fused layer on top, as inside a
   powder-bed printer.
 - **Selectable in a zero-thickness slice**: click a section to select its part.
@@ -58,12 +59,12 @@ Edit > Preferences > Get Extensions > (menu, top right) > Install from Disk.
 
 ## Use
 
-Open the sidebar (N) > **Crosscut**, click **Section** or **Slice**, drag **Scrub**. The full
+Open the sidebar (N) > **View** > **Crosscut**, click **Section** or **Slice**, drag **Scrub**. The full
 walk-through is in the [user guide](docs/USER_GUIDE.md).
 
 | Where | What |
 |---|---|
-| Sidebar (N) > Crosscut | Clip (Alt+B) / Section / Slice, cap style, plane, scrub; everything else in Settings below (closed) |
+| Sidebar (N) > View > Crosscut | Clip / Section / Slice, cap style, plane, scrub, Measure Overlap; everything else in Settings (closed) |
 | **Shift+Alt+B** (3D View) | Pie: Section X / Y / Z, On/Off, Backfaces/Caps, Section/Slice, Flip, Section from View |
 | Header button (right) | Toggle on/off, popover with the main controls |
 | **Shift+Alt+Wheel** | Step the plane (Ctrl for x10) while Crosscut is on |
@@ -75,7 +76,7 @@ whole section.
 
 ## How it works
 
-1. The plane(s) go into the view's `RegionView3D.clip_planes`, exactly the planes Alt+B sets, so
+1. The plane(s) go into the view's `RegionView3D.clip_planes`, exactly the planes Blender's clipping region uses, so
    everything (including selection) is clipped by Blender itself.
 2. For each target, the evaluated mesh is intersected with the plane in numpy. Shared edges are
    evaluated in a canonical order, so the result is watertight even for unwelded STL-style
@@ -99,7 +100,7 @@ whole section.
 
 ## Status
 
-**In testing (0.9.4).** Not 1.0 yet: it's still getting bug fixes and new features from real use. 0.1.0 was written without access to Blender; since 0.2.0
+**In development (0.10.0).** It's used on real work and still getting bug fixes and new features. 0.1.0 was written without access to Blender; since 0.2.0
 every build is run and tested in Blender with an automated in-viewport test suite
 ([`tests/blender/`](tests/blender/run_viewport_tests.py)), and 0.3.0 to 0.9.0 followed the
 maintainer's tests on real parts. Tested on Blender 4.2.23 LTS and 5.2.3 LTS (Linux, OpenGL;

@@ -250,7 +250,7 @@ def settings(s, **kw):
                 show_readout=True, range_source='TARGETS', range_object=None,
                 hatch_space='SCREEN', hatch_pitch_px=10.0, scrub_distance=False, overlap_style='BLEND',
                 interference_style='CROSS', interference_opacity=1.0, plane_opacity=0.10,
-                stripe_width_px=12.0, open_opacity=1.0, object_axis='Z')
+                stripe_width_px=12.0, open_opacity=1.0, object_axis='Z', clip_tint=True)
     base.update(kw)
     for k, v in base.items():
         setattr(s, k, v)
@@ -791,7 +791,7 @@ def clip_button_follows_key(view):
     for c in reversed(panels):
         bpy.utils.unregister_class(c)
     for c in panels:
-        c.bl_category = "Crosscut"
+        c.bl_category = "View"
         bpy.utils.register_class(c)
     check(T, "no draw errors", not errors(), str(errors()))
 
@@ -900,7 +900,7 @@ def clip_scrub(view):
     win = bpy.context.window
     r = view.region
     with view.override():
-        bpy.ops.crosscut.alt_b('INVOKE_DEFAULT')
+        bpy.ops.crosscut.clip('INVOKE_DEFAULT')
     yield 0.1
     a, b = view.px((-20, -10, 0)), view.px((20, 10, 0))
     win.event_simulate('MOUSEMOVE', 'NOTHING', x=r.x + a[0], y=r.y + a[1])
@@ -912,47 +912,319 @@ def clip_scrub(view):
     win.event_simulate('LEFTMOUSE', 'RELEASE', x=r.x + b[0], y=r.y + b[1])
     yield 0.2
     check(T, "box drawn", view.rv3d.use_clip_planes)
-    # orbit so the walls along Y face the viewer most
+    eng = cc("engine")
+    axes = eng.clip_axes(view.rv3d)
+    check(T, "two sliders' worth of walls", len(axes) == 2, str(len(axes)))
+    labels = [eng.clip_axis_label(x[0]) for x in axes]
+    check(T, "labelled by nearest world axis", sorted(labels) == ['X', 'Y'], str(labels))
+    check(T, "axes point the positive way", all(float(x[0].max()) > 0.9 for x in axes), str([x[0] for x in axes]))
+    ix, iy = labels.index('X'), labels.index('Y')
+    check(T, "half widths are the box's", abs(axes[ix][2] - 20.0) < 0.6 and abs(axes[iy][2] - 10.0) < 0.6,
+          f"{axes[ix][2]} {axes[iy][2]}")
     view.look((0, 0, 0), 300, (70, 0, 0), ortho=True)
     yield from settle()
     Shot(view, "clip_scrub_start")
-    eng = cc("engine")
-    ax0 = eng.clip_axis(view.rv3d)
-    check(T, "picks the walls facing the view", abs(abs(float(ax0[0][1])) - 1.0) < 1e-3, str(ax0[0]))
-    check(T, "axis points at the viewer", float(ax0[0] @ np.array(view.rv3d.view_matrix.inverted())[:3, 2]) > 0)
-    check(T, "half width is the box's", abs(ax0[2] - 10.0) < 0.5, str(ax0[2]))
-    side0 = [tuple(p) for p in view.rv3d.clip_planes]
     with view.override():
-        s.clip_position = ax0[1] + 8.0
-    ax1 = eng.clip_axis(view.rv3d)
-    check(T, "moved by the distance asked", abs(ax1[1] - ax0[1] - 8.0) < 1e-3, f"{ax0[1]} {ax1[1]}")
-    check(T, "size unchanged", abs(ax1[2] - ax0[2]) < 1e-3, f"{ax0[2]} {ax1[2]}")
-    # the walls across the slide (X) stay put
-    for p0, p1 in zip(side0, view.rv3d.clip_planes, strict=True):
-        if abs(p0[0]) > 0.9:
-            check(T, "other walls stay put", abs(p0[3] - p1[3]) < 1e-3, f"{p0} {tuple(p1)}")
+        setattr(s, f"clip_position_{iy + 1}", axes[iy][1] + 8.0)
+    moved = eng.clip_axes(view.rv3d)
+    check(T, "Y slider moves along Y only", abs(moved[iy][1] - axes[iy][1] - 8.0) < 1e-3
+          and abs(moved[ix][1] - axes[ix][1]) < 1e-3, f"{moved[iy][1]} {moved[ix][1]}")
+    check(T, "size unchanged", abs(moved[iy][2] - axes[iy][2]) < 1e-3)
     yield from settle()
     Shot(view, "clip_scrub_moved")
     check(T, "caps follow", cc("draw").last_info(r).get("count", 0) >= 1, str(cc("draw").last_info(r)))
     with view.override():
-        s.clip_scrub = 0.0
-        low = eng.clip_axis(view.rv3d)[1]
-        check(T, "slider 0: box just clear of the part on one side", abs(low + 30.0 + ax0[2]) < 0.6, str(low))
-        check(T, "slider reads back", s.clip_scrub < 1e-3, str(s.clip_scrub))
-        s.clip_scrub = 1.0
-        high = eng.clip_axis(view.rv3d)[1]
-        check(T, "slider 1: just clear on the other", abs(high - 30.0 - ax0[2]) < 0.6, str(high))
-        s.clip_scrub = 0.5
-        before = eng.clip_axis(view.rv3d)[1]
-        bpy.ops.crosscut.step(direction=1)
-        check(T, "step moves the box", abs(eng.clip_axis(view.rv3d)[1] - before - 2.0) < 1e-3)
+        setattr(s, f"clip_scrub_{ix + 1}", 0.0)
+        low = eng.clip_axes(view.rv3d)[ix][1]
+        check(T, "slider 0: just clear of the part", abs(low + 30.0 + axes[ix][2]) < 0.6, str(low))
+        check(T, "slider reads back", getattr(s, f"clip_scrub_{ix + 1}") < 1e-3)
+        setattr(s, f"clip_scrub_{ix + 1}", 1.0)
+        high = eng.clip_axes(view.rv3d)[ix][1]
+        check(T, "slider 1: just clear on the other side", abs(high - 30.0 - axes[ix][2]) < 0.6, str(high))
+        setattr(s, f"clip_scrub_{ix + 1}", 0.5)
+        before = eng.clip_axes(view.rv3d)
+        bpy.ops.crosscut.step(direction=1, clip_axis=iy)
+        after = eng.clip_axes(view.rv3d)
+        check(T, "an axis's arrows move along it", abs(after[iy][1] - before[iy][1] - 2.0) < 1e-3
+              and abs(after[ix][1] - before[ix][1]) < 1e-3)
+        toward = np.array(view.rv3d.view_matrix.inverted())[:3, 2]
+        f = eng.clip_facing_axis(view.rv3d)
+        check(T, "the wheel uses the walls facing you, toward you", abs(abs(float(f[1])) - 1.0) < 1e-3
+              and float(f @ toward) > 0, str(f))
     planes_before = [tuple(p) for p in view.rv3d.clip_planes]
-    view.look((0, 0, 0), 300, (0, 70, 0), ortho=True)
+    labels_before = [eng.clip_axis_label(x[0]) for x in eng.clip_axes(view.rv3d)]
+    signs_before = [x[0].tolist() for x in eng.clip_axes(view.rv3d)]
+    view.look((0, 0, 0), 300, (0, 70, 200), ortho=True)
     yield from settle()
     check(T, "orbiting doesn't move the box", [tuple(p) for p in view.rv3d.clip_planes] == planes_before)
-    check(T, "orbiting picks the other walls", abs(abs(float(eng.clip_axis(view.rv3d)[0][0])) - 1.0) < 1e-3)
+    check(T, "orbiting doesn't relabel or flip the sliders", [eng.clip_axis_label(x[0]) for x in eng.clip_axes(view.rv3d)]
+          == labels_before and [x[0].tolist() for x in eng.clip_axes(view.rv3d)] == signs_before)
     Shot(view, "clip_scrub_other_axis")
     view.rv3d.use_clip_planes = False
+    check(T, "no draw errors", not errors(), str(errors()))
+
+
+@test
+def clip_tint(view):
+    # Blender's faint box goes by default, and as soon as you scrub with the setting on
+    T = "clip_tint"
+    if not bpy.app.use_event_simulate:
+        print("    skipped: run Blender with --enable-event-simulate")
+        return
+    scene = new_scene("cc-tint")
+    box("part-001", (20, 20, 20), (70, 0, 0))   # clear of the box, which then shows the bare background
+    s = scene.crosscut
+    view.look((0, 0, 0), 300, (0, 0, 0), ortho=True)
+    win = bpy.context.window
+    r = view.region
+
+    def draw_box():
+        a, b = view.px((-10, -10, 0)), view.px((10, 10, 0))
+        with view.override():
+            bpy.ops.crosscut.clip('INVOKE_DEFAULT')
+        yield 0.1
+        win.event_simulate('MOUSEMOVE', 'NOTHING', x=r.x + a[0], y=r.y + a[1])
+        yield 0.05
+        win.event_simulate('LEFTMOUSE', 'PRESS', x=r.x + a[0], y=r.y + a[1])
+        yield 0.05
+        win.event_simulate('MOUSEMOVE', 'NOTHING', x=r.x + b[0], y=r.y + b[1])
+        yield 0.05
+        win.event_simulate('LEFTMOUSE', 'RELEASE', x=r.x + b[0], y=r.y + b[1])
+        yield 0.2
+        view.look((0, 0, 0), 300, (0, 0, 0), ortho=True)
+        yield from settle()
+
+    far = (view.region.width // 8, view.region.height // 2)  # plain background
+    settings(s, clip_tint=True)
+    yield from draw_box()
+    shot = Shot(view, "tint_on")
+    bg, inside = shot.at(far, r=2), shot.at(view.px((0, 0, 0)), r=2)
+    check(T, "with the setting on, Blender's tint is there", not near(inside, bg, 0), f"{bg} {inside}")
+    with view.override():
+        bpy.ops.crosscut.step(direction=1, clip_axis=0)
+    yield 0.2
+    yield from settle()
+    shot = Shot(view, "tint_after_scrub")
+    a = shot.at(far, r=2)
+    b = shot.at(view.px((0, 0, 0)), r=2)
+    check(T, "scrubbing removes it, clipping stays", near(a, b, 0) and view.rv3d.use_clip_planes, f"{a} {b}")
+    with view.override():
+        bpy.ops.view3d.clip_border('INVOKE_DEFAULT')  # removes the region
+    yield 0.1
+    settings(s, clip_tint=False)
+    yield from draw_box()
+    shot = Shot(view, "tint_off")
+    a = shot.at(far, r=2)
+    b = shot.at(view.px((0, 0, 0)), r=2)
+    check(T, "by default there's no tint", near(a, b, 0) and view.rv3d.use_clip_planes, f"{a} {b}")
+    n = len(cc("engine").clip_axes(view.rv3d))
+    check(T, "the region's planes survive", n == 2, str(n))
+    view.rv3d.use_clip_planes = False
+    check(T, "no draw errors", not errors(), str(errors()))
+
+
+@test
+def random_colors(view):
+    # in Random shading the caps match what Blender draws on the parts
+    T = "random_colors"
+    scene = new_scene("cc-random")
+    a = box("part-001", (30, 30, 30), (-30, 0, 0))
+    b = box("Some Part.002", (30, 30, 30), (30, 0, 0))
+    s = scene.crosscut
+    view.space.shading.color_type = 'RANDOM'
+    view.space.shading.light = 'FLAT'
+    view.look((0, 0, 0), 300, (60, 0, 0), ortho=True)
+    settings(s, mode='SECTION', orientation='Z', color_source='AUTO', cap_style='SOLID', outline=False)
+    yield 0.05
+    yield from settle()
+    shot = Shot(view, "random_colors")
+    for ob, x in ((a, -30), (b, 30)):
+        top, side = shot.at(view.px((x, 0, 0))), shot.at(view.px((x, -15, -8)))
+        check(T, f"{ob.name}: cap matches the part", near(top, side, 3), f"{top} {side}")
+    view.space.shading.color_type = 'OBJECT'
+    view.space.shading.light = 'STUDIO'
+    check(T, "no draw errors", not errors(), str(errors()))
+
+
+@test
+def overlays_off(view):
+    T = "overlays_off"
+    scene = new_scene("cc-overlays")
+    box("part-001", (30, 30, 30), open_top=True)
+    s = scene.crosscut
+    view.look((0, 0, 0), 200, (60, 0, 30))
+    settings(s, mode='SECTION', orientation='X', flip=True, plane_display='TINT', plane_opacity=0.3)
+    yield 0.05
+    yield from settle()
+    corner = view.px((0, 16.4, 16.4))
+    on = Shot(view, "overlays_on")
+    view.space.overlay.show_overlays = False
+    yield from settle()
+    off = Shot(view, "overlays_off")
+    bg = bg_of(off, view)
+    check(T, "plane hides with overlays", not near(on.at(corner), bg, 4) and near(off.at(corner), bg, 4),
+          f"{on.at(corner)} {off.at(corner)} {bg}")
+    readout_area = off.px[off.oy + 8:off.oy + 30, off.ox + view.region.width // 3:off.ox + 2 * view.region.width // 3]
+    check(T, "readout hides with overlays", int(np.ptp(readout_area, axis=(0, 1)).max()) <= 3)
+    view.space.overlay.show_overlays = True
+    check(T, "no draw errors", not errors(), str(errors()))
+
+
+@test
+def face_orientation(view):
+    T = "face_orientation"
+    scene = new_scene("cc-face")
+    ob = box("part-001", (30, 30, 30))
+    s = scene.crosscut
+    view.look((0, 0, 0), 200, (60, 0, 30))
+    settings(s, mode='SECTION', orientation='Z')
+    yield 0.05
+    yield from settle()
+    info = cc("draw").last_info(view.region)
+    check(T, "a healthy part isn't flagged", not info.get("inside_out") and not info.get("mixed_normals"), str(info))
+    for p in ob.data.polygons:
+        p.flip()
+    ob.data.update()
+    yield 0.1
+    yield from settle()
+    info = cc("draw").last_info(view.region)
+    severe = cc("draw").readout_lines(scene, s, info)[2]
+    check(T, "inside out: named in red", info.get("inside_out") == ["part-001"] and any("Inside out" in w for w in severe),
+          f"{info} {severe}")
+    shot = Shot(view, "inside_out")
+    check(T, "inside out: still capped", is_green(shot.at(view.px((0, 0, 0)))))
+    ob.data.polygons[0].flip()
+    ob.data.update()
+    yield 0.1
+    yield from settle()
+    info = cc("draw").last_info(view.region)
+    check(T, "one face flipped the other way: mixed normals", info.get("mixed_normals") == ["part-001"]
+          or info.get("inside_out") == ["part-001"], str(info))
+    # a cap seen from inside the part, with Face Orientation on, is the backface colour
+    bpy.data.objects.remove(ob)
+    box("part-002", (30, 30, 30), open_top=True)
+    settings(s, mode='SECTION', orientation='Y', offset=0.0, flip=False)  # keeps y < 0
+    view.space.overlay.show_face_orientation = True
+    view.look((0, 0, 0), 200, (20, 0, 0))     # from -y, through the open top: the viewer is on the kept side
+    yield 0.1
+    yield from settle()
+    back = Shot(view, "cap_from_behind").at(view.px((0, 0, 10)))
+    view.look((0, 0, 0), 200, (20, 0, 180))   # from +y: the cut side
+    yield from settle()
+    front = Shot(view, "cap_from_front").at(view.px((0, 0, 10)))
+    view.space.overlay.show_face_orientation = False
+    check(T, "from inside with Face Orientation: reads red", is_red(back), f"{back}")
+    check(T, "from the cut side: its own colour", is_green(front), f"{front}")
+    check(T, "no draw errors", not errors(), str(errors()))
+
+
+@test
+def annotations_over_caps(view):
+    T = "annotations_over_caps"
+    scene = new_scene("cc-annot")
+    box("part-001", (60, 60, 30))
+    s = scene.crosscut
+    view.look((0, 0, 0), 200, (0, 0, 0), ortho=True)
+    settings(s, mode='OFF', orientation='Z')
+    with view.override():
+        bpy.ops.gpencil.annotation_add()
+        data = bpy.context.annotation_data
+    layer = data.layers.new("note")
+    layer.color = (1.0, 0.2, 0.9)
+    layer.thickness = 8
+    frame = layer.frames.new(scene.frame_current)
+    st = frame.strokes.new()
+    st.display_mode = '3DSPACE'
+    st.points.add(2)
+    st.points[0].co = (-20, 10, 20)
+    st.points[1].co = (20, 10, 20)
+    yield 0.1
+    yield from settle()
+    vanilla = Shot(view, "annotation_vanilla").at(view.px((0, 10, 20)), r=0)
+    # section: the stroke sits above the plane, in clipped space, over the cap
+    settings(s, mode='SECTION', orientation='Z')
+    yield 0.1
+    yield from settle()
+    shot = Shot(view, "annotation_over_cap")
+    c = shot.at(view.px((0, 10, 20)), r=0)
+    check(T, "annotation shows over the cap, in its own colour", near(c, vanilla, 12), f"{c} vanilla {vanilla}")
+    c = shot.at(view.px((0, -15, 0)), r=1)
+    check(T, "the cap is there", is_green(c), f"{c}")
+    view.space.overlay.show_annotation = False
+    yield from settle()
+    c = Shot(view, "annotation_hidden").at(view.px((0, 10, 20)), r=0)
+    check(T, "hides with its overlay toggle", is_green(c), f"{c}")
+    view.space.overlay.show_annotation = True
+    check(T, "no draw errors", not errors(), str(errors()))
+
+
+@test
+def hatch_scale(view):
+    T = "hatch_scale"
+    scene = new_scene("cc-hatchscale")
+    box("part-001", (100, 100, 50), (0, 0, 0))
+    s = scene.crosscut
+    yield 0.01
+    settings(s, hatch_space='MODEL')
+    s.hatch_pitch = 2.0
+    s.hatch_scale = 0.5
+    size = float(np.linalg.norm((100, 100, 50)))
+    v = cc("draw")._hatch_vec(s, 0, 'HATCH', size=size)
+    check(T, "half way: spacing follows the square root of size", abs(abs(v[0]) - 2.0 * (size / 50.0) ** 0.5) < 1e-4, str(v))
+    s.hatch_vary = False
+    v0 = cc("draw")._hatch_vec(s, 0, 'HATCH', size=50.0)
+    v1 = cc("draw")._hatch_vec(s, 0, 'HATCH', size=200.0)
+    check(T, "a 50 unit part gets the setting", abs(v0[0] - 2.0) < 1e-5, str(v0))
+    check(T, "four times the size, twice the spacing", abs(v1[0] - 4.0) < 1e-5, str(v1))
+    s.hatch_scale = 0.0
+    v2 = cc("draw")._hatch_vec(s, 0, 'HATCH', size=200.0)
+    check(T, "at 0 size doesn't matter", abs(v2[0] - 2.0) < 1e-5, str(v2))
+    s.hatch_space = 'SCREEN'
+    v3 = cc("draw")._hatch_vec(s, 0, 'HATCH', size=200.0)
+    check(T, "screen space ignores size", v3[0] < 0, str(v3))
+    s.hatch_scale = 0.5
+    s.hatch_vary = True
+
+
+@test
+def measure_overlap(view):
+    T = "measure_overlap"
+    scene = new_scene("cc-measure")
+    box("part-001", (40, 30, 30), (-15, 0, 0))    # spans x -35..5
+    box("part-002", (40, 30, 30), (20, 0, 0))     # spans x 0..40: overlap x 0..5
+    s = scene.crosscut
+    view.look((0, 0, 0), 200, (0, 0, 0), ortho=True)
+    settings(s, mode='SECTION', orientation='Z', cap_style='HATCH', color_source='OBJECT')
+    yield 0.05
+    yield from settle()
+    dr = cc("draw")
+    r = view.region
+    with view.override():
+        res = dr._measure_at(bpy.context, r, r.x + view.px((2.5, 0, 0))[0], r.y + view.px((2.5, 0, 0))[1])
+        check(T, "the overlap's depth", res is not None and abs(res[2] - 5.0) < 0.1, str(res and res[2]))
+        px = view.px((-20, 0, 0))
+        check(T, "over one part: nothing", dr._measure_at(bpy.context, r, r.x + px[0], r.y + px[1]) is None)
+    if bpy.app.use_event_simulate:
+        win = bpy.context.window
+        with view.override():
+            bpy.ops.crosscut.measure('INVOKE_DEFAULT')
+        check(T, "on", dr.measure_running())
+        yield 0.1
+        x, y = view.px((2.5, 3, 0))
+        win.event_simulate('MOUSEMOVE', 'NOTHING', x=r.x + x, y=r.y + y)
+        yield 0.3
+        yield from settle()
+        Shot(view, "measure_overlap")
+        check(T, "hover shows it", "5.0" in dr._measure["text"] or "4.9" in dr._measure["text"], dr._measure["text"])
+        x, y = view.px((-20, 0, 0))
+        win.event_simulate('MOUSEMOVE', 'NOTHING', x=r.x + x, y=r.y + y)
+        yield 0.3
+        check(T, "leaving clears it", dr._measure["a"] is None)
+        win.event_simulate('ESC', 'PRESS', x=r.x + x, y=r.y + y)
+        win.event_simulate('ESC', 'RELEASE', x=r.x + x, y=r.y + y)
+        yield 0.2
+        check(T, "Esc stops it", not dr.measure_running())
+    dr.measure_stop()
     check(T, "no draw errors", not errors(), str(errors()))
 
 
@@ -975,7 +1247,7 @@ def alt_b_button(view):
     view.space.show_region_ui = True
     ui = next(rg for rg in view.area.regions if rg.type == 'UI')
     with bpy.context.temp_override(window=win, area=view.area, region=ui):
-        bpy.ops.crosscut.alt_b('INVOKE_DEFAULT')
+        bpy.ops.crosscut.clip('INVOKE_DEFAULT')
     check(T, "Section turned off", s.mode == 'OFF', s.mode)
     yield 0.1
     a, b = view.px((-12, -12, 15)), view.px((12, 12, 15))
@@ -994,7 +1266,7 @@ def alt_b_button(view):
     check(T, "box drawn: native clipping on", view.rv3d.use_clip_planes and s.mode == 'OFF')
     check(T, "box drawn: caps on it", cc("draw").last_info(r).get("native"), str(cc("draw").last_info(r)))
     with bpy.context.temp_override(window=win, area=view.area, region=ui):
-        bpy.ops.crosscut.alt_b('INVOKE_DEFAULT')
+        bpy.ops.crosscut.clip('INVOKE_DEFAULT')
     yield from settle()
     check(T, "clicked again: box removed", not view.rv3d.use_clip_planes)
     view.space.show_region_ui = False
@@ -1691,7 +1963,7 @@ def ui_panels(view):
     for c in reversed(panels):
         bpy.utils.unregister_class(c)
     for c in panels:
-        c.bl_category = "Crosscut"
+        c.bl_category = "View"
         bpy.utils.register_class(c)
     with view.override():
         bpy.ops.wm.call_panel(name="CROSSCUT_PT_popover", keep_open=True)

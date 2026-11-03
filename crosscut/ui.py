@@ -11,16 +11,16 @@ _keymaps = []
 def _draw_main(layout, context, compact=False):
     s = context.scene.crosscut
     col = layout.column()
-    # Section / Slice: one or neither (neither = only Alt+B clipping gets caps)
+    # Clip / Section / Slice: one or none (Clip is Blender's own clipping region)
     row = col.row(align=True)
     rv3d = getattr(context.space_data, "region_3d", None)
-    row.operator("crosscut.alt_b", text="Clip", icon='SHADING_BBOX',
+    row.operator("crosscut.clip", text="Clip", icon='SHADING_BBOX',
                  depress=s.mode == 'OFF' and rv3d is not None and rv3d.use_clip_planes)
     row.operator("crosscut.set_mode", text="Section", icon='MOD_BOOLEAN',
                  depress=s.mode == 'SECTION').mode = 'SECTION'
     row.operator("crosscut.set_mode", text="Slice", icon='ALIGN_JUSTIFY',
                  depress=s.mode == 'SLICE').mode = 'SLICE'
-    # applies to Section, Slice and Alt+B alike; Backfaces = no caps anywhere
+    # applies to Clip, Section and Slice alike; Backfaces = no caps anywhere
     row = col.row(align=True)
     row.prop(s, "cap_style", expand=True)
 
@@ -45,18 +45,24 @@ def _draw_main(layout, context, compact=False):
         r = col.row(align=True)
         r.prop(s, "object_axis", expand=True)
 
-    if s.mode == 'OFF':
-        if rv3d is not None and rv3d.use_clip_planes:
-            r = col.column(align=True).row(align=True)
-            if s.scrub_distance:
-                r.prop(s, "clip_position")
-            else:
-                r.prop(s, "clip_scrub", slider=True)
-            st = r.operator("crosscut.step", text="", icon='TRIA_LEFT')
-            st.direction = -1
-            st = r.operator("crosscut.step", text="", icon='TRIA_RIGHT')
-            st.direction = 1
+    clipping = s.mode == 'OFF' and rv3d is not None and rv3d.use_clip_planes
+    if s.mode == 'OFF' and not clipping:
         return  # hide, don't grey out, what doesn't apply (Flip above is the exception)
+    if clipping:
+        box = col.column(align=True)
+        for i, (axis, _centre, _half) in enumerate(engine.clip_axes(rv3d)[:2]):
+            r = box.row(align=True)
+            label = f"Scrub {engine.clip_axis_label(axis)}"
+            if s.scrub_distance:
+                r.prop(s, f"clip_position_{i + 1}", text=label)
+            else:
+                r.prop(s, f"clip_scrub_{i + 1}", text=label, slider=True)
+            for icon, direction in (('TRIA_LEFT', -1), ('TRIA_RIGHT', 1)):
+                st = r.operator("crosscut.step", text="", icon=icon)
+                st.direction = direction
+                st.clip_axis = i
+        _measure_button(col)
+        return
     box = col.column(align=True)
     r = box.row(align=True)
     if s.scrub_distance:
@@ -74,12 +80,17 @@ def _draw_main(layout, context, compact=False):
         r.operator("crosscut.to_cursor", text="Cursor")
         r.operator("crosscut.center", text="Center")
         r.operator("crosscut.to_selection", text="Selection")
+    _measure_button(col)
+
+
+def _measure_button(col):
+    col.operator("crosscut.measure", text="Measure Overlap", icon='DRIVER_DISTANCE', depress=draw.measure_running())
 
 
 class CROSSCUT_PT_main(bpy.types.Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_category = "Crosscut"
+    bl_category = "View"
     bl_label = "Crosscut"
 
     def draw(self, context):
@@ -93,6 +104,10 @@ class CROSSCUT_PT_main(bpy.types.Panel):
                 col.label(text=f"Open section: {name}", icon='ERROR')
             for name in info.get("open_mesh", [])[:5]:
                 col.label(text=f"Open mesh: {name}", icon='INFO')
+            for name in info.get("inside_out", [])[:5]:
+                col.label(text=f"Inside out: {name}", icon='ERROR')
+            for name in info.get("mixed_normals", [])[:5]:
+                col.label(text=f"Flipped faces: {name}", icon='INFO')
 
 
 def _window_region(context):
@@ -114,7 +129,7 @@ def _split(layout):
 class CROSSCUT_PT_display(bpy.types.Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_category = "Crosscut"
+    bl_category = "View"
     bl_label = "Caps"
     bl_parent_id = "CROSSCUT_PT_settings"
     bl_options = {'DEFAULT_CLOSED'}
@@ -136,6 +151,7 @@ class CROSSCUT_PT_display(bpy.types.Panel):
                 col.prop(s, "hatch_pitch_px", text="Spacing (px)")
             else:
                 col.prop(s, "hatch_pitch")
+                col.prop(s, "hatch_scale", slider=True)
             col.prop(s, "hatch_angle")
             col.prop(s, "hatch_width")
             col.prop(s, "hatch_vary")
@@ -161,7 +177,7 @@ def _outline_row(col, s):
 class CROSSCUT_PT_interference(bpy.types.Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_category = "Crosscut"
+    bl_category = "View"
     bl_label = "Interference"
     bl_parent_id = "CROSSCUT_PT_display"
     bl_options = {'DEFAULT_CLOSED'}
@@ -190,7 +206,7 @@ class CROSSCUT_PT_print_preview(bpy.types.Panel):
     """What a layer looks like inside a powder-bed printer (MJF, SLS)."""
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_category = "Crosscut"
+    bl_category = "View"
     bl_label = "Print Preview"
     bl_parent_id = "CROSSCUT_PT_settings"
     bl_options = {'DEFAULT_CLOSED'}
@@ -215,20 +231,25 @@ class CROSSCUT_PT_settings(bpy.types.Panel):
     """Every option beyond the main controls, in its own closed panel."""
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_category = "Crosscut"
+    bl_category = "View"
     bl_label = "Settings"
+    bl_parent_id = "CROSSCUT_PT_main"
     bl_options = {'DEFAULT_CLOSED'}
 
     def draw(self, context):
         s = context.scene.crosscut
         col = _split(self.layout)
         col.prop(s, "show_readout")
+        overlay = getattr(context.space_data, "overlay", None)
+        if overlay is not None:
+            col.prop(overlay, "show_face_orientation", text="Face Orientation")
+        col.prop(s, "clip_tint")
 
 
 class CROSSCUT_PT_plane(bpy.types.Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_category = "Crosscut"
+    bl_category = "View"
     bl_label = "Plane"
     bl_parent_id = "CROSSCUT_PT_settings"
     bl_options = {'DEFAULT_CLOSED'}
@@ -248,7 +269,7 @@ class CROSSCUT_PT_plane(bpy.types.Panel):
 class CROSSCUT_PT_targets(bpy.types.Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_category = "Crosscut"
+    bl_category = "View"
     bl_label = "Cap Targets"
     bl_parent_id = "CROSSCUT_PT_settings"
     bl_options = {'DEFAULT_CLOSED'}
@@ -269,7 +290,7 @@ class CROSSCUT_PT_targets(bpy.types.Panel):
 class CROSSCUT_PT_range(bpy.types.Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_category = "Crosscut"
+    bl_category = "View"
     bl_label = "Scrub Settings"
     bl_parent_id = "CROSSCUT_PT_settings"
     bl_options = {'DEFAULT_CLOSED'}

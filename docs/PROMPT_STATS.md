@@ -15,6 +15,16 @@ and one-line summaries, never prompt text.
   a session link (ai-context WORKING_STYLE, section 6).
 - **Accountability:** the maintainer publishes and answers for everything in the repository.
 
+## Steering tally
+
+Little things the maintainer asked for or caught, what the status page shows. Counted by hand up to
+0.9.4 from the requirement list in DECISIONS.md, so it's a lower bound; from 2026-11-03 each steering
+line below carries a category.
+
+| Bugs found | UI tweaks | New features | Direction | Total |
+|---|---|---|---|---|
+| 20 | 37 | 20 | 9 | 86 |
+
 ## Sessions
 
 One row per working session. Prompts are counted by hand in chat apps and with
@@ -23,7 +33,7 @@ steering lines matters more than the count of prompts.
 
 | Date | Tool and model | Prompts | Steering lines | Notes |
 |---|---|---|---|---|
-| 2026-11-02 | Claude Code (workstation), Opus 5.5 | 4 | 12 | 0.9.2 to 0.9.4 from the maintainer's notes after several days of real use |
+| 2026-11-02 | Claude Code (workstation), Opus 5.5 | 5 | 26 | 0.9.2 to 0.10.0 from the maintainer's notes after several days of real use |
 | 2026-10-30 | Claude Code (workstation), Opus 5.5 | 3 | 3 | `mjf-preview` branch: Print Preview, for the demo reel in the demo-reels repo |
 | 2026-10-29 | Claude Code (workstation), Opus 5.5 | 5 | 17 | First in-Blender test pass: viewport test suite, 0.2.0 fixes, zip; then 0.3.0, 0.4.0, the 0.9.0 release candidate and 0.9.1 from the maintainer's tests |
 | 2026-10-26 | Claude (cloud session), Opus 5.5 | 1 | 3 | Repo created; first user test; handoff to Claude Code |
@@ -32,8 +42,23 @@ steering lines matters more than the count of prompts.
 ## Steering
 
 One line for each thing the human contributed that the AI would not have done on its own,
-newest first, tagged with its kind (decide, correct, domain, tested, scope).
+newest first, tagged with its kind (decide, correct, domain, tested, scope) and, from 2026-11-03, its
+category (bug, ui, feature, direction).
 
+- 2026-11-03 [decide][direction]: treat it as in development, not a test-only stretch; asked for guidance on releases and the long game.
+- 2026-11-03 [decide][ui]: overlays off should hide the plane.
+- 2026-11-03 [tested][bug]: orange outlines stuck on for unselected parts, even with overlays off.
+- 2026-11-03 [decide][feature]: hatch spacing should scale a little with part size.
+- 2026-11-03 [decide][feature]: cap colours should match Random shading.
+- 2026-11-03 [decide][ui]: move to the View tab with Settings inside, to feel part of Blender.
+- 2026-11-03 [tested][bug]: annotations vanish behind caps when released.
+- 2026-11-03 [domain][feature]: caps hide what Face Orientation is for: warn when a part is inside out.
+- 2026-11-03 [decide][ui]: a Face Orientation toggle in Settings for reassurance.
+- 2026-11-03 [decide][ui]: no "Alt+B" in the interface: Clip or Clipping Region, as in Blender.
+- 2026-11-03 [decide][ui]: a setting to drop Blender's faint box, and it should go on scrubbing anyway.
+- 2026-11-03 [tested][ui]: one clip slider feels odd: try two sliders or a toggle.
+- 2026-11-03 [domain][feature]: measuring an overlap by hovering, with a dimension line, for CAD and 3D print users.
+- 2026-11-03 [tested][bug]: a translucent cap looks green from behind and red from outside.
 - 2026-11-02 [decide]: Alt+B scrub: slide the two walls closest to parallel with the view along their normals, the box keeping its size.
 - 2026-11-02 [tested]: found overlapping manifold shells cancelling in one object (Suzanne with capped eyes), though separate objects fill.
 - 2026-11-02 [decide]: X/Y/Z/Object start a section while off (agreeing to the AI's suggestion).

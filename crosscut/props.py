@@ -80,45 +80,55 @@ def _set_position(self, value):
     self.offset = lo + value * (hi - lo) - base
 
 
-def _clip_view():
-    """The current view's clip state, if it has an Alt+B box: (rv3d, axis, centre, half)."""
+def _clip_view(index):
+    """A wall pair of the current view's clipping region: (rv3d, axis, centre, half), or None."""
     rv3d = getattr(bpy.context.space_data, "region_3d", None)
     if rv3d is None or not rv3d.use_clip_planes:
         return None
-    a = engine.clip_axis(rv3d)
-    return None if a is None else (rv3d, *a)
+    axes = engine.clip_axes(rv3d)
+    return (rv3d, *axes[index]) if index < len(axes) else None
 
 
-def _get_clip_position(self):
-    v = _clip_view()
-    return 0.0 if v is None else v[2]
+def _clip_position_get(index):
+    def get(self):
+        v = _clip_view(index)
+        return 0.0 if v is None else v[2]
+    return get
 
 
-def _set_clip_position(self, value):
-    v = _clip_view()
-    if v is not None:
-        engine.shift_clip(v[0], v[1], value - v[2])
-        tag_redraw()
+def _clip_position_set(index):
+    def set_(self, value):
+        v = _clip_view(index)
+        if v is not None:
+            engine.shift_clip(v[0], v[1], value - v[2])
+            from . import draw
+            draw.request_tint_removal(v[0])  # the box Blender tints can't follow
+            tag_redraw()
+    return set_
 
 
-def _get_clip_scrub(self):
-    v = _clip_view()
-    if v is None:
-        return 0.5
-    lo, hi = engine.clip_range(self, v[1], v[3])
-    return min(1.0, max(0.0, (v[2] - lo) / (hi - lo))) if hi - lo > 1e-12 else 0.5
-
-
-def _set_clip_scrub(self, value):
-    v = _clip_view()
-    if v is not None:
+def _clip_scrub_get(index):
+    def get(self):
+        v = _clip_view(index)
+        if v is None:
+            return 0.5
         lo, hi = engine.clip_range(self, v[1], v[3])
-        if hi - lo > 1e-12:
-            _set_clip_position(self, lo + value * (hi - lo))
+        return min(1.0, max(0.0, (v[2] - lo) / (hi - lo))) if hi - lo > 1e-12 else 0.5
+    return get
+
+
+def _clip_scrub_set(index):
+    def set_(self, value):
+        v = _clip_view(index)
+        if v is not None:
+            lo, hi = engine.clip_range(self, v[1], v[3])
+            if hi - lo > 1e-12:
+                _clip_position_set(index)(self, lo + value * (hi - lo))
+    return set_
 
 
 MODES = [
-    ('OFF', "Off", "No Crosscut plane (Alt+B clipping still gets caps unless Backfaces is chosen)", 'X', 0),
+    ('OFF', "Off", "No Crosscut plane (a clipping region still gets caps unless Backfaces is chosen)", 'X', 0),
     ('SECTION', "Section", "Cut the view with a plane and keep one side (half section)", 'MOD_BOOLEAN', 1),
     ('SLICE', "Slice", "Show only a slice: the cross-section itself, or a slab of the given thickness", 'ALIGN_JUSTIFY', 2),
 ]
@@ -135,7 +145,7 @@ ORIENTATIONS = [
 ]
 
 CAP_STYLES = [
-    ('BACKFACES', "Backfaces", "No caps: see the inside of the part, like plain Alt+B "
+    ('BACKFACES', "Backfaces", "No caps: see the inside of the part, like a plain clipping region "
                                "(a zero-thickness slice still shows its outline)"),
     ('SOLID', "Solid", "Fill the cut with a flat colour so solid material reads as solid"),
     ('HATCH', "Hatched", "Fill the cut and add section hatching"),
@@ -175,16 +185,30 @@ class CrosscutSettings(bpy.types.PropertyGroup):
         description="Drag to sweep the plane across the scrub range",
         get=_get_position, set=_set_position,
     )
-    clip_scrub: FloatProperty(
+    clip_scrub_1: FloatProperty(
         name="Scrub", subtype='FACTOR', min=0.0, max=1.0, precision=3,
-        description="Slide the Alt+B box through the parts, along whichever of its axes faces you most. "
-                    "Its size stays the same. Orbit to slide it along another axis",
-        get=_get_clip_scrub, set=_set_clip_scrub,
+        description="Slide the clipping region along this axis, through the parts. Its size stays the same",
+        get=_clip_scrub_get(0), set=_clip_scrub_set(0),
     )
-    clip_position: FloatProperty(
+    clip_scrub_2: FloatProperty(
+        name="Scrub", subtype='FACTOR', min=0.0, max=1.0, precision=3,
+        description="Slide the clipping region along this axis, through the parts. Its size stays the same",
+        get=_clip_scrub_get(1), set=_clip_scrub_set(1),
+    )
+    clip_position_1: FloatProperty(
         name="Position", subtype='DISTANCE', unit='LENGTH', precision=3, step=10,
-        description="Where the middle of the Alt+B box is, along whichever of its axes faces you most",
-        get=_get_clip_position, set=_set_clip_position,
+        description="Where the middle of the clipping region is along this axis",
+        get=_clip_position_get(0), set=_clip_position_set(0),
+    )
+    clip_position_2: FloatProperty(
+        name="Position", subtype='DISTANCE', unit='LENGTH', precision=3, step=10,
+        description="Where the middle of the clipping region is along this axis",
+        get=_clip_position_get(1), set=_clip_position_set(1),
+    )
+    clip_tint: BoolProperty(
+        name="Clip Tint", default=False, update=tag_redraw,
+        description="Keep the faint box Blender tints for a clipping region. It can't follow the region, "
+                    "so it goes as soon as you scrub, whatever this says",
     )
     scrub_distance: BoolProperty(
         name="Scrub by Distance", default=False,
@@ -218,7 +242,7 @@ class CrosscutSettings(bpy.types.PropertyGroup):
     color_source: EnumProperty(
         name="Colors", default='AUTO', update=tag_redraw,
         items=[
-            ('AUTO', "Auto", "Follow the Solid shading colour (Object or Material); white or grey parts get "
+            ('AUTO', "Auto", "Follow the Solid shading colour (Object, Material or Random); white or grey parts get "
                              "the Cap Color so the cut stands out; other shading colours use a per-object palette"),
             ('OBJECT', "Object", "Object viewport display colour"),
             ('MATERIAL', "Material", "First material's viewport display colour"),
@@ -244,6 +268,11 @@ class CrosscutSettings(bpy.types.PropertyGroup):
     hatch_angle: FloatProperty(name="Angle", subtype='ANGLE', default=math.radians(45.0), update=tag_redraw)
     hatch_width: FloatProperty(name="Line Width", subtype='FACTOR', min=0.05, max=0.9, default=0.3,
                                description="Hatch line width as a fraction of the spacing", update=tag_redraw)
+    hatch_scale: FloatProperty(
+        name="Scale with Part", subtype='FACTOR', min=0.0, max=1.0, default=0.5, update=tag_redraw,
+        description="How much the spacing follows each part's size. The Spacing above is for a 50 unit part. "
+                    "At 0 every part gets the same; at 1 a part twice the size gets twice the spacing",
+    )
     hatch_vary: BoolProperty(
         name="Vary per Object", default=True, update=tag_redraw,
         description="Alternate hatch direction, then spacing, between objects (ISO 128-50 style) "

@@ -80,10 +80,10 @@ def _view_window_region(context):
     return next((r for r in area.regions if r.type == 'WINDOW'), None)
 
 
-class CROSSCUT_OT_alt_b(bpy.types.Operator):
-    """Blender's clipping region (Alt+B). When off, turns Section and Slice off and lets you draw a
-    box in the viewport; when on, removes the box"""
-    bl_idname = "crosscut.alt_b"
+class CROSSCUT_OT_clip(bpy.types.Operator):
+    """Blender's clipping region. When off, turns Section and Slice off and lets you draw a box in the
+    viewport; when on, removes the box"""
+    bl_idname = "crosscut.clip"
     bl_label = "Clip"
 
     @classmethod
@@ -101,6 +101,37 @@ class CROSSCUT_OT_alt_b(bpy.types.Operator):
             bpy.ops.view3d.clip_border('INVOKE_DEFAULT')
         tag_redraw()
         return {'FINISHED'}
+
+
+class CROSSCUT_OT_measure(bpy.types.Operator):
+    """Measure how deep parts overlap: hover over an overlap on a cut to see its greatest depth.
+    Click again, or press Esc, to stop"""
+    bl_idname = "crosscut.measure"
+    bl_label = "Measure Overlap"
+
+    def invoke(self, context, _event):
+        from . import draw
+        if draw.measure_running():
+            draw.measure_stop()  # the running modal sees this and ends
+            tag_redraw()
+            return {'FINISHED'}
+        draw.measure_start()
+        context.window_manager.modal_handler_add(self)
+        tag_redraw()
+        return {'RUNNING_MODAL'}
+
+    def modal(self, context, event):
+        from . import draw
+        if not draw.measure_running():
+            tag_redraw()
+            return {'FINISHED'}
+        if event.type == 'ESC' and event.value == 'PRESS':
+            draw.measure_stop()
+            tag_redraw()
+            return {'FINISHED'}
+        if event.type == 'MOUSEMOVE':
+            draw.measure_update(context, event.mouse_x, event.mouse_y)
+        return {'PASS_THROUGH'}
 
 
 class CROSSCUT_OT_from_view(bpy.types.Operator):
@@ -304,6 +335,7 @@ class CROSSCUT_OT_step(bpy.types.Operator):
 
     direction: IntProperty(default=1)
     multiplier: FloatProperty(default=1.0, min=0.0)
+    clip_axis: IntProperty(default=-1, description="Which of a clipping region's axes to slide; -1 is the one facing you")
 
     @classmethod
     def poll(cls, context):
@@ -315,12 +347,18 @@ class CROSSCUT_OT_step(bpy.types.Operator):
     def execute(self, context):
         s = _s(context)
         delta = s.step * self.multiplier * (1 if self.direction >= 0 else -1)
-        if s.mode == 'OFF':  # an Alt+B box
+        if s.mode == 'OFF':  # a clipping region
+            from . import draw
             rv3d = context.space_data.region_3d
-            a = engine.clip_axis(rv3d)
-            if a is None:
+            axes = engine.clip_axes(rv3d)
+            if self.clip_axis >= 0 and self.clip_axis < len(axes):
+                axis = axes[self.clip_axis][0]
+            else:
+                axis = engine.clip_facing_axis(rv3d)
+            if axis is None:
                 return {'CANCELLED'}
-            engine.shift_clip(rv3d, a[0], delta)
+            engine.shift_clip(rv3d, axis, delta)
+            draw.request_tint_removal(rv3d)
         else:
             s.offset += delta
         tag_redraw()
@@ -462,7 +500,8 @@ class CROSSCUT_OT_use_bounds(bpy.types.Operator):
 
 classes = (
     CROSSCUT_OT_set_mode,
-    CROSSCUT_OT_alt_b,
+    CROSSCUT_OT_clip,
+    CROSSCUT_OT_measure,
     CROSSCUT_OT_from_view,
     CROSSCUT_OT_select_section,
     CROSSCUT_OT_section,

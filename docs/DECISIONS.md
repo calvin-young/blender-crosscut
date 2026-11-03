@@ -10,6 +10,7 @@ this list is an assumption, tracked in the table at the end.
 
 | ID | Requirement | Status in 0.1.0 |
 | --- | --- | --- |
+| R-018 | After 0.9.4 (2026-11-03): in development rather than test-only; a steering tally on the status page; guidance on releases; overlays off hide the plane; orange outlines stuck on; hatch scales with part size; caps match Random shading; move to the View tab with Settings folded in; annotations stay over caps; inside-out warning and a Face Orientation toggle; no "Alt+B" wording; drop the faint box, at least once scrubbing; two sliders or a toggle for the clip walls; an easy way to measure an overlap; a translucent cap seen from behind should read red like from outside | 0.10.0, see below |
 | R-017 | After 0.9.3 (2026-11-02): a slider that slides the two Alt+B walls closest to parallel with the view along their normals, the box keeping its size (bounds and reset behaviour left to judgment); X/Y/Z/Object start a section while off; overlapping manifold shells inside one object must not cancel; Print Preview as a toggle under Settings for now | 0.9.4, see below |
 | R-016 | After 0.9.2 (2026-11-02): put the plane row back while off (View is used to start a plane); Alt+B button first in the row and named Clip; fix the button staying lit after the Alt+B key; 1.0 is not close: keep user testing, and push back when bugs and features keep coming; download buttons on the status page. Asked whether vanilla Alt+B can be scrubbed | 0.9.3, see below |
 | R-015 | Notes from using 0.9.1 on real work (2026-11-02): hide the axis row while off; align to an object's local XYZ; an Alt+B button; selected outline must win over a coincident black contour; readout hidden by the last-operation panel; Scrub by Distance and Step into Scrub Range, renamed Scrub Settings; X-ray should affect caps; Cap Targets right under Caps; Vary per Object must not change when parts are shown or hidden; warn when cutting through an open mesh even if the hole isn't on the plane, more severely when it is, and maybe lower the cap's opacity; "clashes on interference, both when enabled or disabled" | 0.9.2, see below |
@@ -29,6 +30,59 @@ this list is an assumption, tracked in the table at the end.
 | R-001 | Main use: while modelling parts. Secondary: finding interferences when packing buckets | Drives defaults |
 
 ## Decisions
+
+### Changes after the maintainer's notes on 0.9.4 (0.10.0, 2026-11-03)
+
+- **Version 0.10.0** (*assumed*): the 0.9 line suggested 1.0 was next, which it isn't. Numbering follows
+  the release guidance proposed to the maintainer in chat; not yet agreed.
+- **View tab**: `bl_category` is View; Settings is a sub-panel of the main panel.
+- **Overlays off** hide the plane and the readout, with no setting (the maintainer left it to Claude's
+  call). Caps and dark contours stay: they're the content, not an overlay (*assumed*).
+- **"Stuck orange outline"**: *inferred, not reproduced with the maintainer's scene.* Selection colours
+  already follow selection and overlays, but open contours were a fixed orange, so an open part looked
+  permanently selected. They're now red, like the warning, and dark with overlays off.
+- **Hatch scale** (`hatch_scale`, default 0.5 *assumed*): spacing x (part diagonal / 50) ^ scale, from the
+  object's size, not the cut's, so hatching doesn't swim while scrubbing.
+- **Random colours**: Blender's own hash (`OB` + name + NUL, mm2, int hash, HSV 0.5 / 0.8), checked
+  against its pixels on 4.2 and 5.2. This could change if Blender changes it; the test would show.
+- **Annotations** (D-029).
+- **Inside out**: negative signed volume, for open meshes too (a threshold skips near-flat ones). Named
+  in red with a red contour, and the cap stays. Closed with unbalanced edges = "flipped faces", amber.
+- **A translucent cap from behind** (*assumed reading*): nothing draws caps red; the "red hatch" from
+  outside is the green 50 % cap over a red backface. From behind, it's over nothing red, so it looked
+  green. With Face Orientation on, a cap seen from the kept side now draws in the backface colour.
+- **Wording**: the interface says Clip or Clipping Region. Docs name the Alt+B shortcut only where
+  it's the shortcut. Internal identifiers changed to match (`crosscut.clip`).
+- **Clip tint** (`clip_tint`, default off *assumed*): swapped for an empty box as in D-008, planes kept.
+- **Clip sliders** (replaces the single slider in D-027): one per wall pair, always shown, labelled by nearest
+  world axis (a label can repeat on a box drawn at 45 degrees), positive along it. Stable when
+  orbiting, since the flipping direction and the jumping axis were the likely cause of "feels odd"
+  (*assumed*). No auto-switching. The wheel still uses the axis facing the viewer, toward the viewer.
+- **Measure Overlap** (D-030).
+
+### D-030: Measure an overlap by hovering (2026-11-03)
+
+- **Context:** The maintainer asked for a quick way to see how much two parts overlap: hover and see a
+  line for the greatest distance between the two curves.
+- **Decision:** A toggle (a modal that passes events through, so the viewport stays usable). It finds the
+  overlap island under the mouse on a grid around it that grows until it holds the whole island (starting
+  about 32 pixels across, so what's visible resolves), then takes the greatest distance from the island's
+  boundary on one part to its boundary on the other, on the actual contours. Pure numpy in
+  `section_math.overlap_span`. If one part is wholly inside, the other's whole contour is used.
+- **Limits:** the first two parts where more overlap; a long thin island can break up on the grid
+  (160 cells per side), and then only the piece under the mouse is measured. Overlaps inside one object
+  aren't measured.
+- **Alternatives considered:** exact polygon intersection (chaining contours and clipping: much more code
+  for what's a reading); a permanent readout without a toggle (nothing can see the mouse without a modal).
+
+### D-029: Draw annotations again, over the caps (2026-11-03)
+
+- **Context:** Blender draws finished 3D annotations before add-ons' POST_VIEW drawing, and only the stroke in
+  progress after. Caps paint over them, however depth is set.
+- **Decision:** When caps are drawn, draw the visible layers' 3D strokes again last, with no depth test, in
+  the layer's colour, width and opacity. Screen-space annotations are drawn later by Blender anyway.
+  They lose Blender's onion skinning and pressure, which annotations' 3D strokes barely show. Follows
+  overlays and the Annotations overlay toggle.
 
 ### Changes after the maintainer's review of 0.9.3 (0.9.4, 2026-11-02)
 
@@ -534,6 +588,12 @@ What `tests/blender/run_viewport_tests.py` and the screenshots showed in 0.1.0, 
 | Q-051 | In X-ray, contours stay opaque while caps go translucent | assumption | 0.9.2 | open |
 | Q-052 | Readout at the bottom centre | assumption | 0.9.2 | open |
 | Q-053 | Whether the black-over-orange case seen was the flush-face one (D-024) | unasked question | 0.9.2 | orange has won so far; the maintainer reports if not |
-| Q-054 | The readout keeps "Alt+B clipping" while the button says Clip | assumption | 0.9.3 | open |
+| Q-054 | The readout keeps "Alt+B clipping" while the button says Clip | assumption | 0.9.3 | answered: Clipping Region (R-018) |
 | Q-055 | Alt+B scrub: slider reads the current axis, range to just clear of the Scrub Range, positive toward the viewer (D-027) | assumption | 0.9.4 | open |
 | Q-056 | Print Preview is last in Settings, marked experimental | assumption | 0.9.4 | open |
+| Q-057 | Overlays off hide plane and readout but not caps or dark contours | assumption | 0.10.0 | open |
+| Q-058 | The stuck orange outline was the open contour | assumption | 0.10.0 | open |
+| Q-059 | A cap seen from behind with Face Orientation on draws in the backface colour | assumption | 0.10.0 | open |
+| Q-060 | Clip Tint off by default; hatch Scale with Part 0.5 by default | assumption | 0.10.0 | open |
+| Q-061 | Two fixed sliders for a clipping region, labelled by nearest world axis | assumption | 0.10.0 | open |
+| Q-062 | Numbering jumps to 0.10.0, and the release guidance in chat | unasked question | 0.10.0 | open |

@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Crosscut: live capped section and slice views for the Blender viewport.
 
-Builds on Blender's own viewport clipping (the same clip planes Alt+B uses) and
+Builds on Blender's own viewport clipping (the same clip planes the clipping region uses) and
 draws filled, optionally hatched caps where solids are cut, so a cut solid reads
 as solid instead of showing its backfaces.
 """

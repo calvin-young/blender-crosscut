@@ -1,7 +1,7 @@
 # Crosscut user guide
 
 Crosscut cuts the 3D viewport with a plane and fills the cut faces, so cut parts read as
-solid. It uses the same viewport clipping as Blender's Alt+B, so selection, snapping and
+solid. It uses the same viewport clipping as Blender's clipping region, so selection, snapping and
 everything else in the view respect the cut. Nothing in your file changes except Crosscut's
 own settings, which save with the scene.
 
@@ -9,7 +9,7 @@ Units below assume 1 Blender unit = 1 mm, but Crosscut works in any unit.
 
 ## Quick start
 
-1. Open the sidebar (N) and pick the **Crosscut** tab.
+1. Open the sidebar (N), pick the **View** tab, and find the **Crosscut** panel.
 2. Click **Section**. The plane starts in the middle of your parts and cuts away the half
    facing you.
 3. Drag **Scrub** to sweep the plane through the parts.
@@ -24,22 +24,22 @@ Units below assume 1 Blender unit = 1 mm, but Crosscut works in any unit.
 - **Section** keeps one side of the plane: a half section.
 - **Slice** keeps only what is near the plane. With **Thickness** 0 you see just the
   cross-section itself; with a thickness you see a slab, centred on the plane.
-- **Clip** is Blender's own clipping region (Alt+B), with caps (see below). The button is lit
+- **Clip** is Blender's own clipping region, with caps (see below). The button is lit
   while the view has a box. Click it to turn Section or Slice off and draw a box in the viewport;
   click it when lit to remove the box.
 
 Clicking a lit Section or Slice turns Crosscut off. Turning it off removes all clipping from the
-view, including an Alt+B box that was there before. With everything off, **X**, **Y**, **Z**,
+view, including a clipping region that was there before. With everything off, **X**, **Y**, **Z**,
 **Object** and **View** each start the plane they name, in the last mode you used.
 
 ### Cap style
 
-- **Backfaces**: no caps, the plain Alt+B look. A zero-thickness slice still shows the
+- **Backfaces**: no caps, the plain clipping look. A zero-thickness slice still shows the
   section, in the theme's backface colour, since otherwise there would be nothing to see.
 - **Solid**: the cut is filled with a flat colour.
 - **Hatched**: filled and hatched, like a section drawing.
 
-The cap style applies to Section, Slice and Alt+B alike.
+The cap style applies to Clip, Section and Slice alike.
 
 ### Plane
 
@@ -74,7 +74,11 @@ for an Object plane).
 Everything beyond the main controls lives in the **Settings** panel below the main one,
 closed by default.
 
-- **Readout**: plane position and warnings at the bottom centre of the viewport.
+- **Readout**: plane position and warnings at the bottom centre of the viewport. It hides with
+  overlays (Alt+Shift+Z), as the plane does.
+- **Face Orientation**: the viewport's own overlay, here so you can check it's on. With it on, a cap
+  seen from inside a part draws in the backface colour.
+- **Clip Tint**: see Clipping region.
 
 ### Caps
 
@@ -88,12 +92,13 @@ closed by default.
 - **Hatching** (Hatched only):
   - **Hatch Space**: **Model** keeps the spacing in scene units, locked to the part. **Screen**
     keeps it in pixels at any zoom.
-  - **Spacing**, **Angle** and **Line Width** set the lines.
+  - **Spacing**, **Angle** and **Line Width** set the lines. In Model space, **Scale with Part** makes
+    spacing follow each part's size; Spacing is then what a 50 unit part gets.
   - **Vary per Object** alternates direction, then spacing, between parts, so touching
     sections stay distinguishable. Each part keeps its variation when others are hidden, shown
     or added.
-- **Outline** draws the cut contour. An orange outline means the mesh is open
-  (non-manifold) there. Selected parts' contours are drawn in the
+- **Outline** draws the cut contour. A red outline means the mesh is open (non-manifold) there, or
+  inside out. Selected parts' contours are drawn in the
   theme's selection colours (when the viewport shows selection outlines), whether or not
   Outline is on.
 - **Overlaps**: where parts' sections overlap, **Blend** mixes their colours equally, and
@@ -101,6 +106,8 @@ closed by default.
 - **Open Part Opacity**: the cap's opacity on a part with holes in its mesh, since its cut may not
   show real material (default 50 %). The readout warns in amber when a cut goes through such a
   part, and in red when the hole is on the plane itself, where the gaps get closed by guesswork.
+- The readout also names parts that are **inside out**, in red, and parts with **flipped faces**, in
+  amber. Flipped faces make overlapping shells inside a part show as holes.
 
 In X-ray (Alt+Z) caps follow the viewport's X-ray opacity, and nothing hides them or their
 contours.
@@ -139,17 +146,27 @@ Step size. **Powder** and **Fused** set the colours (white and black by default,
 Multi Jet Fusion printer), **Grain** the speckle in the powder. Without a Scrub Range object the
 bed is the parts' bounds plus **Bed Margin**.
 
-## Alt+B
+## Clipping region
 
-With **Clip** on, **Scrub** and the step arrows slide the box through the parts without changing its
-size. It slides along whichever of its axes faces you most, toward you as the value goes up; orbit
-to slide it along another axis. Orbiting never moves the box: the slider just shows where it is along
-the new axis. At 0 and 1 the box is just clear of the Scrub Range. **Scrub by Distance** shows
-where the box's middle is, as a distance.
+**Clip** is Blender's own clipping region (the Alt+B shortcut works too). It gets caps in the current
+cap style (Backfaces turns this off). Pressing Alt+B while Section or Slice is on gives clipping back to
+Blender and turns them off. Clicking Section or Slice while a clipping region is on replaces it.
 
-Blender's own clipping box gets caps too, in the current cap style (Backfaces turns this
-off). Pressing Alt+B while Crosscut is on gives clipping back to Blender and turns Crosscut
-off. Clicking Section or Slice while an Alt+B box is on replaces it.
+With Clip on, two **Scrub** sliders slide the box through the parts without changing its size, one per
+axis, each labelled with the world axis it's closest to. Each has its own step arrows.
+**Shift+Alt+Wheel** uses the axis facing you most. At 0 and 1 the box is just clear of the Scrub
+Range. **Scrub by Distance** shows where the box's middle is, as a distance.
+
+Blender tints a clipping box very faintly. Crosscut removes that, since it can't follow the box when
+you scrub; tick **Clip Tint** in Settings to keep it until you first scrub.
+
+## Measure Overlap
+
+Click **Measure Overlap**, then hover over a place where two parts overlap on a cut. A line and a
+length show how deep the overlap goes: the greatest distance between the two parts' contours around
+that overlap. It runs until you click it again or press Esc. Where more than two parts overlap, it measures
+the first two. A very long, thin overlap can read as several short ones: hover over its deepest
+part.
 
 ## Selecting in a zero-thickness slice
 
@@ -167,7 +184,7 @@ Section X / Y / Z, On/Off, Backfaces/Caps, Section/Slice, Flip, and Section from
 
 - Caps show in Solid shading only. Wireframe is clipped but not capped, and Blender doesn't
   clip Material Preview or Rendered views.
-- Caps need closed meshes to be exact. Open meshes get a best-effort fill and an orange
+- Caps need closed meshes to be exact. Open meshes get a best-effort fill and a red
   outline.
 - One plane (two for a slab). A section box and multiple planes are on the roadmap
   ([Issues](https://github.com/calvin-young/blender-crosscut/issues)).

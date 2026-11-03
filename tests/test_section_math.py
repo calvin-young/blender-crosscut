@@ -267,6 +267,59 @@ def test_mesh_edge_state():
     assert sm.mesh_edge_state(v, flipped) == (False, False)
 
 
+def test_mesh_signed_volume():
+    v = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=np.float64)
+    t = np.array([[0, 2, 1], [0, 1, 3], [1, 2, 3], [2, 0, 3]])
+    assert np.isclose(sm.mesh_signed_volume(v, t), 1 / 6)
+    assert np.isclose(sm.mesh_signed_volume(v, t[:, ::-1]), -1 / 6)
+
+
+def _rect(x0, y0, x1, y1):
+    p = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
+    return np.array([[p[i], p[(i + 1) % 4]] for i in range(4)], dtype=np.float64)
+
+
+def test_overlap_span_rectangles():
+    a, b = _rect(0, 0, 10, 10), _rect(8, 0, 18, 10)
+    d, p, q = sm.overlap_span(a, b, (9, 5))
+    assert abs(d - 2.0) < 0.05
+    assert sm.overlap_span(a, b, (5, 5)) is None     # only in a
+    assert sm.overlap_span(a, b, (30, 5)) is None    # in neither
+
+
+def test_overlap_span_crescent():
+    # two circles of radius 10, centres 18 apart: 2 deep along the line between them
+    th = np.linspace(0, 2 * np.pi, 721)
+    def circle(cx):
+        pts = np.stack([cx + 10 * np.cos(th), 10 * np.sin(th)], axis=1)
+        return np.stack([pts[:-1], pts[1:]], axis=1)
+    # hovering near the tip still measures the whole island's greatest depth
+    for hover in ((9, 0), (9, 3.5)):
+        d, p, q = sm.overlap_span(circle(0), circle(18), hover, half=0.5)
+        assert abs(d - 2.0) < 0.05, d
+    # separate islands aren't mixed up: this one is 1 deep, the other far bigger
+    a = np.concatenate([_rect(0, 0, 10, 10), _rect(0, 20, 10, 30)])
+    b = np.concatenate([_rect(9, 0, 19, 10), _rect(5, 20, 19, 30)])
+    d1 = sm.overlap_span(a, b, (9.5, 5), (False, False))[0]
+    d2 = sm.overlap_span(a, b, (7, 25), (False, False))[0]
+    assert abs(d1 - 1.0) < 0.05 and abs(d2 - 5.0) < 0.05, (d1, d2)
+
+
+def test_overlap_span_contained():
+    d, _p, _q = sm.overlap_span(_rect(4, 4, 6, 6), _rect(0, 0, 10, 10), (5, 5))
+    assert d > 3.9  # from the small part to the big part's nearest wall
+
+
+def test_random_shading_color_is_what_blender_draws():
+    # read off Blender 5.2 and 4.2's screen, Flat light: sRGB 231, 196, 169 and 231, 188, 169
+    def srgb(c):
+        return round(255 * (c * 12.92 if c <= 0.0031308 else 1.055 * c ** (1 / 2.4) - 0.055))
+    r, g, b = sm.random_shading_color("part-001")
+    assert abs(srgb(r) - 231) <= 1 and abs(srgb(g) - 196) <= 2 and abs(srgb(b) - 169) <= 1
+    r, g, b = sm.random_shading_color("Some Part.002")
+    assert abs(srgb(r) - 231) <= 1 and abs(srgb(g) - 188) <= 2 and abs(srgb(b) - 169) <= 1
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

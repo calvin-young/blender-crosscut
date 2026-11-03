@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.10.0 (2026-11-03)
+
+The add-on is in development: expect changes before 1.0.
+
+- **Moved to the sidebar's View tab**, with Settings folded into the main panel.
+- **Measure Overlap**: hover over an overlap on a cut to see how deep it goes, with a dimension line.
+- **Clipping region**: two sliders, one per axis (labelled with the nearest world axis), which don't
+  flip or relabel as the view turns. The mouse wheel uses the axis facing you.
+- Blender's faint clipping box is gone by default (**Clip Tint** brings it back until you scrub).
+- **Inside-out parts** are named in red, and mixed normals in amber. **Face Orientation** has a toggle
+  in Settings, and with it on, a cap seen from inside a part reads as a backface.
+- Hatching: **Scale with Part** makes spacing follow part size in Model space.
+- Cap colours match Solid shading's **Random** colours.
+- Fixed: annotations disappeared behind caps once drawn.
+- Fixed: open contours drew in orange and looked selected; they're now red, like the warning, and only
+  with overlays on.
+- Turning overlays off (Alt+Shift+Z) hides the plane and the readout.
+- "Alt+B" in the interface is now Clip or Clipping Region, as in Blender.
+
 ## 0.9.4 (2026-11-02)
 
 - Fixed: overlapping closed shells inside one object cancelled out and left a hole in the cap

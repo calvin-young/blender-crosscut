@@ -182,6 +182,14 @@ def mesh_edge_state(verts, tris):
     return is_open, not is_open and not np.any(balance)
 
 
+def mesh_signed_volume(verts, tris):
+    """Volume enclosed by the triangles; negative when the mesh is inside out."""
+    v = np.asarray(verts, dtype=np.float64)
+    a, b, c = v[tris[:, 0]], v[tris[:, 1]], v[tris[:, 2]]
+    o = v.mean(0) if len(v) else np.zeros(3)  # around the mesh, for an open mesh's sake
+    return float(np.einsum("ij,ij->i", a - o, np.cross(b - o, c - o)).sum()) / 6.0
+
+
 def close_open_contours(segments, max_open=4096):
     """Add segments that join open endpoints pairwise (nearest first), so an
     almost-closed section from a slightly non-manifold mesh still fills
@@ -401,6 +409,185 @@ def hatch_for_index(i, base_angle_deg, pitch, vary):
         return base_angle_deg, pitch
     k = i % len(ISO_ANGLE_STEPS)
     return base_angle_deg + ISO_ANGLE_STEPS[k], pitch * ISO_PITCH_SCALE[k]
+
+
+def _mm2(data):
+    """Blender's BLI_hash_mm2, seed 0."""
+    m, n, i = 0x5bd1e995, len(data), 0
+    h = n & 0xffffffff
+    while n >= 4:
+        k = (int.from_bytes(data[i:i + 4], "little") * m) & 0xffffffff
+        k = ((k ^ (k >> 24)) * m) & 0xffffffff
+        h = ((h * m) & 0xffffffff) ^ k
+        i, n = i + 4, n - 4
+    if n == 3:
+        h ^= data[i + 2] << 16
+    if n >= 2:
+        h ^= data[i + 1] << 8
+    if n >= 1:
+        h = ((h ^ data[i]) * m) & 0xffffffff
+    h = ((h ^ (h >> 13)) * m) & 0xffffffff
+    return h ^ (h >> 15)
+
+
+def _hash_int(k):
+    """Blender's BLI_hash_int."""
+    def rot(x, s):
+        return ((x << s) | (x >> (32 - s))) & 0xffffffff
+    a = b = c = (0xdeadbeef + (2 << 2) + 13) & 0xffffffff
+    a = (a + k) & 0xffffffff
+    c = ((c ^ b) - rot(b, 14)) & 0xffffffff
+    a = ((a ^ c) - rot(c, 11)) & 0xffffffff
+    b = ((b ^ a) - rot(a, 25)) & 0xffffffff
+    c = ((c ^ b) - rot(b, 16)) & 0xffffffff
+    a = ((a ^ c) - rot(c, 4)) & 0xffffffff
+    b = ((b ^ a) - rot(a, 14)) & 0xffffffff
+    c = ((c ^ b) - rot(b, 24)) & 0xffffffff
+    return c
+
+
+def random_shading_color(name, library_path=None):
+    """The colour Solid shading's Random mode gives an object of this name
+    (scene-linear), worked out the way Blender does."""
+    import colorsys
+    h = _mm2(b"OB" + name.encode("utf-8") + b"\0")
+    if library_path:
+        h = ((h * 13) & 0xffffffff) ^ _mm2(library_path.encode("utf-8") + b"\0")
+    return colorsys.hsv_to_rgb(_hash_int(h) / 0xffffffff, 0.5, 0.8)
+
+
+def _inside_rows(seg, oriented, xs, ys):
+    """Which cells of the grid (ys, xs) lie inside the contours `seg` (K,2,2):
+    nonzero winding if oriented, else even-odd."""
+    ax, ay, bx, by = seg[:, 0, 0], seg[:, 0, 1], seg[:, 1, 0], seg[:, 1, 1]
+    grid = np.zeros((len(ys), len(xs)), dtype=bool)
+    for j, y in enumerate(ys):
+        hit = np.nonzero((ay > y) != (by > y))[0]
+        if not len(hit):
+            continue
+        x_at = ax[hit] + (y - ay[hit]) * (bx[hit] - ax[hit]) / (by[hit] - ay[hit])
+        w = np.zeros(len(xs) + 1)
+        step = np.where(by[hit] > ay[hit], 1.0, -1.0) if oriented else np.ones(len(hit))
+        np.add.at(w, np.searchsorted(xs, x_at), step)
+        total = np.cumsum(w)[:len(xs)]
+        grid[j] = total != 0 if oriented else total % 2 == 1
+    return grid
+
+
+def _flood(mask, j, i):
+    """The 4-connected part of the boolean grid `mask` containing cell (j, i)."""
+    out = np.zeros_like(mask)
+    out[j, i] = True
+    while True:
+        grown = out.copy()
+        grown[1:] |= out[:-1]
+        grown[:-1] |= out[1:]
+        grown[:, 1:] |= out[:, :-1]
+        grown[:, :-1] |= out[:, 1:]
+        grown &= mask
+        if np.array_equal(grown, out):
+            return out
+        out = grown
+
+
+def _samples(seg, step, limit=4000):
+    """Points along segments (K,2,2) about `step` apart: (points (P,2), segment index (P,))."""
+    d = seg[:, 1] - seg[:, 0]
+    n = np.minimum(np.ceil(np.hypot(d[:, 0], d[:, 1]) / max(step, 1e-12)).astype(np.int64), 256) + 1
+    if n.sum() > limit:
+        n = np.maximum((n * limit / n.sum()).astype(np.int64), 2)
+    idx = np.repeat(np.arange(len(seg)), n)
+    t = np.concatenate([np.linspace(0.0, 1.0, k) for k in n]) if len(seg) else np.zeros(0)
+    return seg[idx, 0] + d[idx] * t[:, None], idx
+
+
+def _farthest(points, seg):
+    """(distance, point, nearest point on seg) for whichever of `points` is
+    farthest from the segments (K,2,2), measured to the nearest of them."""
+    a = seg[:, 0]
+    d = seg[:, 1] - a
+    dd = np.maximum(np.einsum("ij,ij->i", d, d), 1e-30)
+    rel = points[:, None, :] - a[None, :, :]
+    t = np.clip(np.einsum("pkj,kj->pk", rel, d) / dd, 0.0, 1.0)
+    near = a[None, :, :] + t[:, :, None] * d[None, :, :]
+    dist = np.linalg.norm(points[:, None, :] - near, axis=2)
+    k = dist.argmin(axis=1)
+    p = int(dist[np.arange(len(points)), k].argmax())
+    return float(dist[p, k[p]]), points[p], near[p, k[p]]
+
+
+def overlap_span(seg_a, seg_b, point, oriented=(True, True), half=1.0, cells=160, limit=2000):
+    """How deep two parts' sections overlap at `point` (all 2D, in the plane).
+
+    Finds the overlap island under the point on a grid that grows until it holds
+    the whole island, then the greatest distance from its boundary on one part's
+    contour to its boundary on the other's. Returns (distance, end, end), or None
+    when the point isn't inside both. A very long, thin island can break up on
+    the grid, and then only the piece under the point is measured.
+    """
+    if not len(seg_a) or not len(seg_b):
+        return None
+    px, py = float(point[0]), float(point[1])
+    all_pts = np.concatenate([seg_a.reshape(-1, 2), seg_b.reshape(-1, 2)])
+    most = float(np.abs(all_pts - (px, py)).max()) * 1.01 + 1e-9
+    half = min(half, most)
+    while True:
+        xs = np.linspace(px - half, px + half, cells)
+        ys = np.linspace(py - half, py + half, cells)
+        both = _inside_rows(seg_a, oriented[0], xs, ys) & _inside_rows(seg_b, oriented[1], xs, ys)
+        j = i = cells // 2
+        if not both[j, i]:
+            near = np.argwhere(both[j - 1:j + 2, i - 1:i + 2])
+            if not len(near):
+                return None
+            j, i = j - 1 + near[0][0], i - 1 + near[0][1]
+        island = _flood(both, j, i)
+        at_edge = island[0].any() or island[-1].any() or island[:, 0].any() or island[:, -1].any()
+        if not at_edge or half >= most:
+            break
+        half = min(half * 2.0, most)
+    cell = xs[1] - xs[0]
+    wide = island.copy()  # contours run along the island's edge cells
+    for _ in range(2):
+        grown = wide.copy()
+        grown[1:] |= wide[:-1]
+        grown[:-1] |= wide[1:]
+        grown[:, 1:] |= wide[:, :-1]
+        grown[:, :-1] |= wide[:, 1:]
+        wide = grown
+
+    def on_island(seg):
+        # only segments that can reach the window, so samples stay fine-grained
+        lo, hi = seg.min(axis=1), seg.max(axis=1)
+        keep = (hi[:, 0] >= xs[0]) & (lo[:, 0] <= xs[-1]) & (hi[:, 1] >= ys[0]) & (lo[:, 1] <= ys[-1])
+        s = seg[keep]
+        if not len(s):
+            return np.zeros((0, 2)), s
+        pts, idx = _samples(s, cell)
+        ci = np.round((pts[:, 0] - xs[0]) / cell).astype(np.int64)
+        cj = np.round((pts[:, 1] - ys[0]) / cell).astype(np.int64)
+        ok = (ci >= 0) & (ci < cells) & (cj >= 0) & (cj < cells)
+        ok[ok] = wide[cj[ok], ci[ok]]
+        return pts[ok], s[np.unique(idx[ok])]
+
+    pa, sa = on_island(seg_a)
+    pb, sb = on_island(seg_b)
+    if not len(pa) and not len(pb):
+        return None
+    # one part wholly inside the other: the island's edge is all one contour
+    if not len(sa):
+        sa = seg_a
+    if not len(sb):
+        sb = seg_b
+    best = None
+    for pts, other in ((pa, sb), (pb, sa)):
+        if len(pts) and len(other):
+            pts = pts[:: max(1, len(pts) // limit)]
+            other = other[:: max(1, len(other) // limit)]
+            r = _farthest(pts, other)
+            if best is None or r[0] > best[0]:
+                best = r
+    return best
 
 
 def palette_color(key):

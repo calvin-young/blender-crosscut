@@ -35,6 +35,9 @@ _clip_state = {}       # rv3d pointer -> {"ours": flat planes or None, "saved": 
 _errors = set()
 _last_info = {}        # per-region info for the readout
 _clip_lit = {}         # rv3d pointer -> whether the sidebar's Clip button should be lit
+_tint_gone = set()     # rv3d pointers whose clipping region has had Blender's tinted box removed
+_tint_pending = set()
+_measure = {"on": False, "region": None, "a": None, "b": None, "text": ""}
 
 
 # ------------------------------------------------------------------ shaders
@@ -350,6 +353,39 @@ def _request_prime(key):
     _to_prime.add(key)
 
 
+def _remove_tints():
+    """Swap a clipping region's tinted box for an empty one, keeping its planes (D-008)."""
+    pending = set(_tint_pending)
+    _tint_pending.clear()
+    for win, area, region, rv3d in _iter_views():
+        key = rv3d.as_pointer()
+        if key not in pending or not rv3d.use_clip_planes or key in _clip_state:
+            continue
+        planes = [list(p) for p in rv3d.clip_planes]
+        try:
+            with bpy.context.temp_override(window=win, area=area, region=region):
+                bpy.ops.view3d.clip_border(xmin=0, xmax=0, ymin=0, ymax=0, wait_for_input=False)
+        except (RuntimeError, TypeError) as ex:
+            print("Crosscut: could not remove the clipping tint:", ex)
+            continue
+        rv3d.clip_planes = planes
+        rv3d.use_clip_planes = True
+        _tint_gone.add(key)
+        area.tag_redraw()
+    return None
+
+
+def request_tint_removal(rv3d):
+    """Remove Blender's tinted box from this view's clipping region, once, as soon
+    as Blender lets an operator run."""
+    key = rv3d.as_pointer()
+    if key in _tint_gone or key in _tint_pending:
+        return
+    if not _tint_pending:
+        bpy.app.timers.register(_remove_tints, first_interval=0.0)
+    _tint_pending.add(key)
+
+
 def sync_clip(rv3d, desired, area=None):
     """Make rv3d's clip planes match `desired` (list of planes), or release the
     view when desired is None: clipping off, whatever was there before (an
@@ -462,11 +498,14 @@ def target_color(s, target, shading):
     auto = src == 'AUTO'
     if auto:
         ct = getattr(shading, "color_type", 'MATERIAL')
-        src = {'OBJECT': 'OBJECT', 'MATERIAL': 'MATERIAL'}.get(ct, 'PALETTE')
+        src = {'OBJECT': 'OBJECT', 'MATERIAL': 'MATERIAL', 'RANDOM': 'RANDOM'}.get(ct, 'PALETTE')
     # Returns a linear colour (see _lin). Object and material colours are
     # already linear; the Cap Color and the palette are sRGB.
     if src == 'SINGLE':
         return _lin(s.single_color)
+    if src == 'RANDOM':
+        lib = orig.library.filepath if orig.library is not None else None
+        return sm.random_shading_color(orig.name, lib)
     rgb = None
     if src == 'OBJECT':
         rgb = owner.color[:3]
@@ -545,13 +584,18 @@ def _cap_batch(key, sig, segs, plane, bounds):
     return _cached(key, sig, build)
 
 
-def _hatch_vec(s, index, style, angle_offset=0.0):
+HATCH_REFERENCE_SIZE = 50.0  # the part size the Spacing setting is for, in scene units
+
+
+def _hatch_vec(s, index, style, angle_offset=0.0, size=None):
     if style == 'SOLID':
         return (1.0, 1.0, 0.0, 0.0)
     if s.hatch_space == 'SCREEN':
         base_pitch = s.hatch_pitch_px * bpy.context.preferences.system.ui_scale
     else:
         base_pitch = s.hatch_pitch
+        if size:
+            base_pitch *= (size / HATCH_REFERENCE_SIZE) ** s.hatch_scale
     ang, pitch = sm.hatch_for_index(index, math.degrees(s.hatch_angle) + angle_offset, base_pitch, s.hatch_vary)
     a = math.radians(ang)
     signed = -pitch if s.hatch_space == 'SCREEN' else pitch
@@ -673,6 +717,7 @@ def backface_color():
 
 
 SELECT_WIDTH = 2.0  # px, about the width of Blender's selection outline
+WARNING_RED = (1.0, 0.25, 0.2, 1.0)  # sRGB, in contours and the readout
 
 
 def _selection_colors(context):
@@ -706,6 +751,14 @@ def _selection_rank(target, selection):
 
 def _xray(shading):
     return shading.type == 'SOLID' and shading.show_xray
+
+
+def _seen_from_behind(rv3d, plane):
+    """True if the viewer is on a cap's kept side, looking at it from inside the part."""
+    vi = np.array(rv3d.view_matrix.inverted())
+    if rv3d.is_perspective:
+        return float(plane[:3] @ vi[:3, 3]) + float(plane[3]) > 0.0
+    return float(plane[:3] @ vi[:3, 2]) > 0.0
 
 
 def _write_cap_depth(sh, vp, batch, threshold, tex):
@@ -749,7 +802,11 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style, fill_override=None):
     toward = _view_dir_to_viewer(rv3d)
     eps = max(rv3d.view_distance, 1e-6) * 2e-4
 
-    info = {"count": 0, "open": [], "open_mesh": []}
+    info = {"count": 0, "open": [], "open_mesh": [], "inside_out": [], "mixed_normals": []}
+    warned = set()  # parts whose contour shows a problem
+    overlay = getattr(space, "overlay", None)
+    overlays_on = overlay is None or overlay.show_overlays
+    face_orientation = overlays_on and overlay is not None and overlay.show_face_orientation
     live = set()
     colors = {}
     lines = []
@@ -784,6 +841,13 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style, fill_override=None):
             mesh_open = n_open > 0 or engine.is_open_mesh(t, depsgraph)
             hits.append((engine.hatch_index(context, t), t, segs, n_open, serial, mesh_open))
             oriented[t.key] = engine.is_oriented(t, depsgraph)
+            if engine.is_inside_out(t, depsgraph):
+                info["inside_out"].append(t.owner.name)
+                warned.add(t.key)
+            elif not mesh_open and not oriented[t.key]:
+                info["mixed_normals"].append(t.owner.name)
+            if n_open:
+                warned.add(t.key)
             if n_open:
                 info["open"].append(t.owner.name)
             elif mesh_open:
@@ -792,6 +856,8 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style, fill_override=None):
             continue
         info["count"] = max(info["count"], len(hits))
 
+        # with Face Orientation on, a cap seen from inside the part reads as a backface
+        behind = face_orientation and _seen_from_behind(rv3d, plane)
         if show_fill:
             # with overlapping parts, count coverage so overlaps can blend and
             # (optionally) get the interference hatching
@@ -819,6 +885,8 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style, fill_override=None):
                 if capb is not None:
                     if fill_override is not None:
                         col = fill_override
+                    elif behind:
+                        col = backface_color()
                     else:
                         col = colors.get(t.key)
                         if col is None:
@@ -830,7 +898,8 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style, fill_override=None):
                     gpu.state.depth_mask_set(False)
                     gpu.state.blend_set('ALPHA')
                     opacity = xray_alpha * (s.open_opacity if mesh_open and fill_override is None else 1.0)
-                    _cap_uniforms(cap_sh, vp, fill, linec, _hatch_vec(s, idx, style), 0.5, s.hatch_width,
+                    hatch = _hatch_vec(s, idx, style, size=engine.part_size(t, depsgraph))
+                    _cap_uniforms(cap_sh, vp, fill, linec, hatch, 0.5, s.hatch_width,
                                   mask_off.texture_color, accum_off.texture_color if several else None,
                                   total_off.texture_color if stripes else None, _stripe_vec(s), opacity)
                     capb.draw(cap_sh)
@@ -877,7 +946,7 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style, fill_override=None):
         ui = bpy.context.preferences.system.ui_scale
         # selected last, so they win where contours meet
         lines.sort(key=lambda ln: _selection_rank(ln[0], selection))
-        for t, ci, segs, serial, plane, bounds, n_open in lines:
+        for t, ci, segs, serial, plane, bounds, _n_open in lines:
             rank = _selection_rank(t, selection)
             if not rank and not s.outline:
                 continue
@@ -889,8 +958,8 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style, fill_override=None):
             if rank:
                 c = selection[rank - 1]
                 width = max(width, SELECT_WIDTH)
-            elif n_open:
-                c = (1.0, 0.55, 0.0, 1.0)  # orange: open / non-manifold contour
+            elif t.key in warned and overlays_on:
+                c = WARNING_RED  # open on the plane, or inside out; not orange, which means selected
             elif show_fill:
                 c = _srgb((col[0] * 0.01, col[1] * 0.01, col[2] * 0.01, 1.0))  # ~12% in sRGB
             else:
@@ -904,6 +973,8 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style, fill_override=None):
         del _batches[k]
     info["open"] = sorted(set(info["open"]))
     info["open_mesh"] = sorted(set(info["open_mesh"]) - set(info["open"]))
+    info["inside_out"] = sorted(set(info["inside_out"]))
+    info["mixed_normals"] = sorted(set(info["mixed_normals"]))
     return info
 
 
@@ -1030,6 +1101,159 @@ def _draw_powder(context, s, rv3d):
         _vbatch('TRIS', {"pos": (tri, 3), "uv": (uv, 2)}).draw(sh)
 
 
+def _draw_annotations(context):
+    """Draw 3D annotations again, over the caps. Blender draws finished annotations
+    before add-on drawing (and only the stroke in progress after it), so a cap
+    would otherwise cover them."""
+    overlay = context.space_data.overlay
+    data = getattr(context, "annotation_data", None)
+    if data is None or not overlay.show_overlays or not overlay.show_annotation:
+        return
+    sh = _shader("line")
+    region = context.region
+    gpu.state.depth_test_set('NONE')
+    gpu.state.depth_mask_set(False)
+    gpu.state.blend_set('ALPHA')
+    sh.bind()
+    sh.uniform_float("viewportSize", (region.width, region.height))
+    ui = bpy.context.preferences.system.ui_scale
+    for layer in data.layers:
+        frame = layer.active_frame
+        if layer.annotation_hide or layer.is_ruler or frame is None:
+            continue
+        sh.uniform_float("lineWidth", max(float(layer.thickness), 1.0) * ui)
+        sh.uniform_float("color", tuple(layer.color) + (layer.annotation_opacity,))
+        for stroke in frame.strokes:
+            if stroke.display_mode != '3DSPACE' or len(stroke.points) < 2:
+                continue
+            pts = np.empty(len(stroke.points) * 3, dtype=np.float32)
+            stroke.points.foreach_get("co", pts)
+            batch_for_shader(sh, 'LINE_STRIP', {"pos": pts.reshape(-1, 3)}).draw(sh)
+
+
+def measure_running():
+    return _measure["on"]
+
+
+def measure_start():
+    _measure.update(on=True, region=None, a=None, b=None, text="")
+
+
+def measure_stop():
+    _measure.update(on=False, region=None, a=None, b=None, text="")
+
+
+def _caps_for(s, rv3d):
+    planes = engine.compute_planes(s)
+    if planes:
+        return planes[1]
+    if s.cap_style != 'BACKFACES' and rv3d.use_clip_planes:
+        return [c for c in engine.native_caps(rv3d) if not _edge_on(rv3d, c[0])]
+    return []
+
+
+def _view_under_mouse(context, x, y):
+    for area in context.window.screen.areas:
+        if area.type != 'VIEW_3D':
+            continue
+        for region in area.regions:
+            if (region.type == 'WINDOW' and region.data is not None
+                    and region.x <= x < region.x + region.width and region.y <= y < region.y + region.height):
+                # the sidebar and toolbar overlap the window region: not over them
+                over_ui = any(r.type in {'UI', 'TOOLS', 'HEADER', 'TOOL_HEADER'} and r.width > 1 and r.height > 1
+                              and r.x <= x < r.x + r.width and r.y <= y < r.y + r.height for r in area.regions)
+                return None if over_ui else (area, region)
+    return None
+
+
+def _measure_at(context, region, x, y):
+    """The greatest overlap depth under the mouse: (end, end, depth) in the world, or None."""
+    from bpy_extras import view3d_utils
+    scene = context.scene
+    s = scene.crosscut
+    rv3d = region.data
+    xy = (x - region.x, y - region.y)
+    origin = np.array(view3d_utils.region_2d_to_origin_3d(region, rv3d, xy))
+    ray = np.array(view3d_utils.region_2d_to_vector_3d(region, rv3d, xy))
+    hits = []
+    for ci, (plane, bounds) in enumerate(_caps_for(s, rv3d)):
+        plane = np.asarray(plane, dtype=np.float64)
+        denom = float(plane[:3] @ ray)
+        if abs(denom) < 1e-12:
+            continue
+        t = -(float(plane[:3] @ origin) + float(plane[3])) / denom
+        p = origin + ray * t
+        if rv3d.is_perspective and t < 0.0:
+            continue
+        inside = all(float(np.asarray(b)[:3] @ p) + float(np.asarray(b)[3]) >= -1e-6 for b in bounds)
+        if inside:
+            hits.append((t, ci, plane, bounds, p))
+    depsgraph = context.evaluated_depsgraph_get()
+    for _t, ci, plane, bounds, p in sorted(hits, key=lambda h: h[0]):
+        parts = engine.targets_at(context, s, p, plane, depsgraph, ci, bounds)
+        if len(parts) < 2:
+            continue
+        n = sm.normalize(plane[:3])
+        u, v = sm.plane_basis(n)
+        basis = np.stack([u, v])
+        (ta, sa), (tb, sb) = parts[0], parts[1]
+        # the search starts about 32 pixels across, whatever the zoom
+        px = float(np.linalg.norm(np.array(view3d_utils.region_2d_to_location_3d(region, rv3d, (xy[0] + 16, xy[1]), p))
+                                  - np.array(view3d_utils.region_2d_to_location_3d(region, rv3d, xy, p))))
+        res = sm.overlap_span(sa @ basis.T, sb @ basis.T, p @ basis.T,
+                              (engine.is_oriented(ta, depsgraph), engine.is_oriented(tb, depsgraph)),
+                              half=max(px, 1e-6))
+        if res is None:
+            return None
+        depth, a, b = res
+        height = float(p @ n)
+        return (a[0] * u + a[1] * v + n * height, b[0] * u + b[1] * v + n * height, depth)
+    return None
+
+
+def measure_update(context, x, y):
+    """Called on every mouse move while measuring."""
+    found = _view_under_mouse(context, x, y)
+    res = None
+    try:
+        if found is not None:
+            res = _measure_at(context, found[1], x, y)
+    except Exception as ex:  # noqa: BLE001 - never let a hover spam errors
+        msg = f"{type(ex).__name__}: {ex}"
+        if msg not in _errors:
+            _errors.add(msg)
+            import traceback
+            traceback.print_exc()
+    had = _measure["a"] is not None
+    if res is None:
+        _measure.update(region=None, a=None, b=None, text="")
+    else:
+        _measure.update(region=found[1].as_pointer(), a=res[0], b=res[1],
+                        text=fmt_length(context.scene, res[2]))
+    if found is not None and (had or res is not None):
+        found[0].tag_redraw()
+
+
+def _draw_measure(context):
+    if _measure["a"] is None or _measure["region"] != context.region.as_pointer():
+        return
+    sh = _shader("line")
+    region = context.region
+    seg = [tuple(_measure["a"]), tuple(_measure["b"])]
+    gpu.state.depth_test_set('NONE')
+    gpu.state.depth_mask_set(False)
+    gpu.state.blend_set('ALPHA')
+    sh.bind()
+    sh.uniform_float("viewportSize", (region.width, region.height))
+    ui = bpy.context.preferences.system.ui_scale
+    batch = batch_for_shader(sh, 'LINES', {"pos": seg})
+    # dark under light, so it shows on any hatch
+    for width, color in ((4.0, (0.0, 0.0, 0.0, 0.9)), (2.0, (1.0, 1.0, 1.0, 1.0))):
+        sh.uniform_float("lineWidth", width * ui)
+        sh.uniform_float("color", color)
+        batch.draw(sh)
+
+
 def draw_view():
     context = bpy.context
     rv3d = context.region_data
@@ -1046,21 +1270,26 @@ def draw_view():
         if _clip_lit.setdefault(rv3d.as_pointer(), lit) != lit:
             _clip_lit[rv3d.as_pointer()] = lit
             context.area.tag_redraw()
+        if lit and not s.clip_tint:
+            request_tint_removal(rv3d)
+        elif not rv3d.use_clip_planes:
+            _tint_gone.discard(rv3d.as_pointer())
         style = s.cap_style
         if ours:
             caps = planes[1]
         elif style != 'BACKFACES' and rv3d.use_clip_planes:
-            # caps for Alt+B, minus the box sides seen edge-on (nothing to see, all the cost)
+            # caps for the clipping region, minus its sides seen edge-on (nothing to see, all the cost)
             caps = [c for c in engine.native_caps(rv3d) if not _edge_on(rv3d, c[0])]
         else:
             caps = []
         shading_type = context.space_data.shading.type
         native = not ours and style != 'BACKFACES' and bool(rv3d.use_clip_planes)
-        info = {"ours": ours, "native": native, "count": 0, "open": [], "open_mesh": []}
+        info = {"ours": ours, "native": native, "count": 0, "open": [], "open_mesh": [],
+                "inside_out": [], "mixed_normals": []}
         # Blender only applies viewport clipping in Solid and Wireframe shading
         clips = shading_type in {'SOLID', 'WIREFRAME'}
         info["shading_note"] = bool(caps) and not clips
-        plane_shown = ours and s.plane_display != 'NONE'
+        plane_shown = ours and s.plane_display != 'NONE' and context.space_data.overlay.show_overlays
         quads = _frame_quads(context, s, caps) if plane_shown and caps else []
         if quads and s.plane_display in {'TINT', 'HATCH'}:
             _draw_plane_fill(context, s, rv3d, quads)
@@ -1081,6 +1310,9 @@ def draw_view():
         info["uncapped"] = engine.hidden_from_caps(context, s) if (ours or native) and solid else []
         if quads:
             _draw_frame(context, s, quads)
+        if caps and solid:
+            _draw_annotations(context)
+        _draw_measure(context)
         _last_info[key] = info
     except Exception as ex:  # never let a drawing error spam every redraw
         msg = f"{type(ex).__name__}: {ex}"
@@ -1151,7 +1383,7 @@ def readout_lines(scene, s, info):
         head += "   Print Preview" if s.print_preview else f"   {_enum_name(s, 'cap_style')}"
         lines.append(head)
     elif info.get("native"):
-        lines.append(f"Alt+B clipping   {_enum_name(s, 'cap_style')}")
+        lines.append(f"Clipping Region   {_enum_name(s, 'cap_style')}")
     if info.get("no_plane_object"):
         warn.append("Object plane: pick an object (nothing is cut until then)")
     if info.get("uncapped"):
@@ -1160,6 +1392,10 @@ def readout_lines(scene, s, info):
         warn.append("Clipping works in Solid and Wireframe shading only; caps in Solid")
     if info.get("open_mesh"):
         warn.append("Open mesh, its cap may not be real material: " + _names(info["open_mesh"]))
+    if info.get("mixed_normals"):
+        warn.append("Flipped faces, overlaps may show as holes: " + _names(info["mixed_normals"]))
+    if info.get("inside_out"):
+        severe.append("Inside out: " + _names(info["inside_out"]))
     if info.get("open"):
         severe.append("Open section, gaps filled in by guesswork: " + _names(info["open"]))
     return lines, warn, severe
@@ -1171,19 +1407,36 @@ def draw_readout():
     if scene is None or not hasattr(scene, "crosscut"):
         return
     s = scene.crosscut
-    if not s.show_readout:
-        return
-    lines, warn, severe = readout_lines(scene, s, _last_info.get(context.region.as_pointer()))
-    if not lines and not warn and not severe:
-        return
+    overlay = getattr(context.space_data, "overlay", None)
+    if overlay is not None and not overlay.show_overlays:
+        return  # like Blender's own viewport text
     ui = context.preferences.system.ui_scale
     font = 0
     blf.size(font, 12 * ui)
     blf.enable(font, blf.SHADOW)
     blf.shadow(font, 3, 0.0, 0.0, 0.0, 0.85)
+    if _measure["a"] is not None and _measure["region"] == context.region.as_pointer():
+        from bpy_extras.view3d_utils import location_3d_to_region_2d
+        p = location_3d_to_region_2d(context.region, context.region_data,
+                                     tuple(0.5 * (np.asarray(_measure["a"]) + np.asarray(_measure["b"]))))
+        if p is not None:
+            blf.size(font, 14 * ui)
+            blf.color(font, 1.0, 1.0, 1.0, 1.0)
+            blf.position(font, p.x + 12 * ui, p.y + 8 * ui, 0)
+            blf.draw(font, _measure["text"])
+            blf.size(font, 12 * ui)
+    if not s.show_readout:
+        blf.disable(font, blf.SHADOW)
+        return
+    lines, warn, severe = readout_lines(scene, s, _last_info.get(context.region.as_pointer()))
+    if _measure["on"]:
+        lines = lines + ["Measure Overlap: hover over an overlap (Esc to stop)"]
+    if not lines and not warn and not severe:
+        blf.disable(font, blf.SHADOW)
+        return
     y = 16 * ui
     # centred: the bottom-left corner belongs to Blender's Adjust Last Operation panel
-    for text, col in [(t, (1.0, 0.25, 0.2, 1.0)) for t in reversed(severe)] + \
+    for text, col in [(t, WARNING_RED) for t in reversed(severe)] + \
                      [(t, (1.0, 0.6, 0.1, 1.0)) for t in reversed(warn)] + \
                      [(t, (0.92, 0.92, 0.92, 1.0)) for t in reversed(lines)]:
         blf.color(font, *col)
@@ -1221,6 +1474,9 @@ def unregister():
     _shaders.clear()
     _last_info.clear()
     _clip_lit.clear()
+    _tint_gone.clear()
+    _tint_pending.clear()
+    measure_stop()
     _errors.clear()
     global _FULLSCREEN
     _FULLSCREEN = None
