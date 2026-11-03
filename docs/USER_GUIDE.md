@@ -24,11 +24,13 @@ Units below assume 1 Blender unit = 1 mm, but Crosscut works in any unit.
 - **Section** keeps one side of the plane: a half section.
 - **Slice** keeps only what is near the plane. With **Thickness** 0 you see just the
   cross-section itself; with a thickness you see a slab, centred on the plane.
-- Neither on: Crosscut does nothing of its own, but still caps Blender's Alt+B box (see
-  below).
+- **Alt+B** is Blender's own clipping box, with caps (see below). The button is lit while the
+  view has a box. Click it to turn Section or Slice off and draw a box in the viewport; click
+  it when lit to remove the box.
 
-Clicking the lit button turns Crosscut off. Turning it off removes all clipping from the view,
-including an Alt+B box that was there before.
+Clicking a lit Section or Slice turns Crosscut off. Turning it off removes all clipping from the
+view, including an Alt+B box that was there before. The Plane and Scrub rows only show while
+Section or Slice is on.
 
 ### Cap style
 
@@ -42,11 +44,12 @@ The cap style applies to Section, Slice and Alt+B alike.
 ### Plane
 
 - **X / Y / Z**: the plane is perpendicular to that world axis.
-- **Object**: the plane is the chosen object's local XY plane, through its origin. Move and
-  rotate the object to move the plane. If only one Empty, or only one object, is visible when
-  you choose Object, it is picked for you; if the chosen object has since been hidden or
-  deleted, choosing Object picks again. **+** adds an Empty facing the view. Nothing is cut
-  until an object is chosen. A part can be its own plane and is still capped; a flat mesh used
+- **Object**: the plane is perpendicular to one of the chosen object's local axes (**X**, **Y**
+  or **Z** in the row below, Z by default), through its origin. Move and rotate the object to
+  move the plane. When you choose Object it picks the only visible Empty, else the selected
+  object, else the only visible object; if the chosen object has since been hidden or deleted,
+  choosing Object picks again. **+** adds an Empty facing the view. Nothing is cut until an
+  object is chosen. A part can be its own plane and is still capped; a flat mesh used
   as the plane is not.
 - **View**: the plane faces the view as it is when you click. It stays where it is when you
   orbit; click **View** again to face the current view. Scrubbing moves it toward or away
@@ -59,10 +62,10 @@ for an Object plane).
 ### Scrub
 
 - **Scrub** sweeps the plane across the scrub range from 0 to 1. With **Scrub by Distance**
-  (Settings) it shows the position as a distance instead: the world coordinate for X / Y / Z,
+  (Settings > Scrub Settings) it shows the position as a distance instead: the world coordinate for X / Y / Z,
   the distance from the object's origin for Object, and from where it was placed for View.
 - The arrows, and **Shift+Alt+Wheel** in the viewport, move the plane by one **Step**
-  (Settings; default 0.08, one MJF layer). Hold Ctrl as well for 10 steps.
+  (Settings > Scrub Settings; default 0.08, one MJF layer). Hold Ctrl as well for 10 steps.
 - **Cursor**, **Center** and **Selection** put the plane through the 3D cursor, the middle of
   the range, or the selection (selected vertices in Edit Mode).
 
@@ -71,8 +74,7 @@ for an Object plane).
 Everything beyond the main controls lives in the **Settings** panel below the main one,
 closed by default.
 
-- **Readout**: plane position and warnings in the viewport's bottom-left corner.
-- **Scrub by Distance** and **Step**: see Scrub above.
+- **Readout**: plane position and warnings at the bottom centre of the viewport.
 
 ### Caps
 
@@ -88,13 +90,20 @@ closed by default.
     keeps it in pixels at any zoom.
   - **Spacing**, **Angle** and **Line Width** set the lines.
   - **Vary per Object** alternates direction, then spacing, between parts, so touching
-    sections stay distinguishable.
+    sections stay distinguishable. Each part keeps its variation when others are hidden, shown
+    or added.
 - **Outline** draws the cut contour. An orange outline means the mesh is open
-  (non-manifold) there; the readout names the part. Selected parts' contours are drawn in the
+  (non-manifold) there. Selected parts' contours are drawn in the
   theme's selection colours (when the viewport shows selection outlines), whether or not
   Outline is on.
 - **Overlaps**: where parts' sections overlap, **Blend** mixes their colours equally, and
   **Stripes** gives each part an equal share of stripes (**Stripe Width** in the hatch space).
+- **Open Part Opacity**: the cap's opacity on a part with holes in its mesh, since its cut may not
+  show real material (default 50 %). The readout warns in amber when a cut goes through such a
+  part, and in red when the hole is on the plane itself, where the gaps get closed by guesswork.
+
+In X-ray (Alt+Z) caps follow the viewport's X-ray opacity, and nothing hides them or their
+contours.
 
 #### Interference
 
@@ -115,9 +124,9 @@ Which parts get caps: all **Visible** solids, only **Selected** ones (everything
 clipped), or a **Collection**. Objects displayed as Wire or Bounds are never capped; the panel
 and readout list any that are visible.
 
-### Scrub Range
+### Scrub Settings
 
-What Scrub sweeps across: the **Targets**' bounds, or an **Object**'s bounds, such as a build
+**Scrub by Distance** and **Step**: see Scrub above. **Scrub Range** is what Scrub sweeps across: the **Targets**' bounds, or an **Object**'s bounds, such as a build
 volume. The eyedropper uses the active object. The range object is never capped, and with
 it the readout counts steps (for example `step 150 / 1500`).
 

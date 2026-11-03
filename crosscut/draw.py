@@ -66,6 +66,7 @@ _CAP_VS = """
 void main() {
     vUV = uv;
     gl_Position = viewProj * vec4(pos, 1.0);
+    gl_Position.z -= depthBias * gl_Position.w;
 }
 """
 _CAP_FS = """
@@ -100,6 +101,7 @@ void main() {
         col.rgb = mix(fillColor.rgb, lineColor.rgb, k);
         col.a = mix(fillColor.a, 1.0, k);
     }
+    col.a *= opacity;
     if (useCount > 0.5) {
         // the n-th cap drawn on this pixel
         float n = max(floor(texelFetch(countTex, ivec2(gl_FragCoord.xy), 0).r * 255.0 / COUNT_UNITS + 0.5), 1.0);
@@ -166,7 +168,7 @@ def _shader(kind):
             [('VEC3', "pos"), ('VEC2', "uv")],
             [('MAT4', "viewProj"), ('VEC4', "fillColor"), ('VEC4', "lineColor"),
              ('VEC4', "hatch"), ('FLOAT', "threshold"), ('FLOAT', "lineWidth"), ('FLOAT', "useCount"),
-             ('VEC4', "stripe")],
+             ('VEC4', "stripe"), ('FLOAT', "depthBias"), ('FLOAT', "opacity")],
             samplers=["maskTex", "countTex", "totalTex"], varyings=[('VEC2', "vUV")],
         )
     elif kind == "line":
@@ -510,8 +512,13 @@ def _hatch_vec(s, index, style, angle_offset=0.0):
     return (signed, math.cos(a), math.sin(a), 1.0 if style == 'HATCH' else 2.0)
 
 
+# Pulls fills a few depth steps toward the viewer: a flat face lying on the plane
+# would z-fight with a cap on it (in clip space, so it stays that few steps at any zoom).
+CAP_DEPTH_BIAS = 1e-6
+
+
 def _cap_uniforms(sh, vp, fill, line, hatch, threshold, width, mask_tex, count_tex=None,
-                  total_tex=None, stripe=(1.0, 1.0, 0.0, 0.0)):
+                  total_tex=None, stripe=(1.0, 1.0, 0.0, 0.0), opacity=1.0, bias=CAP_DEPTH_BIAS):
     sh.bind()
     sh.uniform_float("viewProj", vp)
     sh.uniform_float("fillColor", fill)
@@ -521,6 +528,8 @@ def _cap_uniforms(sh, vp, fill, line, hatch, threshold, width, mask_tex, count_t
     sh.uniform_float("lineWidth", width)
     sh.uniform_float("useCount", 1.0 if count_tex is not None else 0.0)
     sh.uniform_float("stripe", stripe if total_tex is not None else (1.0, 1.0, 0.0, 0.0))
+    sh.uniform_float("depthBias", bias)
+    sh.uniform_float("opacity", opacity)
     sh.uniform_sampler("maskTex", mask_tex)
     sh.uniform_sampler("countTex", count_tex if count_tex is not None else mask_tex)
     sh.uniform_sampler("totalTex", total_tex if total_tex is not None else mask_tex)
@@ -621,6 +630,25 @@ def _selection_rank(target, selection):
     return 2 if bpy.context.view_layer.objects.active == ob else 1
 
 
+def _xray(shading):
+    return shading.type == 'SOLID' and shading.show_xray
+
+
+def _write_cap_depth(sh, vp, batch, threshold, tex):
+    """Put a plane's finished caps into the depth buffer, so a slab's far contour
+    can't show through the near cap. One pass after all of them: caps that wrote
+    depth as they drew would z-fight with each other, being in the same plane."""
+    gpu.state.color_mask_set(False, False, False, False)
+    gpu.state.depth_test_set('LESS_EQUAL')
+    gpu.state.depth_mask_set(True)
+    gpu.state.blend_set('NONE')
+    _cap_uniforms(sh, vp, (0.0, 0.0, 0.0, 1.0), (0.0, 0.0, 0.0, 1.0), (1.0, 1.0, 0.0, 0.0), threshold, 0.0,
+                  tex, bias=0.0)
+    batch.draw(sh)
+    gpu.state.depth_mask_set(False)
+    gpu.state.color_mask_set(True, True, True, True)
+
+
 def _draw_caps(context, s, rv3d, caps, show_fill, style, fill_override=None):
     """Draw caps and outlines. fill_override: one fill colour for every target
     (no interference highlight), used for the Backfaces slice outline."""
@@ -647,20 +675,36 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style, fill_override=None):
     toward = _view_dir_to_viewer(rv3d)
     eps = max(rv3d.view_distance, 1e-6) * 2e-4
 
-    info = {"count": 0, "open": []}
+    info = {"count": 0, "open": [], "open_mesh": []}
     live = set()
     colors = {}
     lines = []
+    selection = _selection_colors(context)
+    # X-ray: caps go translucent like the parts, and nothing hides anything
+    xray = _xray(shading)
+    xray_alpha = shading.xray_alpha if xray else 1.0
+    depth_test = 'NONE' if xray else 'LESS_EQUAL'
 
     for ci, (plane, bounds) in enumerate(caps):
         hits = []
-        for idx, t in enumerate(targets):
+        for t in targets:
             live.add(t.key)
             res = engine.section(t, ci, plane, depsgraph, bounds)
             if res is None:
+                # a selected part with a face on the plane has no cut, but its
+                # outline runs right there: don't let a neighbour's contour hide it
+                if _selection_rank(t, selection):
+                    res = engine.flush_section(t, ci, plane, depsgraph, bounds)
+                    if res is not None:
+                        lines.append((t, (ci, "flush"), res[0], res[2], plane, bounds, 0))
                 continue
             segs, n_open, serial = res
-            hits.append((idx, t, segs, n_open, serial))
+            mesh_open = n_open > 0 or engine.is_open_mesh(t, depsgraph)
+            hits.append((engine.hatch_index(context, t), t, segs, n_open, serial, mesh_open))
+            if n_open:
+                info["open"].append(t.owner.name)
+            elif mesh_open:
+                info["open_mesh"].append(t.owner.name)
         if not hits:
             continue
         info["count"] = max(info["count"], len(hits))
@@ -678,10 +722,10 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style, fill_override=None):
                 # stripes need the total overlap count up front
                 with total_off.bind():
                     _clear_bound()
-                for _idx, t, segs, n_open, serial in hits:
+                for _idx, t, segs, n_open, serial, _mo in hits:
                     _draw_mask(mask_off, mask_sh, vp, _fan_batch(t, ci, segs, serial, n_open))
                     _add_coverage(total_off, accum_sh, mask_off)
-            for idx, t, segs, n_open, serial in hits:
+            for idx, t, segs, n_open, serial, mesh_open in hits:
                 # 1) even-odd mask
                 _draw_mask(mask_off, mask_sh, vp, _fan_batch(t, ci, segs, serial, n_open))
                 # 2) count coverage
@@ -699,43 +743,50 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style, fill_override=None):
                             colors[t.key] = col
                     fill = (col[0], col[1], col[2], 1.0)
                     linec = (col[0] * 0.02, col[1] * 0.02, col[2] * 0.02, 1.0)  # ~18% in sRGB
-                    gpu.state.depth_test_set('LESS_EQUAL')
-                    # write depth, so a slab's far contour can't show through the near cap
-                    gpu.state.depth_mask_set(True)
+                    gpu.state.depth_test_set(depth_test)
+                    gpu.state.depth_mask_set(False)
                     gpu.state.blend_set('ALPHA')
+                    opacity = xray_alpha * (s.open_opacity if mesh_open and fill_override is None else 1.0)
                     _cap_uniforms(cap_sh, vp, fill, linec, _hatch_vec(s, idx, style), 0.5, s.hatch_width,
                                   mask_off.texture_color, accum_off.texture_color if several else None,
-                                  total_off.texture_color if stripes else None, _stripe_vec(s))
+                                  total_off.texture_color if stripes else None, _stripe_vec(s), opacity)
                     capb.draw(cap_sh)
+            # all of the plane's caps together, for the interference fill and the depth pass
+            union = None
+            if several:
+                union = _cap_batch(("__interference__", ci, "cap"), tuple(hh[4] for hh in hits),
+                                   np.concatenate([hh[2] for hh in hits]), plane, bounds)
             if want_interference:
-                serials = tuple(hh[4] for hh in hits)
-                capb = _cap_batch(("__interference__", ci, "cap"), serials,
-                                  np.concatenate([hh[2] for hh in hits]), plane, bounds)
+                capb = union
                 if capb is not None:
-                    gpu.state.depth_test_set('LESS_EQUAL')
+                    gpu.state.depth_test_set(depth_test)
                     gpu.state.depth_mask_set(False)
                     gpu.state.blend_set('ALPHA')
                     style_i = s.interference_style
                     hv = list(_hatch_vec(s, 0, 'SOLID' if style_i == 'SOLID' else 'HATCH'))
                     if style_i == 'CROSS':
                         hv[3] = 2.0
-                    fill_i = _lin(tuple(s.interference_color) + (s.interference_opacity,))
+                    fill_i = _lin(tuple(s.interference_color) + (s.interference_opacity * xray_alpha,))
                     line_i = _lin(tuple(s.interference_line_color) + (1.0,))
                     _cap_uniforms(cap_sh, vp, fill_i, line_i, tuple(hv), 1.5 * COUNT_UNITS / 255.0, 0.18,
                                   accum_off.texture_color)
                     capb.draw(cap_sh)
+            if not xray:
+                if several and union is not None:
+                    _write_cap_depth(cap_sh, vp, union, 0.5 * COUNT_UNITS / 255.0, accum_off.texture_color)
+                elif not several:
+                    capb = _cap_batch((hits[0][1].key, ci, "cap"), hits[0][4], hits[0][2], plane, bounds)
+                    if capb is not None:
+                        _write_cap_depth(cap_sh, vp, capb, 0.5, mask_off.texture_color)
 
-        for _idx, t, segs, n_open, serial in hits:
-            if n_open:
-                info["open"].append(t.owner.name)
+        for _idx, t, segs, n_open, serial, _mo in hits:
             lines.append((t, ci, segs, serial, plane, bounds, n_open))
 
     # outlines last, on top of every cap. Selected parts get the selection
     # colour: it continues Blender's own outline along the cut, and in a
     # zero-thickness slice (everything clipped) it is the only sign of selection
-    selection = _selection_colors(context)
     if lines and (s.outline or selection):
-        gpu.state.depth_test_set('LESS_EQUAL')
+        gpu.state.depth_test_set(depth_test)
         gpu.state.depth_mask_set(False)
         gpu.state.blend_set('ALPHA')
         line_sh.bind()
@@ -769,6 +820,7 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style, fill_override=None):
     for k in [k for k in _batches if k[0] not in live and k[0] != "__interference__"]:
         del _batches[k]
     info["open"] = sorted(set(info["open"]))
+    info["open_mesh"] = sorted(set(info["open_mesh"]) - set(info["open"]))
     return info
 
 
@@ -824,7 +876,7 @@ def _draw_plane_fill(context, s, rv3d, quads):
             near_poly = quads[order[0]][0]
             _draw_mask(mask_off, _shader("mask"), vp,
                        _vbatch('TRIS', {"pos": (sm.fan_triangulate(near_poly), 3)}))
-        gpu.state.depth_test_set('LESS_EQUAL')
+        gpu.state.depth_test_set('NONE' if _xray(context.space_data.shading) else 'LESS_EQUAL')
         gpu.state.depth_mask_set(False)
         gpu.state.blend_set('ALPHA')
         c = colors[i]
@@ -842,7 +894,7 @@ def _draw_frame(context, s, quads):
     toward = _view_dir_to_viewer(rv3d)
     lift = max(rv3d.view_distance, 1e-6) * 4e-4
     # depth-tested like the contours, so the parts and a slab's near cap hide it
-    gpu.state.depth_test_set('LESS_EQUAL')
+    gpu.state.depth_test_set('NONE' if _xray(context.space_data.shading) else 'LESS_EQUAL')
     gpu.state.depth_mask_set(False)
     gpu.state.blend_set('ALPHA')
     sh.bind()
@@ -880,7 +932,7 @@ def draw_view():
             caps = []
         shading_type = context.space_data.shading.type
         native = not ours and style != 'BACKFACES' and bool(rv3d.use_clip_planes)
-        info = {"ours": ours, "native": native, "count": 0, "open": []}
+        info = {"ours": ours, "native": native, "count": 0, "open": [], "open_mesh": []}
         # Blender only applies viewport clipping in Solid and Wireframe shading
         clips = shading_type in {'SOLID', 'WIREFRAME'}
         info["shading_note"] = bool(caps) and not clips
@@ -941,17 +993,22 @@ def _enum_name(s, prop):
     return p.enum_items[getattr(s, prop)].name
 
 
+def _names(names):
+    more = f" (+{len(names) - 3})" if len(names) > 3 else ""
+    return ", ".join(names[:3]) + more
+
+
 def readout_lines(scene, s, info):
-    """(lines, warnings) shown in the viewport's bottom-left corner."""
-    lines, warn = [], []
+    """(lines, warnings, severe warnings) shown at the bottom of the viewport."""
+    lines, warn, severe = [], [], []
     if not info:
-        return lines, warn
+        return lines, warn, severe
     if "error" in info:
         warn.append("Crosscut draw error (see console): " + info["error"][:90])
     elif info.get("ours"):
         c = engine.plane_coordinate(s)
         if s.orientation == 'OBJECT':
-            axis = s.plane_object.name if s.plane_object else "?"
+            axis = f"{s.plane_object.name} {s.object_axis}" if s.plane_object else "?"
         else:
             axis = _enum_name(s, 'orientation')
         head = f"{_enum_name(s, 'mode')} {axis}  {fmt_length(scene, c)}"
@@ -969,16 +1026,14 @@ def readout_lines(scene, s, info):
     if info.get("no_plane_object"):
         warn.append("Object plane: pick an object (nothing is cut until then)")
     if info.get("uncapped"):
-        names = info["uncapped"]
-        more = f" (+{len(names) - 3})" if len(names) > 3 else ""
-        warn.append("Not capped (Wire/Bounds display): " + ", ".join(names[:3]) + more)
+        warn.append("Not capped (Wire/Bounds display): " + _names(info["uncapped"]))
     if info.get("shading_note"):
         warn.append("Clipping works in Solid and Wireframe shading only; caps in Solid")
+    if info.get("open_mesh"):
+        warn.append("Open mesh, its cap may not be real material: " + _names(info["open_mesh"]))
     if info.get("open"):
-        names = info["open"]
-        more = f" (+{len(names) - 3})" if len(names) > 3 else ""
-        warn.append("Open section (non-manifold): " + ", ".join(names[:3]) + more)
-    return lines, warn
+        severe.append("Open section, gaps filled in by guesswork: " + _names(info["open"]))
+    return lines, warn, severe
 
 
 def draw_readout():
@@ -989,20 +1044,21 @@ def draw_readout():
     s = scene.crosscut
     if not s.show_readout:
         return
-    lines, warn = readout_lines(scene, s, _last_info.get(context.region.as_pointer()))
-    if not lines and not warn:
+    lines, warn, severe = readout_lines(scene, s, _last_info.get(context.region.as_pointer()))
+    if not lines and not warn and not severe:
         return
     ui = context.preferences.system.ui_scale
     font = 0
     blf.size(font, 12 * ui)
     blf.enable(font, blf.SHADOW)
     blf.shadow(font, 3, 0.0, 0.0, 0.0, 0.85)
-    x = 16 * ui
     y = 16 * ui
-    for text, col in [(t, (1.0, 0.6, 0.1, 1.0)) for t in reversed(warn)] + \
+    # centred: the bottom-left corner belongs to Blender's Adjust Last Operation panel
+    for text, col in [(t, (1.0, 0.25, 0.2, 1.0)) for t in reversed(severe)] + \
+                     [(t, (1.0, 0.6, 0.1, 1.0)) for t in reversed(warn)] + \
                      [(t, (0.92, 0.92, 0.92, 1.0)) for t in reversed(lines)]:
         blf.color(font, *col)
-        blf.position(font, x, y, 0)
+        blf.position(font, (context.region.width - blf.dimensions(font, text)[0]) / 2, y, 0)
         blf.draw(font, text)
         y += 17 * ui
     blf.disable(font, blf.SHADOW)

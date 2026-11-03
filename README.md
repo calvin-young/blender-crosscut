@@ -18,7 +18,7 @@ the maintainer's hand-made mock-ups in [docs/images/reference/](docs/images/refe
 ## Features
 
 - **Section** (keep one side) or **Slice** (only the cross-section, or a slab of any thickness).
-- **Planes** along X, Y, Z, an object's local Z (an Empty you move with G/R, or the part
+- **Planes** along X, Y, Z, an object's local X, Y or Z (an Empty you move with G/R, or the part
   itself), or **View**: facing the view as it is when you click, and staying put when you orbit.
 - **Cap styles**: Backfaces (native look), Solid, Hatched. They apply to Section, Slice and
   Blender's own Alt+B box alike; Backfaces turns capping off everywhere.
@@ -30,8 +30,9 @@ the maintainer's hand-made mock-ups in [docs/images/reference/](docs/images/refe
   overlapping caps either blend their colours or share the area in stripes.
 - **Plane display**: frame, tint or hatching, in colours you choose; a slab's two planes get
   different colours.
-- **Open meshes** are outlined in orange and named in the viewport readout; their gaps are
-  closed so the fill still makes sense.
+- **Open meshes** are named in the viewport readout whenever a cut goes through one, and their
+  caps go translucent, since the fill may not be real material. Where the hole is on the plane,
+  the contour turns orange and the warning red; gaps are closed so the fill still makes sense.
 - **Selectable in a zero-thickness slice**: click a section to select its part.
 - Colours follow the Solid shading colour (Object or Material); white or grey parts get the Cap
   Color (green by default) so the cut stands out.
@@ -59,7 +60,7 @@ walk-through is in the [user guide](docs/USER_GUIDE.md).
 
 | Where | What |
 |---|---|
-| Sidebar (N) > Crosscut | Section / Slice, cap style, plane, scrub; everything else in Settings below (closed) |
+| Sidebar (N) > Crosscut | Section / Slice / Alt+B, cap style, plane, scrub; everything else in Settings below (closed) |
 | **Shift+Alt+B** (3D View) | Pie: Section X / Y / Z, On/Off, Backfaces/Caps, Section/Slice, Flip, Section from View |
 | Header button (right) | Toggle on/off, popover with the main controls |
 | **Shift+Alt+Wheel** | Step the plane (Ctrl for x10) while Crosscut is on |

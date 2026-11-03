@@ -152,6 +152,24 @@ def open_endpoint_count(segments):
     return int(np.count_nonzero(counts % 2))
 
 
+def mesh_has_open_edges(verts, tris):
+    """True if any edge is used by an odd number of triangles, so the mesh does
+    not enclose a volume. Vertices are matched by exact position, as in
+    open_endpoint_count: unwelded but touching shells still count as closed."""
+    if len(tris) == 0:
+        return False
+    pts = np.ascontiguousarray(verts)
+    keys = pts.view(np.dtype((np.void, pts.dtype.itemsize * 3))).ravel()
+    _, ids = np.unique(keys, return_inverse=True)
+    ids = ids.reshape(-1)[tris]
+    a = np.concatenate([ids[:, 0], ids[:, 1], ids[:, 2]])
+    b = np.concatenate([ids[:, 1], ids[:, 2], ids[:, 0]])
+    keep = a != b
+    edges = np.minimum(a[keep], b[keep]) * (len(pts) + 1) + np.maximum(a[keep], b[keep])
+    _, counts = np.unique(edges, return_counts=True)
+    return bool(np.any(counts % 2))
+
+
 def close_open_contours(segments, max_open=4096):
     """Add segments that join open endpoints pairwise (nearest first), so an
     almost-closed section from a slightly non-manifold mesh still fills

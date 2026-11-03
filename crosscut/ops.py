@@ -73,6 +73,36 @@ class CROSSCUT_OT_set_mode(bpy.types.Operator):
         return {'FINISHED'}
 
 
+def _view_window_region(context):
+    area = context.area
+    if area is None or area.type != 'VIEW_3D':
+        return None
+    return next((r for r in area.regions if r.type == 'WINDOW'), None)
+
+
+class CROSSCUT_OT_alt_b(bpy.types.Operator):
+    """Blender's clipping box (Alt+B). When off, turns Section and Slice off and lets you draw a box
+    in the viewport; when on, removes the box"""
+    bl_idname = "crosscut.alt_b"
+    bl_label = "Alt+B Clipping"
+
+    @classmethod
+    def poll(cls, context):
+        return _view_window_region(context) is not None
+
+    def invoke(self, context, _event):
+        s = _s(context)
+        if s.mode != 'OFF':
+            s.last_mode = s.mode
+            s.mode = 'OFF'  # this releases the view, so the operator below starts a new box
+        # Blender's operator toggles: removes a box, otherwise waits for one to be drawn.
+        # Needs the viewport region: the button lives in the sidebar or header.
+        with context.temp_override(region=_view_window_region(context)):
+            bpy.ops.view3d.clip_border('INVOKE_DEFAULT')
+        tag_redraw()
+        return {'FINISHED'}
+
+
 class CROSSCUT_OT_from_view(bpy.types.Operator):
     """Put the plane parallel to the view, through the middle of the targets. It stays put when
     you orbit; click again to face the current view"""
@@ -373,7 +403,7 @@ class CROSSCUT_OT_add_plane(bpy.types.Operator):
                 loc = loc - n * (n.dot(loc) - (f[1] + s.offset))
             rot = n.to_track_quat('Z', 'Y').to_matrix()
         ob = s.plane_object
-        if ob is None:
+        if ob is None or ob.type != 'EMPTY':  # never move a part that serves as the plane
             ob = bpy.data.objects.new("Crosscut Plane", None)
             ob.empty_display_type = 'SINGLE_ARROW'
             pts = engine.target_points(context, s)
@@ -382,6 +412,7 @@ class CROSSCUT_OT_add_plane(bpy.types.Operator):
             context.scene.collection.objects.link(ob)
         ob.matrix_world = Matrix.Translation(loc) @ rot.to_4x4()
         s.plane_object = ob
+        s.object_axis = 'Z'
         s.orientation = 'OBJECT'
         s.offset = 0.0
         if s.mode == 'OFF':
@@ -410,6 +441,7 @@ class CROSSCUT_OT_use_bounds(bpy.types.Operator):
 
 classes = (
     CROSSCUT_OT_set_mode,
+    CROSSCUT_OT_alt_b,
     CROSSCUT_OT_from_view,
     CROSSCUT_OT_select_section,
     CROSSCUT_OT_section,

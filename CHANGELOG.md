@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.9.2 (2026-11-02)
+
+- Fixed: overlapping caps z-fought in bands, with interference on or off (came in with 0.9.1),
+  and caps z-fought with a flat face lying on the plane.
+- Fixed: a selected part with a face on the plane lost its outline under a neighbour's contour.
+- **Alt+B button** next to Section and Slice: lit while a box is on; click to draw or remove one.
+- **Object plane**: choose the object's local X, Y or Z axis. Object picks the selected part when
+  no single Empty is visible. **+** no longer moves a part used as the plane.
+- **Open meshes** warn whenever a cut goes through one, even if the hole isn't on the plane, and
+  their caps are translucent (Open Part Opacity). An open contour on the plane warns in red.
+- **X-ray** (Alt+Z): caps go translucent like the parts.
+- **Vary per Object** stays put when parts are hidden, shown or added.
+- The readout moved to the bottom centre, clear of Blender's Adjust Last Operation panel.
+- Panels: the plane row hides while Crosscut is off; Scrub by Distance and Step moved into Scrub
+  Settings (was Scrub Range); Cap Targets sits right under Caps.
+
 ## 0.9.1 (2026-10-29)
 
 - Selected parts' cut contours show in the selection colour, so selection is visible in a

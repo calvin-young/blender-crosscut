@@ -73,7 +73,7 @@ from crosscut import section_math as sm  # noqa: E402
 
 
 def settings(**kw):
-    d = dict(mode='SECTION', orientation='Z', plane_object=None, offset=0.0, flip=False,
+    d = dict(mode='SECTION', orientation='Z', plane_object=None, object_axis='Z', offset=0.0, flip=False,
              thickness=0.0, range_source='TARGETS', range_object=None)
     d.update(kw)
     return types.SimpleNamespace(**d)
@@ -116,6 +116,16 @@ def test_object_plane_uses_local_z_and_origin():
     n, base = engine.plane_frame(settings(orientation='OBJECT', plane_object=ob))
     assert np.allclose(n, m[:3, 2] / np.linalg.norm(m[:3, 2]))
     assert np.isclose(base, n @ m[:3, 3])
+
+
+def test_object_plane_local_axes():
+    m = np.eye(4)
+    m[:3, :3] = [[0, 0, 1], [1, 0, 0], [0, 1, 0]]  # local X -> world Y, Y -> Z, Z -> X
+    m[:3, 3] = [3, 7, 11]
+    ob = types.SimpleNamespace(matrix_world=m)
+    for axis, world, base in (('X', (0, 1, 0), 7), ('Y', (0, 0, 1), 11), ('Z', (1, 0, 0), 3)):
+        f = engine.plane_frame(settings(orientation='OBJECT', plane_object=ob, object_axis=axis))
+        assert np.allclose(f[0], world) and np.isclose(f[1], base)
 
 
 # --------------------------------------------------------- clip hand-off

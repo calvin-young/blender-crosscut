@@ -250,7 +250,7 @@ def settings(s, **kw):
                 show_readout=True, range_source='TARGETS', range_object=None,
                 hatch_space='SCREEN', hatch_pitch_px=10.0, scrub_distance=False, overlap_style='BLEND',
                 interference_style='CROSS', interference_opacity=1.0, plane_opacity=0.10,
-                stripe_width_px=12.0)
+                stripe_width_px=12.0, open_opacity=1.0, object_axis='Z')
     base.update(kw)
     for k, v in base.items():
         setattr(s, k, v)
@@ -477,6 +477,91 @@ def multibody(view):
 
 
 @test
+def coplanar_clash(view):
+    # overlapping caps lie in one plane: they must not z-fight with each other or
+    # with the interference fill, at any distance or angle
+    T = "coplanar_clash"
+    scene = new_scene("cc-clash")
+    box("part-001", (60, 40, 30), (-10, 0, 0), (0.1, 0.1, 0.9))
+    box("part-002", (60, 37, 34), (10, 2, 0), (0.9, 0.1, 0.1))
+    s = scene.crosscut
+    view.space.clip_start = 0.01
+    view.space.clip_end = 1000000.0
+
+    def spread(shot):
+        # overlap region only: flat fills must give one colour
+        pts = [view.px((x, y, 0)) for x in np.linspace(-13, 13, 25) for y in np.linspace(-12, 12, 25)]
+        cols = np.array([shot.at(p, r=0) for p in pts if p])
+        return int(np.ptp(cols, axis=0).max())
+
+    for dist, rot in ((900, (70, 0, 25)), (1500, (65, 0, 40)), (150, (60, 0, 10))):
+        view.look((0, 0, 0), dist, rot)
+        settings(s, mode='SECTION', orientation='Z', color_source='OBJECT', interference=False, outline=False)
+        yield 0.05
+        yield from settle()
+        d = spread(Shot(view, f"clash_blend_{dist}"))
+        check(T, f"blend overlap is flat at {dist}", d <= 3, f"spread {d}")
+        settings(s, mode='SECTION', orientation='Z', color_source='OBJECT', interference=True,
+                 interference_style='SOLID', outline=False)
+        yield from settle()
+        d = spread(Shot(view, f"clash_interference_{dist}"))
+        check(T, f"interference overlap is flat at {dist}", d <= 3, f"spread {d}")
+    check(T, "no draw errors", not errors(), str(errors()))
+
+
+@test
+def selected_over_contour(view):
+    # a selected part's contour must win over a neighbour's dark one where they coincide
+    T = "selected_over_contour"
+    scene = new_scene("cc-seloutline")
+    a = box("part-001", (30, 30, 30), (-15, 0, 0), (0.6, 0.6, 0.6))
+    b = box("part-002", (30, 30, 30), (15, 0, 0), (0.6, 0.6, 0.6))
+    s = scene.crosscut
+    view.look((0, 0, 0), 160, (0, 0, 0))
+    bpy.context.view_layer.update()
+    sel = tuple(int(255 * v) for v in bpy.context.preferences.themes[0].view_3d.object_selected)
+    for name, ob_sel in (("left", a), ("right", b)):
+        for o in scene.objects:
+            o.select_set(o == ob_sel)
+        bpy.context.view_layer.objects.active = None
+        settings(s, mode='SECTION', orientation='Z', flip=False)
+        yield 0.05
+        yield from settle()
+        shot = Shot(view, f"selected_over_contour_{name}")
+        # the shared wall at x=0, seen from above
+        x, y = view.px((0, 5, 0))
+        cols = [shot.at((x + dx, y), r=0) for dx in range(-2, 3)]
+        check(T, f"shared wall shows the selection colour ({name} selected)",
+              any(near(c, sel, 70) for c in cols), f"{cols} vs {sel}")
+    # same profile stacked: the selected part below is only seen as Blender's outline
+    for o in list(scene.objects):
+        bpy.data.objects.remove(o)
+    low = box("part-001", (30, 30, 30), (0, 0, -15), (0.6, 0.6, 0.6))
+    box("part-002", (30, 30, 30), (0, 0, 15), (0.6, 0.6, 0.6))
+    low.select_set(True)
+    bpy.context.view_layer.objects.active = None
+    view.look((0, 0, 0), 160, (40, 0, 30))
+    settings(s, mode='SECTION', orientation='Z', offset=15.0)
+    yield 0.05
+    yield from settle()
+    Shot(view, "selected_over_contour_stacked")
+    # the plane on the interface: looking at it, the selected part's silhouette lies on the contour
+    view.look((0, 0, 0), 160, (40, 0, 30))
+    settings(s, mode='SECTION', orientation='Z', offset=0.0)
+    yield from settle()
+    shot = Shot(view, "selected_over_contour_interface")
+    x, y = view.px((-15, 0, 0))
+    cols = [shot.at((x + dx, y), r=0) for dx in range(-4, 5)]
+    check(T, "plane on the interface: selected outline over the neighbour's contour",
+          any(near(c, sel, 70) for c in cols), str(cols))
+    # the flat face lying on the plane mustn't z-fight with the cap on it
+    pts = [view.px((a, b, 0)) for a in np.linspace(-13, 13, 20) for b in np.linspace(-13, 13, 20)]
+    d = int(np.ptp(np.array([shot.at(p, r=0) for p in pts]), axis=0).max())
+    check(T, "cap on a flush face is flat", d <= 3, f"spread {d}")
+    check(T, "no draw errors", not errors(), str(errors()))
+
+
+@test
 def auto_colours(view):
     T = "auto_colours"
     scene = new_scene("cc-auto")
@@ -519,6 +604,172 @@ def open_mesh(view):
     shot = Shot(view, "open_mesh_warning")
     c = shot.at(view.px((0, 0, 0)))
     check(T, "open contour is closed and filled", is_green(c), f"{c}")
+    lines, warn, severe = cc("draw").readout_lines(scene, s, info)
+    check(T, "open section: severe warning", len(severe) == 1 and not warn, f"{warn} {severe}")
+    # a cut away from the hole: closed contour, but the mesh is open
+    settings(s, mode='SECTION', orientation='Z', offset=0.0)
+    yield from settle()
+    info = cc("draw").last_info(view.region)
+    lines, warn, severe = cc("draw").readout_lines(scene, s, info)
+    check(T, "cut away from the hole: mild warning", info.get("open_mesh") == ["part-001"] and warn and not severe,
+          f"{info.get('open_mesh')} {warn} {severe}")
+    p = view.px((0, 0, 0))
+    solid = Shot(view, "open_mesh_opacity_1").at(p)
+    s.open_opacity = 0.5
+    yield from settle()
+    half = Shot(view, "open_mesh_opacity_half").at(p)
+    check(T, "open part's cap is translucent", is_green(solid) and not near(half, solid, 25), f"{solid} {half}")
+    # a closed part is not flagged
+    scene.objects["part-001"].hide_set(True)
+    closed = box("part-002", (30, 30, 30), (0, 0, 0))
+    closed.select_set(False)
+    yield 0.05
+    yield from settle()
+    info = cc("draw").last_info(view.region)
+    check(T, "closed part: no warnings", not info.get("open") and not info.get("open_mesh"), str(info))
+    c = Shot(view, "open_mesh_closed_part").at(p)
+    check(T, "closed part's cap is opaque", near(c, solid, 8), f"{c} {solid}")
+    check(T, "no draw errors", not errors(), str(errors()))
+
+
+@test
+def hatch_stays_put(view):
+    # hiding a part must not change the others' hatch variation
+    T = "hatch_stays_put"
+    scene = new_scene("cc-hatchid")
+    obs = [box(f"part-{i:03}", (10, 10, 10), (i * 15, 0, 0)) for i in range(1, 5)]
+    s = scene.crosscut
+    view.look((35, 0, 0), 120, (30, 0, 10))
+    settings(s, mode='SECTION', orientation='Z', cap_style='HATCH')
+    yield 0.05
+    yield from settle()
+    ref = Shot(view, "hatch_all")
+    p = view.px((60, 0, 0))
+
+    def patch(shot):
+        x, y = p[0] + shot.ox, p[1] + shot.oy
+        return shot.px[y - 25:y + 25, x - 25:x + 25].copy()
+
+    before = patch(ref)
+    obs[0].hide_set(True)
+    yield 0.05
+    yield from settle()
+    hidden = patch(Shot(view, "hatch_one_hidden"))
+    check(T, "hiding part-001 leaves part-004's hatch alone", int(np.abs(hidden - before).max()) <= 3,
+          f"max diff {int(np.abs(hidden - before).max())}")
+    obs[0].hide_set(False)
+    box("part-000", (10, 10, 10), (0, 0, 0))
+    yield 0.05
+    yield from settle()
+    added = patch(Shot(view, "hatch_one_added"))
+    check(T, "a new part leaves part-004's hatch alone", int(np.abs(added - before).max()) <= 3,
+          f"max diff {int(np.abs(added - before).max())}")
+    check(T, "no draw errors", not errors(), str(errors()))
+
+
+@test
+def local_axes(view):
+    T = "local_axes"
+    scene = new_scene("cc-local")
+    ob = box("part-001", (40, 40, 10), (5, 0, 0))
+    box("part-002", (5, 5, 5), (60, 0, 0))
+    ob.rotation_euler = (0, math.radians(30), 0)
+    bpy.context.view_layer.update()
+    for o in scene.objects:
+        o.select_set(o == ob)
+    bpy.context.view_layer.objects.active = ob
+    s = scene.crosscut
+    view.look((0, 0, 0), 200, (60, 0, 30))
+    settings(s, mode='SECTION', orientation='X')
+    s.plane_object = None
+    s.orientation = 'OBJECT'
+    check(T, "Object picks the selected part", s.plane_object == ob, str(s.plane_object))
+    m = np.array(ob.matrix_world)
+    for axis, i in (('X', 0), ('Y', 1), ('Z', 2)):
+        s.object_axis = axis
+        f = cc("engine").plane_frame(s)
+        check(T, f"normal is local {axis}", np.allclose(f[0], m[:3, i] / np.linalg.norm(m[:3, i])), str(f[0]))
+    yield 0.05
+    yield from settle()
+    Shot(view, "local_axis_z")
+    s.object_axis = 'X'
+    s.offset = 0.0
+    yield from settle()
+    Shot(view, "local_axis_x")
+    info = cc("draw").last_info(view.region)
+    head = cc("draw").readout_lines(scene, s, info)[0][0]
+    check(T, "readout names the axis", "part-001 X" in head, repr(head))
+    with view.override():
+        before = ob.matrix_world.copy()
+        bpy.ops.crosscut.add_plane(align='VIEW')
+    check(T, "+ makes an Empty instead of moving the part",
+          s.plane_object != ob and s.plane_object.type == 'EMPTY' and ob.matrix_world == before)
+    check(T, "no draw errors", not errors(), str(errors()))
+
+
+@test
+def xray_caps(view):
+    T = "xray_caps"
+    scene = new_scene("cc-xray")
+    box("part-001", (30, 30, 30))
+    s = scene.crosscut
+    view.look((0, 0, 0), 160, (60, 0, 30))
+    settings(s, mode='SECTION', orientation='Z')
+    yield 0.05
+    yield from settle()
+    p = view.px((0, 0, 0))
+    solid = Shot(view, "xray_off").at(p)
+    view.space.shading.show_xray = True
+    view.space.shading.xray_alpha = 0.5
+    yield from settle()
+    xr = Shot(view, "xray_on").at(p)
+    check(T, "X-ray: cap is translucent", is_green(solid) and xr[1] < solid[1] - 30, f"{solid} {xr}")
+    view.space.shading.show_xray = False
+    check(T, "no draw errors", not errors(), str(errors()))
+
+
+@test
+def alt_b_button(view):
+    T = "alt_b_button"
+    scene = new_scene("cc-altb-button")
+    box("part-001", (30, 30, 30))
+    s = scene.crosscut
+    view.look((0, 0, 0), 160, (60, 0, 30))
+    settings(s, mode='SECTION', orientation='Z')
+    yield 0.1
+    yield from settle()
+    if not bpy.app.use_event_simulate:
+        print("  (no --enable-event-simulate: drawing the box is not tested)")
+        return
+    win = bpy.context.window
+    r = view.region
+    # as from the sidebar button: Crosscut turns off and Blender waits for a box
+    view.space.show_region_ui = True
+    ui = next(rg for rg in view.area.regions if rg.type == 'UI')
+    with bpy.context.temp_override(window=win, area=view.area, region=ui):
+        bpy.ops.crosscut.alt_b('INVOKE_DEFAULT')
+    check(T, "Section turned off", s.mode == 'OFF', s.mode)
+    yield 0.1
+    a, b = view.px((-12, -12, 15)), view.px((12, 12, 15))
+    x0, x1 = sorted((a[0], b[0]))
+    y0, y1 = sorted((a[1], b[1]))
+    win.event_simulate('MOUSEMOVE', 'NOTHING', x=r.x + x0, y=r.y + y0)
+    yield 0.05
+    win.event_simulate('LEFTMOUSE', 'PRESS', x=r.x + x0, y=r.y + y0)
+    yield 0.05
+    win.event_simulate('MOUSEMOVE', 'NOTHING', x=r.x + x1, y=r.y + y1)
+    yield 0.05
+    win.event_simulate('LEFTMOUSE', 'RELEASE', x=r.x + x1, y=r.y + y1)
+    yield 0.1
+    yield from settle()
+    Shot(view, "alt_b_button_box")
+    check(T, "box drawn: native clipping on", view.rv3d.use_clip_planes and s.mode == 'OFF')
+    check(T, "box drawn: caps on it", cc("draw").last_info(r).get("native"), str(cc("draw").last_info(r)))
+    with bpy.context.temp_override(window=win, area=view.area, region=ui):
+        bpy.ops.crosscut.alt_b('INVOKE_DEFAULT')
+    yield from settle()
+    check(T, "clicked again: box removed", not view.rv3d.use_clip_planes)
+    view.space.show_region_ui = False
     check(T, "no draw errors", not errors(), str(errors()))
 
 
@@ -898,7 +1149,7 @@ def object_plane_and_plane_tint(view):
     yield from settle()
     info = cc("draw").last_info(view.region)
     check(T, "no plane object: no clipping", not view.rv3d.use_clip_planes, str(info))
-    lines, warn = cc("draw").readout_lines(scene, s, info)
+    lines, warn, _severe = cc("draw").readout_lines(scene, s, info)
     check(T, "no plane object: readout asks for one", any("pick an object" in w for w in warn), str(warn))
     # one Empty among parts: the Empty is picked, and the plane goes through it
     e = bpy.data.objects.new("plane-empty", None)
@@ -923,7 +1174,7 @@ def object_plane_and_plane_tint(view):
     w.display_type = 'WIRE'
     settings(s, mode='SECTION', orientation='Z', offset=0.0)
     yield from settle()
-    lines, warn = cc("draw").readout_lines(scene, s, cc("draw").last_info(view.region))
+    lines, warn, _severe = cc("draw").readout_lines(scene, s, cc("draw").last_info(view.region))
     check(T, "wire object: readout warns it isn't capped", any("bucket-01" in x for x in warn), str(warn))
     s.plane_object = None
     bpy.data.objects.remove(w)

@@ -23,6 +23,7 @@ steering lines matters more than the count of prompts.
 
 | Date | Tool and model | Prompts | Steering lines | Notes |
 |---|---|---|---|---|
+| 2026-11-02 | Claude Code (workstation), Opus 5.5 | 1 | 4 | 0.9.2 from the maintainer's notes after several days of real use |
 | 2026-10-29 | Claude Code (workstation), Opus 5.5 | 5 | 17 | First in-Blender test pass: viewport test suite, 0.2.0 fixes, zip; then 0.3.0, 0.4.0, the 0.9.0 release candidate and 0.9.1 from the maintainer's tests |
 | 2026-10-26 | Claude (cloud session), Opus 5.5 | 1 | 3 | Repo created; first user test; handoff to Claude Code |
 | 2026-10-22 | Claude (cloud session), Opus 5.5 | 1 | 6 | Initial spec with 3 mock-ups; 0.1.0 built without Blender access |
@@ -32,6 +33,10 @@ steering lines matters more than the count of prompts.
 One line for each thing the human contributed that the AI would not have done on its own,
 newest first, tagged with its kind (decide, correct, domain, tested, scope).
 
+- 2026-11-02 [tested]: several days of real use found the interference clash (with a screenshot) and the selected outline losing to a black contour.
+- 2026-11-02 [decide]: hide the axis row while off, an Alt+B button, Scrub by Distance and Step into a renamed Scrub Settings, Cap Targets under Caps, readout clear of the last-operation panel.
+- 2026-11-02 [decide]: align to an object's local axes; X-ray should affect caps; Vary per Object must hold when parts are shown or hidden.
+- 2026-11-02 [domain]: scrubbing an open Suzanne showed that a confident solid cap misleads: warn for any open mesh being cut, more severely on the plane, and maybe lower the cap's opacity.
 - 2026-10-29 [tested]: found selected parts showing no outline in a zero-thickness slice, and Blender's selection outline clashing with Crosscut's in a slab.
 - 2026-10-29 [decide]: plane tint default 0.03 with a 0 to 0.1 slider; re-pick a stale plane object when Object is chosen.
 - 2026-10-29 [decide]: Caps and everything below into a separate settings panel, closed by default; "Range" aligned with its row.

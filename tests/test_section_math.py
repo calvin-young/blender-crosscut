@@ -223,6 +223,17 @@ def test_section_segments_with_cached_columns():
     assert np.array_equal(sm.section_segments(v, t, plane), sm.section_segments(v, t, plane, cols))
 
 
+def test_mesh_has_open_edges():
+    # a tetrahedron: closed; without one face: open
+    v = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=np.float64)
+    t = np.array([[0, 2, 1], [0, 1, 3], [1, 2, 3], [2, 0, 3]])
+    assert not sm.mesh_has_open_edges(v, t)
+    assert sm.mesh_has_open_edges(v, t[:3])
+    # unwelded: every triangle has its own vertices, in the same places: still closed
+    assert not sm.mesh_has_open_edges(v[t.reshape(-1)], np.arange(12).reshape(4, 3))
+    assert not sm.mesh_has_open_edges(v, np.zeros((0, 3), dtype=np.int64))
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

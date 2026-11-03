@@ -8,7 +8,7 @@ The human-facing overview is in [README.md](README.md).
 - **What it is:** a Blender add-on that adds filled (solid or hatched) caps to viewport
   clipping, plus section and slice views with a scrub slider. It drives the same
   `RegionView3D.clip_planes` that Alt+B uses and draws the caps with the `gpu` module.
-- **Status:** 1.0 release candidate (0.9.1, 2026-10-29), awaiting the maintainer's review; tested in Blender (4.2.23 and 5.2.3,
+- **Status:** 1.0 release candidate (0.9.2, 2026-11-02), awaiting the maintainer's review; tested in Blender (4.2.23 and 5.2.3,
   OpenGL; 5.2 on Vulkan too) with the in-viewport suite below. Waiting for the maintainer's
   test on real work. See "State and next steps".
 - **Runs in:** Blender 4.2+ as an extension (`crosscut/blender_manifest.toml`); Python 3.11
@@ -91,7 +91,12 @@ this file, the reasons behind decisions and the approaches that were dropped go 
 - 0.9.1 (maintainer's review of 0.9.0): selection-coloured contours, caps write depth, depth-
   tested frame, sRGB line colours, separate Settings panel. 127 viewport checks pass on 4.2.23
   and 5.2.3 (and Vulkan).
-- Next: the maintainer keeps using 0.9.1 before the 1.0 go. Open questions Q-030 to Q-046 in
+- 0.9.2 (maintainer's notes from real use of 0.9.1): coplanar z-fighting fixed, Alt+B button,
+  local axes, open-mesh warnings and translucent caps, X-ray caps, stable hatch variation, readout
+  at the bottom centre. 161 viewport checks pass on 4.2.23 and 5.2.3 (and Vulkan). The Alt+B button
+  is tested from the sidebar, not from the header popover.
+  The suite sometimes hangs on 4.2 in Blender's window swap, on 0.9.1 too ([issue](https://github.com/calvin-young/blender-crosscut/issues/8)): rerun it.
+- Next: the maintainer keeps using 0.9.2 before the 1.0 go. Open questions Q-030 to Q-053 in
   DECISIONS.md. Then the Issues.
 - Not tested yet: macOS/Windows, HiDPI scaling above 1, Metal, very large multi-object scenes.
 

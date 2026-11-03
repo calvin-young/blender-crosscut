@@ -17,10 +17,15 @@ def _draw_main(layout, context, compact=False):
                  depress=s.mode == 'SECTION').mode = 'SECTION'
     row.operator("crosscut.set_mode", text="Slice", icon='ALIGN_JUSTIFY',
                  depress=s.mode == 'SLICE').mode = 'SLICE'
+    rv3d = getattr(context.space_data, "region_3d", None)
+    row.operator("crosscut.alt_b", text="Alt+B", icon='SHADING_BBOX',
+                 depress=s.mode == 'OFF' and rv3d is not None and rv3d.use_clip_planes)
     # applies to Section, Slice and Alt+B alike; Backfaces = no caps anywhere
     row = col.row(align=True)
     row.prop(s, "cap_style", expand=True)
 
+    if s.mode == 'OFF':
+        return  # hide, don't grey out, what doesn't apply (Flip below is the exception)
     col.separator()
     row = col.row(align=True)
     for key in ('X', 'Y', 'Z', 'OBJECT'):
@@ -34,9 +39,9 @@ def _draw_main(layout, context, compact=False):
         r.prop(s, "plane_object", text="")
         op = r.operator("crosscut.add_plane", text="", icon='ADD')
         op.align = 'VIEW'
+        r = col.row(align=True)
+        r.prop(s, "object_axis", expand=True)
 
-    if s.mode == 'OFF':
-        return  # hide, don't grey out, what doesn't apply (Flip above is the exception)
     box = col.column(align=True)
     r = box.row(align=True)
     if s.scrub_distance:
@@ -71,6 +76,8 @@ class CROSSCUT_PT_main(bpy.types.Panel):
                 col.label(text="Draw error (see console)", icon='ERROR')
             for name in info.get("open", [])[:5]:
                 col.label(text=f"Open section: {name}", icon='ERROR')
+            for name in info.get("open_mesh", [])[:5]:
+                col.label(text=f"Open mesh: {name}", icon='INFO')
 
 
 def _window_region(context):
@@ -126,6 +133,7 @@ class CROSSCUT_PT_display(bpy.types.Panel):
                 col.prop(s, "stripe_width_px", text="Stripe Width (px)")
             else:
                 col.prop(s, "stripe_width")
+        col.prop(s, "open_opacity", slider=True)
 
 
 def _outline_row(col, s):
@@ -175,8 +183,6 @@ class CROSSCUT_PT_settings(bpy.types.Panel):
         s = context.scene.crosscut
         col = _split(self.layout)
         col.prop(s, "show_readout")
-        col.prop(s, "scrub_distance")
-        col.prop(s, "step")
 
 
 class CROSSCUT_PT_plane(bpy.types.Panel):
@@ -224,7 +230,7 @@ class CROSSCUT_PT_range(bpy.types.Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = "Crosscut"
-    bl_label = "Scrub Range"
+    bl_label = "Scrub Settings"
     bl_parent_id = "CROSSCUT_PT_settings"
     bl_options = {'DEFAULT_CLOSED'}
 
@@ -243,6 +249,8 @@ class CROSSCUT_PT_range(bpy.types.Panel):
         r.alignment = 'RIGHT'
         r.label(text="Range")
         sp.label(text=f"{draw.fmt_length(context.scene, lo)} → {draw.fmt_length(context.scene, hi)}")
+        col.prop(s, "scrub_distance")
+        col.prop(s, "step")
 
 
 class CROSSCUT_PT_popover(bpy.types.Panel):
@@ -291,8 +299,8 @@ classes = (
     CROSSCUT_PT_settings,
     CROSSCUT_PT_display,
     CROSSCUT_PT_interference,
-    CROSSCUT_PT_plane,
     CROSSCUT_PT_targets,
+    CROSSCUT_PT_plane,
     CROSSCUT_PT_range,
     CROSSCUT_PT_popover,
     CROSSCUT_MT_pie,

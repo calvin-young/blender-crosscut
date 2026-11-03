@@ -54,6 +54,12 @@ def _plane_object_changed(self, context):
     tag_redraw(self, context)
 
 
+def _object_axis_changed(self, context):
+    if self.orientation == 'OBJECT':
+        self.offset = _start_offset(self)
+    tag_redraw(self, context)
+
+
 def _get_position(self):
     lo, hi = engine.scrub_range(self)
     if hi - lo <= 1e-12:
@@ -84,9 +90,9 @@ ORIENTATIONS = [
     ('X', "X", "Plane normal along world X"),
     ('Y', "Y", "Plane normal along world Y"),
     ('Z', "Z", "Plane normal along world Z"),
-    ('OBJECT', "Object", "Use an object as the plane: its local Z axis is the normal, through its origin. "
-                         "Move/rotate it with the usual tools. Picked automatically when only one "
-                         "Empty, or only one object, is visible"),
+    ('OBJECT', "Object", "Align to an object: one of its local axes (Z unless you pick another) is the normal, "
+                         "through its origin. It follows the object when you move or rotate it. Picked "
+                         "automatically: the only visible Empty, else the selected object, else the only object"),
     ('VIEW', "View", "Plane facing the view as it was when chosen. It stays put when you orbit; "
                      "click View again to face the current view"),
 ]
@@ -110,7 +116,15 @@ class CrosscutSettings(bpy.types.PropertyGroup):
                          description="The plane has been positioned once (first use starts it in the middle)")
     plane_object: PointerProperty(
         name="Plane Object", type=bpy.types.Object, update=_plane_object_changed,
-        description="Object whose local Z axis defines the section plane (no cut until one is chosen)",
+        description="Object whose local axis defines the section plane (no cut until one is chosen)",
+    )
+    object_axis: EnumProperty(
+        name="Local Axis", default='Z', update=_object_axis_changed,
+        items=[
+            ('X', "X", "Plane normal along the object's local X"),
+            ('Y', "Y", "Plane normal along the object's local Y"),
+            ('Z', "Z", "Plane normal along the object's local Z"),
+        ],
     )
     offset: FloatProperty(
         name="Position", subtype='DISTANCE', unit='LENGTH', precision=3, step=10,
@@ -190,6 +204,11 @@ class CrosscutSettings(bpy.types.PropertyGroup):
     outline: BoolProperty(name="Outline", default=True, update=tag_redraw,
                           description="Draw the cut contour")
     outline_width: FloatProperty(name="Width", min=0.5, max=6.0, default=1.5, update=tag_redraw)
+    open_opacity: FloatProperty(
+        name="Open Part Opacity", subtype='FACTOR', min=0.0, max=1.0, default=0.5, update=tag_redraw,
+        description="Cap opacity for parts with holes in their mesh: their cut may not show real "
+                    "material, so the cap shouldn't read as solid",
+    )
     interference: BoolProperty(
         name="Show Interference", default=True, update=tag_redraw,
         description="Highlight areas where two or more objects' sections overlap (red cross-hatching "

@@ -27,7 +27,7 @@ def plane_frame(s):
     if ob is None:
         return None
     m = np.array(ob.matrix_world)
-    z = m[:3, 2]
+    z = m[:3, "XYZ".index(s.object_axis)]
     if np.linalg.norm(z) < 1e-12:
         return None
     n = sm.normalize(z)
@@ -110,7 +110,8 @@ def is_shown(context, ob):
 
 
 def obvious_plane_object(context):
-    """The only visible Empty, else the only visible object, else None."""
+    """The only visible Empty, else the selected active object, else the only
+    visible object, else None."""
     view_layer = context.view_layer
     if view_layer is None:
         return None
@@ -119,6 +120,9 @@ def obvious_plane_object(context):
     empties = [ob for ob in vis if ob.type == 'EMPTY']
     if len(empties) == 1:
         return empties[0]
+    active = view_layer.objects.active
+    if active in vis and active.select_get(view_layer=view_layer):
+        return active
     if not empties and len(vis) == 1:
         return vis[0]
     return None
@@ -256,6 +260,7 @@ def collect_targets(context, s, depsgraph):
 _meshes = {}        # mesh_key -> dict(v, t, bbmin, bbmax, ver), or False for "no geometry"
 _sections = {}      # (target key, cap index) -> (signature, result)
 _version = [0]
+_hatch_ids = {}     # target key -> hatch variation index, stable while parts are shown and hidden
 
 
 def invalidate_object(name):
@@ -266,6 +271,19 @@ def invalidate_object(name):
 def invalidate_all():
     _meshes.clear()
     _sections.clear()
+    _hatch_ids.clear()
+
+
+def hatch_index(context, target):
+    """A target's hatch variation index. Counted over every solid in the scene,
+    hidden ones too, and never reassigned, so showing or hiding a part leaves
+    the other parts' hatching alone. New parts take the next index."""
+    i = _hatch_ids.get(target.key)
+    if i is None:
+        for name in sorted(ob.name_full for ob in context.scene.objects if ob.type in TARGET_TYPES):
+            _hatch_ids.setdefault((name, False, ()), len(_hatch_ids))
+        i = _hatch_ids.setdefault(target.key, len(_hatch_ids))
+    return i
 
 
 def _mesh(target, depsgraph):
@@ -349,6 +367,34 @@ def section(target, cap_index, plane, depsgraph, bounds=()):
             res = (seg_w, sm.open_endpoint_count(seg), _version[0])
     _sections[ck] = (sig, res)
     return res
+
+
+def is_open_mesh(target, depsgraph):
+    """True if the target's mesh has holes, wherever they are. Worked out once
+    per mesh version, and only for parts actually being cut."""
+    e = _mesh(target, depsgraph)
+    if e is None:
+        return False
+    if "open" not in e:
+        e["open"] = sm.mesh_has_open_edges(e["v"], e["t"])
+    return e["open"]
+
+
+def flush_section(target, cap_index, plane, depsgraph, bounds=()):
+    """The section just beside `plane`, for a part with a flat face lying on the
+    plane: the plane only touches it, so section() finds no cut there. None if
+    the part isn't flush with the plane."""
+    e = _mesh(target, depsgraph)
+    if e is None:
+        return None
+    delta = 1e-6 * float(np.linalg.norm(target.matrix[:3, :3] @ (e["bbmax"] - e["bbmin"])))
+    for sign in (1.0, -1.0):
+        beside = np.array(plane, dtype=np.float64)
+        beside[3] += sign * delta
+        res = section(target, (cap_index, "flush", sign), beside, depsgraph, bounds)
+        if res is not None:
+            return res
+    return None
 
 
 def objects_at(context, s, point, plane, depsgraph):

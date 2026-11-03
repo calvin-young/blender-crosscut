@@ -10,6 +10,7 @@ this list is an assumption, tracked in the table at the end.
 
 | ID | Requirement | Status in 0.1.0 |
 | --- | --- | --- |
+| R-015 | Notes from using 0.9.1 on real work (2026-11-02): hide the axis row while off; align to an object's local XYZ; an Alt+B button; selected outline must win over a coincident black contour; readout hidden by the last-operation panel; Scrub by Distance and Step into Scrub Range, renamed Scrub Settings; X-ray should affect caps; Cap Targets right under Caps; Vary per Object must not change when parts are shown or hidden; warn when cutting through an open mesh even if the hole isn't on the plane, more severely when it is, and maybe lower the cap's opacity; "clashes on interference, both when enabled or disabled" | 0.9.2, see below |
 | R-014 | After testing 0.9.0 (2026-10-29): plane tint default 0.03, slider 0 to 0.1 but typing up to 1; choosing Object with a plane object that's no longer visible must clear it (and pick the only visible object); show selection outlines in a zero-thickness slice; stop Blender's selection outline clashing with Crosscut's outline in a slab; move Caps and everything below into a separate, collapsed settings panel; line "Range" up with the Scrub Range row; list open follow-ups at the end of every reply | 0.9.1, see below |
 | R-013 | After testing 0.4.0 (2026-10-29): no outline in Wireframe; show the Wire/Bounds note only when such objects exist, and warn in the readout; stripe width and plane colour/opacity settings; Object with no object must not cut, and the only visible object should be picked automatically; Cap Targets and Scrub Range under Settings; parts selectable in a zero-thickness slice; a slab's second plane in another colour or without stacked tint; hide rather than grey out (except Flip); turning off must not bring back the Alt+B box; prep everything for 1.0, release after review | 0.9.0 (1.0 candidate), see below |
 | R-012 | After testing 0.3.0 (2026-10-29): stutter fixed. A toggle between blending and striping overlapping colours; hide Cap Color when Auto doesn't use it; bug: switching Section/Slice on over Alt+B left Alt+B's box shading; Center as the middle button; settings for the interference look; maybe rename "Targets & Range"; "just about ready for a 1.0" | 0.4.0, see below |
@@ -26,6 +27,64 @@ this list is an assumption, tracked in the table at the end.
 | R-001 | Main use: while modelling parts. Secondary: finding interferences when packing buckets | Drives defaults |
 
 ## Decisions
+
+### Changes after the maintainer's notes on 0.9.1 (0.9.2, 2026-11-02)
+
+- **Interference clash** (D-023). The note was cut short; read together with its screenshot as the
+  banding between overlapping caps (*assumed*).
+- **Selected outline over a black contour** (D-024).
+- **Local axes** (D-025).
+- **Alt+B button** in the Section / Slice row, lit while the view has a box (*assumed*: a third
+  button there, so one of the three lights up). Clicking it with Section or Slice on turns them
+  off and waits for a box, unlike the Alt+B key, which only removes the clipping (*assumed*: a
+  button labelled Alt+B should end up with a box).
+- **Open meshes** (D-026).
+- **X-ray**: caps multiply in the viewport's X-ray opacity, depth testing is off for fills and
+  lines, and no depth is written. Contours stay opaque, like Blender's outlines in X-ray (*assumed*).
+- **Vary per Object**: each part keeps an index for the session, handed out in name order over
+  every solid in the scene, hidden ones too, so hiding changes nothing and a new part takes the
+  next index. A name hash was rejected: two parts could get the same hatch. Hidden parts now use
+  up indices, so two visible neighbours can (rarely) land on matching variations (six-step cycle).
+- **Readout** bottom centre (*assumed*; moving it past the panel when one is showing would make
+  it jump after every operation).
+
+### D-026: Warn about open meshes wherever the hole is (2026-11-02)
+
+- **Context:** A closed contour through an open mesh gets a confident solid cap and no warning,
+  though the "solid" may not be material at all (Suzanne without her eyes).
+- **Decision:** A mesh with any edge used by an odd number of triangles, matching vertices by
+  position so unwelded shells still count as closed, is open. A cut through it warns in amber and
+  draws the cap at Open Part Opacity, default 0.5 (*assumed*, as is the setting itself). An open
+  contour on the plane warns in red and keeps its orange outline. Worked out once per mesh
+  version, only for parts being cut: about 30 ms per 100k triangles, 300 ms per 1M.
+- **Revisit if:** that cost shows in Edit Mode on heavy meshes.
+
+### D-025: Local axes belong to the Object plane (2026-11-02)
+
+- **Decision:** A Local Axis row (X, Y, Z, default Z, as before) under the plane object. No
+  separate world/local switch, so all of Object's machinery still applies: it follows the object,
+  and measures from its origin. Object now prefers the selected part when no single Empty is
+  visible, since that's the usual reason to want its axes (*assumed*). **+** only reuses an Empty,
+  so it can't move a part (a bug waiting to happen once parts were picked more often).
+
+### D-024: A selected part flush with the plane still gets its contour (2026-11-02)
+
+- **Context:** D-021 already has selected contours win over neighbours'. It missed a part with a
+  face on the plane: the plane only touches it, so it has no section, and Blender's outline along
+  that edge lies under the neighbour's black contour (our overlay draws after Blender's).
+- **Decision:** For selected parts with no section, take one a millionth of the part's size to
+  either side of the plane, and draw just its contour.
+- **Not covered:** a selected part's silhouette that only lines up on screen with another part's
+  contour, away from the plane. Fixing it needs the outline drawn by us or read back per pixel.
+
+### D-023: Caps don't write depth as they draw (2026-11-02)
+
+- **Context:** 0.9.1 made caps write depth (so a slab's far contour can't show through). Caps in
+  one plane have different polygons, so rounding made them z-fight each other and the interference
+  fill, in bands. Flat faces lying on the plane z-fought with the cap the same way, since 0.1.0.
+- **Decision:** Fills draw with depth writes off and a small clip-space bias toward the viewer
+  (1e-6, a few depth steps at any zoom). After a plane's fills, one colourless pass writes the
+  depth of all its caps, unbiased, so contours keep their margin.
 
 ### Changes after the maintainer's test of 0.9.0 (0.9.1, 2026-10-29)
 
@@ -397,3 +456,10 @@ What `tests/blender/run_viewport_tests.py` and the screenshots showed in 0.1.0, 
 | Q-044 | Settings layout: Readout, Scrub by Distance, Step at the top of Settings; Plane as its own sub-panel | assumption | 0.9.1 | open |
 | Q-045 | A hidden plane object keeps cutting while Object stays chosen; it's only replaced when Object is chosen again | assumption | 0.9.1 | open |
 | Q-046 | Plane frame hidden behind parts and the near cap (it used to draw on top of everything) | assumption | 0.9.1 | open |
+| Q-047 | "Clashes on interference" (note cut short) means the banding between overlapping caps (D-023) | assumption | 0.9.2 | open |
+| Q-048 | The Alt+B button turns Section/Slice off and waits for a box, unlike the key | assumption | 0.9.2 | open |
+| Q-049 | Local axes live under Object; Object prefers the selected part (D-025) | assumption | 0.9.2 | open |
+| Q-050 | Open-part caps at 50 %, with a setting; the plane-crossing warning is red (D-026) | assumption | 0.9.2 | open |
+| Q-051 | In X-ray, contours stay opaque while caps go translucent | assumption | 0.9.2 | open |
+| Q-052 | Readout at the bottom centre | assumption | 0.9.2 | open |
+| Q-053 | Whether the black-over-orange case seen was the flush-face one (D-024) | unasked question | 0.9.2 | open |
