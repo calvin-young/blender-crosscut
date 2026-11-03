@@ -73,6 +73,81 @@ def compute_planes(s):
     return [lo, hi], [(lo, [hi]), (hi, [lo])]
 
 
+def powder_planes(s):
+    """Print Preview: the half-spaces the powder fills (kept side n.p + d >= 0),
+    i.e. up to the plane, or up to the top of a slab. None when inactive."""
+    if s.mode == 'OFF':
+        return None
+    f = plane_frame(s)
+    if f is None:
+        return None
+    n, base = f
+    c = base + s.offset
+    if s.mode == 'SECTION':
+        keep = np.concatenate([-n, [c]])
+        return [-keep if s.flip else keep]
+    return [np.concatenate([-n, [c + max(s.thickness, 0.0) / 2]])]
+
+
+def bed_bounds(context, s):
+    """Print Preview: (lo, hi) of the powder bed, the Scrub Range object's
+    bounds, or the targets' bounds plus the bed margin (not below them)."""
+    if s.range_source == 'OBJECT' and s.range_object is not None:
+        pts = _corners(s.range_object)
+        return pts.min(0), pts.max(0)
+    pts = target_points(context, s)
+    if len(pts) == 0:
+        return None
+    m = s.bed_margin
+    lo, hi = pts.min(0), pts.max(0)
+    return lo - np.array([m, m, 0.0]), hi + m
+
+
+def clip_axis(rv3d):
+    """For an Alt+B box: (axis, centre, half width) of the pair of opposite walls
+    closest to parallel with the view, where `axis` points from one wall to the
+    other, toward the viewer, and the centre and half width are measured along
+    it. None without such a pair."""
+    planes = [np.array(p, dtype=np.float64) for p in rv3d.clip_planes]
+    walls = [p for p in planes if not sm.plane_is_degenerate(p)]
+    toward = np.array(rv3d.view_matrix.inverted())[:3, 2]
+    best = None
+    for i, a in enumerate(walls):
+        for b in walls[i + 1:]:
+            if float(a[:3] @ b[:3]) >= 0.0:
+                continue
+            score = max(abs(float(a[:3] @ toward)), abs(float(b[:3] @ toward)))
+            if best is None or score > best[0] + 1e-6:
+                best = (score, a, b)
+    if best is None:
+        return None
+    _, a, b = best
+    axis = sm.normalize(a[:3] - b[:3])
+    if float(axis @ toward) < 0.0:
+        axis = -axis
+    ta, tb = -a[3] / float(a[:3] @ axis), -b[3] / float(b[:3] @ axis)
+    return axis, 0.5 * (ta + tb), 0.5 * abs(ta - tb)
+
+
+def shift_clip(rv3d, axis, delta):
+    """Slide an Alt+B box along `axis` without changing its shape."""
+    move = axis * delta
+    out = []
+    for p in rv3d.clip_planes:
+        p = np.array(p, dtype=np.float64)
+        if not sm.plane_is_degenerate(p):
+            p[3] -= float(p[:3] @ move)
+        out.append(p.tolist())
+    rv3d.clip_planes = out
+
+
+def clip_range(s, axis, half):
+    """(lo, hi) of an Alt+B box's centre: from just short of the scrub range to
+    just past it, so the box sweeps all the way through."""
+    lo, hi = _range_along(s, axis)
+    return lo - half, hi + half
+
+
 def native_caps(rv3d):
     """Caps for Blender's own Alt+B clipping region."""
     planes = [np.array(p, dtype=np.float64) for p in rv3d.clip_planes]
@@ -183,7 +258,10 @@ def scrub_range(s):
     f = plane_frame(s)
     if f is None:
         return 0.0, 0.0
-    n = f[0]
+    return _range_along(s, f[0])
+
+
+def _range_along(s, n):
     if s.range_source == 'OBJECT' and s.range_object is not None:
         obs = [s.range_object]
     else:
@@ -376,8 +454,18 @@ def is_open_mesh(target, depsgraph):
     if e is None:
         return False
     if "open" not in e:
-        e["open"] = sm.mesh_has_open_edges(e["v"], e["t"])
+        e["open"], e["oriented"] = sm.mesh_edge_state(e["v"], e["t"])
     return e["open"]
+
+
+def is_oriented(target, depsgraph):
+    """True if the target's contours can be filled by winding number: overlapping
+    shells inside it then add up instead of cancelling."""
+    e = _mesh(target, depsgraph)
+    if e is None:
+        return False
+    is_open_mesh(target, depsgraph)
+    return e["oriented"]
 
 
 def flush_section(target, cap_index, plane, depsgraph, bounds=()):
@@ -399,7 +487,8 @@ def flush_section(target, cap_index, plane, depsgraph, bounds=()):
 
 def objects_at(context, s, point, plane, depsgraph):
     """Owners of the targets whose section on `plane` (cap index 0, as drawn)
-    contains the world point, in target order. Even-odd test in the plane."""
+    contains the world point, in target order. Fills the way the cap does:
+    by winding number if the mesh allows it, else even-odd."""
     u, v = sm.plane_basis(sm.normalize(plane[:3]))
     px, py = float(point @ u), float(point @ v)
     out = []
@@ -413,7 +502,12 @@ def objects_at(context, s, point, plane, depsgraph):
         crosses = (ay > py) != (by > py)
         with np.errstate(divide='ignore', invalid='ignore'):
             x_at = ax + (py - ay) * (bx - ax) / (by - ay)
-        if int(np.count_nonzero(crosses & (px < x_at))) % 2 == 1 and t.owner not in out:
+        right = crosses & (px < x_at)
+        if is_oriented(t, depsgraph):
+            inside = int(np.count_nonzero(by[right] > ay[right])) != int(np.count_nonzero(by[right] < ay[right]))
+        else:
+            inside = int(np.count_nonzero(right)) % 2 == 1
+        if inside and t.owner not in out:
             out.append(t.owner)
     return out
 

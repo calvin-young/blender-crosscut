@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.9.4 (2026-11-02)
+
+- Fixed: overlapping closed shells inside one object cancelled out and left a hole in the cap
+  (Suzanne's head and eyes). They now stay filled; shells with reversed normals still cut holes.
+  Clicking a part in a zero-thickness slice follows the same rule.
+- **Scrub an Alt+B box**: with Clip on, a slider and step buttons slide the box along whichever of its
+  axes faces you most. Its size stays the same.
+- **X, Y, Z and Object** now start a section while Crosscut is off, as View does.
+- **Print Preview** (experimental) is in Settings: powder fills the bed up to the plane and the cut
+  through each part is the fused layer, in one colour. Powder and fused colours and powder grain are
+  adjustable. The bed is the Scrub Range object, or the targets' bounds plus a margin. The readout
+  counts layers ("layer 512 / 1150") at the Step size.
+
 ## 0.9.3 (2026-11-02)
 
 - The plane row is back while Crosscut is off: View starts a section from there.

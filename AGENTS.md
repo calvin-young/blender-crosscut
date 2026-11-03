@@ -8,7 +8,7 @@ The human-facing overview is in [README.md](README.md).
 - **What it is:** a Blender add-on that adds filled (solid or hatched) caps to viewport
   clipping, plus section and slice views with a scrub slider. It drives the same
   `RegionView3D.clip_planes` that Alt+B uses and draws the caps with the `gpu` module.
-- **Status:** in user testing (0.9.3, 2026-11-02), not close to 1.0 by the maintainer's call; tested in Blender (4.2.23 and 5.2.3,
+- **Status:** in user testing (0.9.4, 2026-11-02), not close to 1.0 by the maintainer's call; tested in Blender (4.2.23 and 5.2.3,
   OpenGL; 5.2 on Vulkan too) with the in-viewport suite below. Waiting for the maintainer's
   test on real work. See "State and next steps".
 - **Runs in:** Blender 4.2+ as an extension (`crosscut/blender_manifest.toml`); Python 3.11
@@ -96,13 +96,16 @@ this file, the reasons behind decisions and the approaches that were dropped go 
   is tested from the sidebar, not from the header popover.
   The suite sometimes hangs on 4.2 in Blender's window swap, on 0.9.1 too ([issue](https://github.com/calvin-young/blender-crosscut/issues/8)): rerun it.
 - 0.9.3: plane row back while off, Clip button first, button follows the Alt+B key.
+- 0.9.4: overlapping shells fill by winding number (D-028), Alt+B box scrub (D-027, a first guess to
+  be tuned by use), axis buttons start a plane while off, Print Preview merged into Settings
+  (D-022). 203 viewport checks. Branch `mjf-preview` is kept only for the demo reel in `demo-reels`;
+  new work goes on `main`.
 - **Builds:** every build gets a tag, a GitHub pre-release with the zip attached, and a new download
   link on the Workbench row (see ai-context, topics/workstation.md).
 - **1.0 is not close (maintainer, 2026-11-02).** It's about 90% there, but the maintainer wants to keep testing on
   real work for a while. Say so plainly when bugs and features are still coming; don't call it nearly
   done. Calling it close was premature.
-- Next: the maintainer keeps testing. Open questions Q-030 to Q-054 in DECISIONS.md. Then the Issues.
-  Possible next feature, undecided: scrubbing a plain Alt+B box ([issue](https://github.com/calvin-young/blender-crosscut/issues/9)).
+- Next: the maintainer keeps testing. Open questions Q-030 to Q-056 in DECISIONS.md. Then the Issues.
 - Not tested yet: macOS/Windows, HiDPI scaling above 1, Metal, very large multi-object scenes.
 
 ## Before you change things

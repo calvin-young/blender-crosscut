@@ -49,6 +49,20 @@ void main() {
     fragColor = vec4(1.0);
 }
 """
+_WIND_FS = """
+void main() {
+    fragColor = windColor;
+}
+"""
+_RESOLVE_FS = """
+void main() {
+    vec2 w = texelFetch(maskTex, ivec2(gl_FragCoord.xy), 0).rg;
+    if (abs(w.r - w.g) < 0.5 / 255.0) {
+        discard;
+    }
+    fragColor = vec4(1.0);
+}
+"""
 _ACCUM_VS = """
 void main() {
     gl_Position = vec4(pos, 0.0, 1.0);
@@ -127,6 +141,25 @@ void main() {
 """
 
 
+_POWDER_FS = """
+float hash(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
+
+float speckle(vec2 uv, float cell) {
+    // fades out where a cell gets smaller than about two pixels, so it never shimmers
+    float px = max(fwidth(uv.x), fwidth(uv.y));
+    float k = smoothstep(0.5, 2.0, cell / max(px, 1e-6));
+    return (hash(floor(uv / cell)) - 0.5) * k;
+}
+
+void main() {
+    float n = 0.7 * speckle(vUV, 0.4) + 0.3 * speckle(vUV + 17.0, 1.6);
+    fragColor = vec4(fillColor.rgb * (1.0 + grain * 0.22 * n), 1.0);
+}
+"""
+
+
 # Coverage count per pixel, accumulated additively in an 8-bit texture: each
 # cap adds COUNT_UNITS/255, so up to 15 overlapping objects are counted exactly.
 COUNT_UNITS = 16.0
@@ -160,6 +193,12 @@ def _shader(kind):
     if kind == "mask":
         sh = _make_shader("crosscut_mask", _MASK_VS, _MASK_FS,
                           [('VEC3', "pos")], [('MAT4', "viewProj")])
+    elif kind == "wind":
+        sh = _make_shader("crosscut_wind", _MASK_VS, _WIND_FS,
+                          [('VEC3', "pos")], [('MAT4', "viewProj"), ('VEC4', "windColor")])
+    elif kind == "resolve":
+        sh = _make_shader("crosscut_resolve", _ACCUM_VS, _RESOLVE_FS,
+                          [('VEC2', "pos")], [], samplers=["maskTex"])
     elif kind == "accum":
         sh = _make_shader("crosscut_accum", _ACCUM_VS, _ACCUM_FS,
                           [('VEC2', "pos")], [], samplers=["maskTex"])
@@ -172,6 +211,11 @@ def _shader(kind):
              ('VEC4', "stripe"), ('FLOAT', "depthBias"), ('FLOAT', "opacity")],
             samplers=["maskTex", "countTex", "totalTex"], varyings=[('VEC2', "vUV")],
         )
+    elif kind == "powder":
+        sh = _make_shader("crosscut_powder", _CAP_VS, _POWDER_FS,
+                          [('VEC3', "pos"), ('VEC2', "uv")],
+                          [('MAT4', "viewProj"), ('VEC4', "fillColor"), ('FLOAT', "grain"), ('FLOAT', "depthBias")],
+                          varyings=[('VEC2', "vUV")])
     elif kind == "line":
         sh = gpu.shader.from_builtin('POLYLINE_UNIFORM_COLOR')
     _shaders[kind] = sh
@@ -186,7 +230,8 @@ def _offscreen(w, h):
             for o in old:
                 o.free()
         _offscreens.clear()
-        pair = tuple(gpu.types.GPUOffScreen(w, h) for _ in range(3))  # mask, running count, total count
+        # mask, running count, total count, winding
+        pair = tuple(gpu.types.GPUOffScreen(w, h) for _ in range(4))
         _offscreens[key] = pair
     return pair
 
@@ -559,6 +604,34 @@ def _draw_mask(off, sh, vp, fan):
         gpu.state.blend_set('NONE')
 
 
+def _draw_winding_mask(off, wind_off, vp, fan):
+    """Nonzero-winding coverage of one section into `off` (cleared first), for a
+    mesh with consistent normals. Fan triangles add to red or green by which way
+    they face; where the two differ the pixel is inside. Overlapping shells then
+    stay filled, and shells with reversed normals still cut holes."""
+    sh = _shader("wind")
+    with wind_off.bind():
+        _clear_bound()
+        gpu.state.depth_test_set('NONE')
+        gpu.state.blend_set('ADDITIVE')
+        sh.bind()
+        sh.uniform_float("viewProj", vp)
+        gpu.state.face_culling_set('BACK')
+        sh.uniform_float("windColor", (1.0 / 255.0, 0.0, 0.0, 1.0))
+        fan.draw(sh)
+        gpu.state.face_culling_set('FRONT')
+        sh.uniform_float("windColor", (0.0, 1.0 / 255.0, 0.0, 1.0))
+        fan.draw(sh)
+        gpu.state.face_culling_set('NONE')
+        gpu.state.blend_set('NONE')
+    sh = _shader("resolve")
+    with off.bind():
+        _clear_bound()
+        sh.bind()
+        sh.uniform_sampler("maskTex", wind_off.texture_color)
+        _fullscreen_batch().draw(sh)
+
+
 def _add_coverage(off, sh, mask_off):
     """Add one COUNT_UNITS step to `off` wherever the mask is lit."""
     with off.bind():
@@ -668,7 +741,7 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style, fill_override=None):
         return {"count": 0}
 
     vp = rv3d.perspective_matrix
-    mask_off, accum_off, total_off = _offscreen(w, h)
+    mask_off, accum_off, total_off, wind_off = _offscreen(w, h)
     mask_sh = _shader("mask")
     cap_sh = _shader("cap")
     accum_sh = _shader("accum")
@@ -686,8 +759,16 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style, fill_override=None):
     xray_alpha = shading.xray_alpha if xray else 1.0
     depth_test = 'NONE' if xray else 'LESS_EQUAL'
 
+    def part_mask(t, ci, segs, serial, n_open):
+        fan = _fan_batch(t, ci, segs, serial, n_open)
+        if oriented[t.key]:
+            _draw_winding_mask(mask_off, wind_off, vp, fan)
+        else:
+            _draw_mask(mask_off, mask_sh, vp, fan)
+
     for ci, (plane, bounds) in enumerate(caps):
         hits = []
+        oriented = {}
         for t in targets:
             live.add(t.key)
             res = engine.section(t, ci, plane, depsgraph, bounds)
@@ -702,6 +783,7 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style, fill_override=None):
             segs, n_open, serial = res
             mesh_open = n_open > 0 or engine.is_open_mesh(t, depsgraph)
             hits.append((engine.hatch_index(context, t), t, segs, n_open, serial, mesh_open))
+            oriented[t.key] = engine.is_oriented(t, depsgraph)
             if n_open:
                 info["open"].append(t.owner.name)
             elif mesh_open:
@@ -724,11 +806,11 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style, fill_override=None):
                 with total_off.bind():
                     _clear_bound()
                 for _idx, t, segs, n_open, serial, _mo in hits:
-                    _draw_mask(mask_off, mask_sh, vp, _fan_batch(t, ci, segs, serial, n_open))
+                    part_mask(t, ci, segs, serial, n_open)
                     _add_coverage(total_off, accum_sh, mask_off)
             for idx, t, segs, n_open, serial, mesh_open in hits:
-                # 1) even-odd mask
-                _draw_mask(mask_off, mask_sh, vp, _fan_batch(t, ci, segs, serial, n_open))
+                # 1) coverage mask
+                part_mask(t, ci, segs, serial, n_open)
                 # 2) count coverage
                 if several:
                     _add_coverage(accum_off, accum_sh, mask_off)
@@ -912,6 +994,42 @@ def _draw_frame(context, s, quads):
         batch_for_shader(sh, 'LINES', {"pos": segs}).draw(sh)
 
 
+# light for the powder bed's sides (world space, from above and front-left)
+_POWDER_LIGHT = np.array([-0.3, -0.45, 0.84])
+
+
+def _draw_powder(context, s, rv3d):
+    """Print Preview: the powder bed, an opaque box filled up to the plane. It
+    hides the parts below the plane (they are buried in powder); the caps drawn
+    afterwards are the fused layer on its surface."""
+    planes = engine.powder_planes(s)
+    bed = engine.bed_bounds(context, s)
+    if not planes or bed is None:
+        return
+    lo, hi = bed
+    sh = _shader("powder")
+    vp = rv3d.perspective_matrix
+    base = np.array(_lin(tuple(s.powder_color) + (1.0,))[:3])
+    light = _POWDER_LIGHT / np.linalg.norm(_POWDER_LIGHT)
+    gpu.state.depth_test_set('LESS_EQUAL')
+    gpu.state.blend_set('NONE')
+    sh.bind()
+    sh.uniform_float("viewProj", vp)
+    sh.uniform_float("grain", s.powder_grain)
+    sh.uniform_float("depthBias", 0.0)
+    for poly, n, cut in sm.clipped_box_faces(lo, hi, planes):
+        # The surface on the plane writes no depth: the caps drawn next lie in the
+        # same plane and must win there without z-fighting (they test against the
+        # parts, which are all below it). The bed's sides do write depth.
+        gpu.state.depth_mask_set(cut < 0)
+        shade = 0.74 + 0.26 * max(float(np.dot(n, light)), 0.0)
+        u, v = sm.plane_basis(n)
+        tri = sm.fan_triangulate(poly)
+        uv = np.stack([tri @ u, tri @ v], axis=1)
+        sh.uniform_float("fillColor", tuple(base * shade) + (1.0,))
+        _vbatch('TRIS', {"pos": (tri, 3), "uv": (uv, 2)}).draw(sh)
+
+
 def draw_view():
     context = bpy.context
     rv3d = context.region_data
@@ -948,7 +1066,12 @@ def draw_view():
             _draw_plane_fill(context, s, rv3d, quads)
         # caps are for Solid shading; Wireframe gets no caps or outlines
         solid = shading_type == 'SOLID'
-        if caps and solid and style != 'BACKFACES':
+        preview = s.print_preview and ours and solid
+        if preview:
+            _draw_powder(context, s, rv3d)
+            fused = _lin(tuple(s.fused_color) + (1.0,))
+            info.update(_draw_caps(context, s, rv3d, caps, True, 'SOLID', fill_override=fused))
+        elif caps and solid and style != 'BACKFACES':
             info.update(_draw_caps(context, s, rv3d, caps, True, style))
         elif caps and solid and ours and s.mode == 'SLICE' and s.thickness <= 1e-9:
             # a zero-thickness slice clips everything, so with Backfaces there
@@ -1020,12 +1143,12 @@ def readout_lines(scene, s, info):
         head = f"{_enum_name(s, 'mode')} {axis}  {fmt_length(scene, c)}"
         if s.mode == 'SLICE' and s.thickness > 0:
             head += f"  ±{fmt_length(scene, s.thickness / 2)}"
-        if s.range_source == 'OBJECT' and s.range_object is not None and s.step > 0:
+        if (s.print_preview or (s.range_source == 'OBJECT' and s.range_object is not None)) and s.step > 0:
             lo, hi = engine.scrub_range(s)
             k = int(round((c - lo) / s.step))
             total = int(round((hi - lo) / s.step))
-            head += f"   step {k} / {total}"
-        head += f"   {_enum_name(s, 'cap_style')}"
+            head += f"   {'layer' if s.print_preview else 'step'} {k} / {total}"
+        head += "   Print Preview" if s.print_preview else f"   {_enum_name(s, 'cap_style')}"
         lines.append(head)
     elif info.get("native"):
         lines.append(f"Alt+B clipping   {_enum_name(s, 'cap_style')}")

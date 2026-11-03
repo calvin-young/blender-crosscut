@@ -80,6 +80,43 @@ def _set_position(self, value):
     self.offset = lo + value * (hi - lo) - base
 
 
+def _clip_view():
+    """The current view's clip state, if it has an Alt+B box: (rv3d, axis, centre, half)."""
+    rv3d = getattr(bpy.context.space_data, "region_3d", None)
+    if rv3d is None or not rv3d.use_clip_planes:
+        return None
+    a = engine.clip_axis(rv3d)
+    return None if a is None else (rv3d, *a)
+
+
+def _get_clip_position(self):
+    v = _clip_view()
+    return 0.0 if v is None else v[2]
+
+
+def _set_clip_position(self, value):
+    v = _clip_view()
+    if v is not None:
+        engine.shift_clip(v[0], v[1], value - v[2])
+        tag_redraw()
+
+
+def _get_clip_scrub(self):
+    v = _clip_view()
+    if v is None:
+        return 0.5
+    lo, hi = engine.clip_range(self, v[1], v[3])
+    return min(1.0, max(0.0, (v[2] - lo) / (hi - lo))) if hi - lo > 1e-12 else 0.5
+
+
+def _set_clip_scrub(self, value):
+    v = _clip_view()
+    if v is not None:
+        lo, hi = engine.clip_range(self, v[1], v[3])
+        if hi - lo > 1e-12:
+            _set_clip_position(self, lo + value * (hi - lo))
+
+
 MODES = [
     ('OFF', "Off", "No Crosscut plane (Alt+B clipping still gets caps unless Backfaces is chosen)", 'X', 0),
     ('SECTION', "Section", "Cut the view with a plane and keep one side (half section)", 'MOD_BOOLEAN', 1),
@@ -137,6 +174,17 @@ class CrosscutSettings(bpy.types.PropertyGroup):
         name="Scrub", subtype='FACTOR', min=0.0, max=1.0, precision=3,
         description="Drag to sweep the plane across the scrub range",
         get=_get_position, set=_set_position,
+    )
+    clip_scrub: FloatProperty(
+        name="Scrub", subtype='FACTOR', min=0.0, max=1.0, precision=3,
+        description="Slide the Alt+B box through the parts, along whichever of its axes faces you most. "
+                    "Its size stays the same. Orbit to slide it along another axis",
+        get=_get_clip_scrub, set=_set_clip_scrub,
+    )
+    clip_position: FloatProperty(
+        name="Position", subtype='DISTANCE', unit='LENGTH', precision=3, step=10,
+        description="Where the middle of the Alt+B box is, along whichever of its axes faces you most",
+        get=_get_clip_position, set=_set_clip_position,
     )
     scrub_distance: BoolProperty(
         name="Scrub by Distance", default=False,
@@ -279,6 +327,29 @@ class CrosscutSettings(bpy.types.PropertyGroup):
         ],
     )
     range_object: PointerProperty(name="Range Object", type=bpy.types.Object, update=tag_redraw)
+
+    print_preview: BoolProperty(
+        name="Print Preview", default=False, update=tag_redraw,
+        description="Show the build as it looks inside a powder-bed printer: powder fills the bed up to "
+                    "the plane and the cut through each part is the fused, inked layer. For Section and "
+                    "Slice; the bed is the Scrub Range object, or the targets' bounds",
+    )
+    powder_color: FloatVectorProperty(
+        name="Powder", subtype='COLOR_GAMMA', size=3, min=0.0, max=1.0, default=(0.93, 0.92, 0.89),
+        description="Colour of the unfused powder", update=tag_redraw,
+    )
+    fused_color: FloatVectorProperty(
+        name="Fused", subtype='COLOR_GAMMA', size=3, min=0.0, max=1.0, default=(0.09, 0.09, 0.10),
+        description="Colour of the fused (inked) cross-sections", update=tag_redraw,
+    )
+    powder_grain: FloatProperty(
+        name="Grain", subtype='FACTOR', min=0.0, max=1.0, default=0.4, update=tag_redraw,
+        description="Speckle in the powder, so the bed reads as powder rather than a flat surface",
+    )
+    bed_margin: FloatProperty(
+        name="Bed Margin", subtype='DISTANCE', unit='LENGTH', min=0.0, default=5.0, update=tag_redraw,
+        description="Powder around the targets on every side but the bottom, when there is no Scrub Range object",
+    )
 
 
 def register():

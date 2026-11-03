@@ -215,6 +215,19 @@ def test_box_section_polygon():
     assert len(sm.box_section_polygon(np.array([0, 0, 1.0, -2.0]), (0, 0, 0), (1, 1, 1))) == 0
 
 
+def test_clipped_box_faces():
+    # unit box filled up to z = 0.25 (kept side: -z + 0.25 >= 0)
+    faces = sm.clipped_box_faces((0, 0, 0), (1, 1, 1), [np.array([0, 0, -1.0, 0.25])])
+    assert len(faces) == 6                              # bottom, 4 sides, the surface on the plane
+    tops = [f for f in faces if f[2] == 0]
+    assert len(tops) == 1 and np.allclose(tops[0][0][:, 2], 0.25) and np.allclose(tops[0][1], (0, 0, 1))
+    for poly, n, _cut in faces:                         # all on or below the plane, outward-wound
+        assert poly[:, 2].max() <= 0.25 + 1e-9
+        assert np.dot(np.cross(poly[1] - poly[0], poly[2] - poly[0]), n) > 0
+    # a plane below the box leaves nothing
+    assert sm.clipped_box_faces((0, 0, 0), (1, 1, 1), [np.array([0, 0, -1.0, -0.5])]) == []
+
+
 def test_section_segments_with_cached_columns():
     v = np.array([[0, 0, -1], [1, 0, 1], [0, 1, 1], [1, 1, -1]], dtype=np.float64)
     t = np.array([[0, 1, 2], [1, 3, 2]])
@@ -223,15 +236,35 @@ def test_section_segments_with_cached_columns():
     assert np.array_equal(sm.section_segments(v, t, plane), sm.section_segments(v, t, plane, cols))
 
 
-def test_mesh_has_open_edges():
+def test_section_segments_run_counter_clockwise():
+    # a box cut at z = 0, outward normals: from above, the contour goes counter-clockwise
+    v = np.array([[x, y, z] for z in (-1, 1) for y in (-1, 1) for x in (-1, 1)], dtype=np.float64)
+    t = np.array([[0, 2, 1], [1, 2, 3], [4, 5, 6], [5, 7, 6], [0, 1, 4], [1, 5, 4],
+                  [1, 3, 5], [3, 7, 5], [3, 2, 7], [2, 6, 7], [2, 0, 6], [0, 4, 6]])
+    assert sm.mesh_edge_state(v, t) == (False, True)
+    seg = sm.section_segments(v, t, np.array([0, 0, 1.0, 0]))
+    assert len(seg) == 8
+    a, b = seg[:, 0, :2], seg[:, 1, :2]
+    assert 0.5 * np.sum(a[:, 0] * b[:, 1] - b[:, 0] * a[:, 1]) > 0   # signed area
+    # reversed faces (the inside of a hollow part) go the other way
+    seg = sm.section_segments(v, t[:, ::-1], np.array([0, 0, 1.0, 0]))
+    a, b = seg[:, 0, :2], seg[:, 1, :2]
+    assert 0.5 * np.sum(a[:, 0] * b[:, 1] - b[:, 0] * a[:, 1]) < 0
+
+
+def test_mesh_edge_state():
     # a tetrahedron: closed; without one face: open
     v = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=np.float64)
     t = np.array([[0, 2, 1], [0, 1, 3], [1, 2, 3], [2, 0, 3]])
-    assert not sm.mesh_has_open_edges(v, t)
-    assert sm.mesh_has_open_edges(v, t[:3])
+    assert sm.mesh_edge_state(v, t) == (False, True)
+    assert sm.mesh_edge_state(v, t[:3]) == (True, False)
     # unwelded: every triangle has its own vertices, in the same places: still closed
-    assert not sm.mesh_has_open_edges(v[t.reshape(-1)], np.arange(12).reshape(4, 3))
-    assert not sm.mesh_has_open_edges(v, np.zeros((0, 3), dtype=np.int64))
+    assert sm.mesh_edge_state(v[t.reshape(-1)], np.arange(12).reshape(4, 3)) == (False, True)
+    assert sm.mesh_edge_state(v, np.zeros((0, 3), dtype=np.int64)) == (False, True)
+    # one face flipped: closed but not oriented
+    flipped = t.copy()
+    flipped[0] = flipped[0][::-1]
+    assert sm.mesh_edge_state(v, flipped) == (False, False)
 
 
 if __name__ == "__main__":

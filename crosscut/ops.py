@@ -34,7 +34,7 @@ def _face_viewer(context, s):
 def _switch_on(context, s, mode):
     """Turn Crosscut on from Off: the first time in the middle of the range,
     afterwards where it was left; cutting away the side facing the viewer."""
-    if engine.plane_frame(s) is None:
+    if engine.plane_frame(s) is None and s.orientation != 'OBJECT':  # Object waits to be given one
         s.orientation = 'Z'
     s.mode = mode
     if not s.placed:
@@ -200,6 +200,8 @@ class CROSSCUT_OT_section(bpy.types.Operator):
     axis: EnumProperty(items=[('X', "X", ""), ('Y', "Y", ""), ('Z', "Z", ""), ('OBJECT', "Object", "")],
                        default='Z')
     mode: EnumProperty(items=[('KEEP', "Keep", "Keep the current mode (Section if off)"),
+                              ('LAST', "Last", "Turn the last used mode on, from off, keeping the "
+                                               "plane's position if the axis is unchanged"),
                               ('SECTION', "Section", ""), ('SLICE', "Slice", "")], default='KEEP')
 
     @classmethod
@@ -210,6 +212,14 @@ class CROSSCUT_OT_section(bpy.types.Operator):
         s = _s(context)
         was_off = s.mode == 'OFF'
         changed_axis = s.orientation != self.axis
+        if self.mode == 'LAST' and was_off:
+            # the panel's axis buttons while off: choose the plane and start, as View does
+            if changed_axis or (self.axis == 'OBJECT' and not engine.is_shown(context, s.plane_object)):
+                s.orientation = self.axis
+                s.placed = True
+            _switch_on(context, s, s.last_mode if s.last_mode in {'SECTION', 'SLICE'} else 'SECTION')
+            tag_redraw()
+            return {'FINISHED'}
         s.orientation = self.axis  # re-centres when the axis changes
         mode = self.mode if self.mode != 'KEEP' else (s.mode if not was_off else 'SECTION')
         if was_off:
@@ -297,11 +307,22 @@ class CROSSCUT_OT_step(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return context.scene is not None and context.scene.crosscut.mode != 'OFF'
+        if context.scene is None:
+            return False
+        rv3d = getattr(context.space_data, "region_3d", None)
+        return context.scene.crosscut.mode != 'OFF' or (rv3d is not None and rv3d.use_clip_planes)
 
     def execute(self, context):
         s = _s(context)
-        s.offset += s.step * self.multiplier * (1 if self.direction >= 0 else -1)
+        delta = s.step * self.multiplier * (1 if self.direction >= 0 else -1)
+        if s.mode == 'OFF':  # an Alt+B box
+            rv3d = context.space_data.region_3d
+            a = engine.clip_axis(rv3d)
+            if a is None:
+                return {'CANCELLED'}
+            engine.shift_clip(rv3d, a[0], delta)
+        else:
+            s.offset += delta
         tag_redraw()
         return {'FINISHED'}
 

@@ -26,8 +26,13 @@ def _draw_main(layout, context, compact=False):
 
     col.separator()
     row = col.row(align=True)
-    for key in ('X', 'Y', 'Z', 'OBJECT'):
-        row.prop_enum(s, "orientation", key)
+    for key, label in (('X', "X"), ('Y', "Y"), ('Z', "Z"), ('OBJECT', "Object")):
+        if s.mode == 'OFF':  # nothing to re-aim: these start a section, as View does
+            op = row.operator("crosscut.section", text=label, depress=s.orientation == key)
+            op.axis = key
+            op.mode = 'LAST'
+        else:
+            row.prop_enum(s, "orientation", key)
     row.operator("crosscut.from_view", text="View", depress=s.orientation == 'VIEW')
     sub = row.row(align=True)
     sub.enabled = s.mode == 'SECTION'
@@ -41,6 +46,16 @@ def _draw_main(layout, context, compact=False):
         r.prop(s, "object_axis", expand=True)
 
     if s.mode == 'OFF':
+        if rv3d is not None and rv3d.use_clip_planes:
+            r = col.column(align=True).row(align=True)
+            if s.scrub_distance:
+                r.prop(s, "clip_position")
+            else:
+                r.prop(s, "clip_scrub", slider=True)
+            st = r.operator("crosscut.step", text="", icon='TRIA_LEFT')
+            st.direction = -1
+            st = r.operator("crosscut.step", text="", icon='TRIA_RIGHT')
+            st.direction = 1
         return  # hide, don't grey out, what doesn't apply (Flip above is the exception)
     box = col.column(align=True)
     r = box.row(align=True)
@@ -169,6 +184,31 @@ class CROSSCUT_PT_interference(bpy.types.Panel):
         if s.interference_style != 'SOLID':
             col.prop(s, "interference_line_color")
         col.prop(s, "interference_opacity", slider=True)
+
+
+class CROSSCUT_PT_print_preview(bpy.types.Panel):
+    """What a layer looks like inside a powder-bed printer (MJF, SLS)."""
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "Crosscut"
+    bl_label = "Print Preview"
+    bl_parent_id = "CROSSCUT_PT_settings"
+    bl_options = {'DEFAULT_CLOSED'}
+
+    def draw_header(self, context):
+        self.layout.prop(context.scene.crosscut, "print_preview", text="")
+
+    def draw(self, context):
+        s = context.scene.crosscut
+        col = _split(self.layout)
+        col.active = s.print_preview
+        if s.mode == 'OFF':
+            col.label(text="Needs Section or Slice", icon='INFO')
+        col.prop(s, "powder_color")
+        col.prop(s, "fused_color")
+        col.prop(s, "powder_grain", slider=True)
+        if not (s.range_source == 'OBJECT' and s.range_object is not None):
+            col.prop(s, "bed_margin")
 
 
 class CROSSCUT_PT_settings(bpy.types.Panel):
@@ -302,6 +342,7 @@ classes = (
     CROSSCUT_PT_targets,
     CROSSCUT_PT_plane,
     CROSSCUT_PT_range,
+    CROSSCUT_PT_print_preview,
     CROSSCUT_PT_popover,
     CROSSCUT_MT_pie,
 )

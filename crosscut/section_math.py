@@ -93,7 +93,9 @@ def section_segments(verts, tris, plane, cols=None):
     """Intersect a triangle mesh with a plane.
 
     verts: (N, 3) float, tris: (M, 3) int, plane: 4-vector in the same space.
-    Returns (K, 2, 3) float64 segment endpoints.
+    Returns (K, 2, 3) float64 segment endpoints, each segment running
+    counter-clockwise around the material when seen from the plane's normal side
+    (given outward triangle normals), so contours can be filled by winding number.
 
     Watertightness: every crossing edge is evaluated with its endpoints in a
     canonical (lexicographic by coordinate) order, so two triangles sharing an
@@ -138,7 +140,12 @@ def section_segments(verts, tris, plane, cols=None):
     # snap exact vertex hits so neighbouring edges agree bit-for-bit
     p = np.where((t == 0.0)[:, None], a2, p)
     p = np.where((t == 1.0)[:, None], b2, p)
-    return p.reshape(-1, 2, 3)
+    seg = p.reshape(-1, 2, 3)
+    normals = np.cross(verts[tm[:, 1]] - verts[tm[:, 0]], verts[tm[:, 2]] - verts[tm[:, 0]])
+    tangents = np.cross(np.asarray(plane[:3], dtype=np.float64), normals)
+    backwards = np.einsum("ij,ij->i", seg[:, 1] - seg[:, 0], tangents) < 0.0
+    seg[backwards] = seg[backwards][:, ::-1]
+    return seg
 
 
 def open_endpoint_count(segments):
@@ -152,12 +159,14 @@ def open_endpoint_count(segments):
     return int(np.count_nonzero(counts % 2))
 
 
-def mesh_has_open_edges(verts, tris):
-    """True if any edge is used by an odd number of triangles, so the mesh does
-    not enclose a volume. Vertices are matched by exact position, as in
+def mesh_edge_state(verts, tris):
+    """(open, oriented). Open: an edge is used by an odd number of triangles, so
+    the mesh does not enclose a volume. Oriented: closed, and every edge is used
+    as often in each direction, so its normals agree and contours can be filled
+    by winding number. Vertices are matched by exact position, as in
     open_endpoint_count: unwelded but touching shells still count as closed."""
     if len(tris) == 0:
-        return False
+        return False, True
     pts = np.ascontiguousarray(verts)
     keys = pts.view(np.dtype((np.void, pts.dtype.itemsize * 3))).ravel()
     _, ids = np.unique(keys, return_inverse=True)
@@ -165,9 +174,12 @@ def mesh_has_open_edges(verts, tris):
     a = np.concatenate([ids[:, 0], ids[:, 1], ids[:, 2]])
     b = np.concatenate([ids[:, 1], ids[:, 2], ids[:, 0]])
     keep = a != b
-    edges = np.minimum(a[keep], b[keep]) * (len(pts) + 1) + np.maximum(a[keep], b[keep])
-    _, counts = np.unique(edges, return_counts=True)
-    return bool(np.any(counts % 2))
+    a, b = a[keep], b[keep]
+    edges = np.minimum(a, b) * (len(pts) + 1) + np.maximum(a, b)
+    _, inverse, counts = np.unique(edges, return_inverse=True, return_counts=True)
+    is_open = bool(np.any(counts % 2))
+    balance = np.bincount(inverse.reshape(-1), weights=np.where(a < b, 1.0, -1.0))
+    return is_open, not is_open and not np.any(balance)
 
 
 def close_open_contours(segments, max_open=4096):
@@ -321,6 +333,40 @@ def cap_polygon(segments, plane, bound_planes=(), margin=0.02):
     rel = poly - origin
     uv = np.stack([rel @ u, rel @ v], axis=1)
     return poly, uv
+
+
+def clipped_box_faces(lo, hi, planes):
+    """Faces of the axis-aligned box [lo, hi] cut down to the kept side of
+    every plane (a convex solid). Returns [(poly (P,3), outward normal (3,), cut)],
+    where cut is the index of the plane a face lies on, or -1 for a box side."""
+    lo = np.asarray(lo, dtype=np.float64)
+    hi = np.asarray(hi, dtype=np.float64)
+    x0, y0, z0 = lo
+    x1, y1, z1 = hi
+    sides = [  # counter-clockwise seen from outside
+        ([(x0, y0, z0), (x0, y1, z0), (x1, y1, z0), (x1, y0, z0)], (0, 0, -1)),
+        ([(x0, y0, z1), (x1, y0, z1), (x1, y1, z1), (x0, y1, z1)], (0, 0, 1)),
+        ([(x0, y0, z0), (x1, y0, z0), (x1, y0, z1), (x0, y0, z1)], (0, -1, 0)),
+        ([(x0, y1, z0), (x0, y1, z1), (x1, y1, z1), (x1, y1, z0)], (0, 1, 0)),
+        ([(x0, y0, z0), (x0, y0, z1), (x0, y1, z1), (x0, y1, z0)], (-1, 0, 0)),
+        ([(x1, y0, z0), (x1, y1, z0), (x1, y1, z1), (x1, y0, z1)], (1, 0, 0)),
+    ]
+    planes = [np.asarray(p, dtype=np.float64) for p in planes if not plane_is_degenerate(p)]
+    out = []
+    for poly, n in sides:
+        q = clip_convex_polygon(np.array(poly, dtype=np.float64), planes)
+        if len(q) >= 3:
+            out.append((q, np.array(n, dtype=np.float64), -1))
+    for i, pl in enumerate(planes):
+        q = box_section_polygon(pl, lo, hi)
+        q = clip_convex_polygon(q, [p for j, p in enumerate(planes) if j != i]) if len(q) else q
+        if len(q) < 3:
+            continue
+        n = -normalize(pl[:3])  # the kept side is n.p + d >= 0, so outward is -n
+        if np.dot(np.cross(q[1] - q[0], q[2] - q[0]), n) < 0:
+            q = q[::-1]
+        out.append((q, n, i))
+    return out
 
 
 def fan_triangulate(poly):

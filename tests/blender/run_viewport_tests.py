@@ -797,6 +797,166 @@ def clip_button_follows_key(view):
 
 
 @test
+def overlapping_shells(view):
+    # two overlapping closed shells in one object stay filled; reversed shells still cut holes
+    T = "overlapping_shells"
+    scene = new_scene("cc-shells")
+    bm = bmesh.new()
+    for x in (-10, 10):
+        made = bmesh.ops.create_cube(bm, size=1.0)
+        bmesh.ops.scale(bm, vec=Vector((40, 30, 30)), verts=made["verts"])
+        bmesh.ops.translate(bm, vec=Vector((x, 0, 0)), verts=made["verts"])
+    me = bpy.data.meshes.new("part-001")
+    bm.to_mesh(me)
+    bm.free()
+    ob = _link("part-001", me)
+    s = scene.crosscut
+    view.look((0, 0, 0), 200, (0, 0, 0))
+    settings(s, mode='SECTION', orientation='Z')
+    yield 0.05
+    yield from settle()
+    shot = Shot(view, "shells_overlap")
+    c = shot.at(view.px((0, 0, 0)))
+    check(T, "overlap inside one object is filled", is_green(c), f"{c}")
+    c = shot.at(view.px((-25, 0, 0)))
+    check(T, "the rest is filled", is_green(c), f"{c}")
+    info = cc("draw").last_info(view.region)
+    check(T, "no open warning", not info.get("open") and not info.get("open_mesh"), str(info))
+    # selecting by section follows the same fill
+    settings(s, mode='SLICE', orientation='Z', thickness=0.0)
+    planes = cc("engine").compute_planes(s)
+    hit = cc("engine").objects_at(bpy.context, s, np.array((0.0, 0.0, 0.0)), np.asarray(planes[1][0][0]),
+                                  bpy.context.evaluated_depsgraph_get())
+    check(T, "clicking the overlap finds the part", hit == [ob], str(hit))
+    # flipped normals on one face: not trustworthy, so it falls back to even-odd
+    ob.data.polygons[0].flip()
+    ob.data.update()
+    settings(s, mode='SECTION', orientation='Z')
+    yield 0.1
+    yield from settle()
+    shot = Shot(view, "shells_inconsistent")
+    c = shot.at(view.px((0, 0, 0)))
+    check(T, "inconsistent normals: even-odd, overlap is a hole", not is_green(c), f"{c}")
+    c = shot.at(view.px((-25, 0, 0)))
+    check(T, "inconsistent normals: no streaks in the fill", is_green(c), f"{c}")
+    check(T, "no draw errors", not errors(), str(errors()))
+
+
+@test
+def axis_buttons_start_section(view):
+    T = "axis_buttons_start_section"
+    scene = new_scene("cc-axis-off")
+    box("part-001", (30, 30, 30))
+    s = scene.crosscut
+    view.look((0, 0, 0), 160, (60, 0, 30))
+    settings(s, mode='OFF', orientation='Z')
+    s.last_mode = 'SECTION'
+    yield 0.05
+    with view.override():
+        bpy.ops.crosscut.section(axis='X', mode='LAST')
+    check(T, "X from off starts a section on X", s.mode == 'SECTION' and s.orientation == 'X', f"{s.mode} {s.orientation}")
+    check(T, "plane in the middle", abs(s.offset) < 1e-3, str(s.offset))
+    s.offset = 7.0
+    with view.override():
+        bpy.ops.crosscut.set_mode(mode='SECTION')
+    check(T, "turned off", s.mode == 'OFF')
+    with view.override():
+        bpy.ops.crosscut.section(axis='X', mode='LAST')
+    check(T, "same axis again keeps the position", s.mode == 'SECTION' and abs(s.offset - 7.0) < 1e-3, str(s.offset))
+    with view.override():
+        bpy.ops.crosscut.set_mode(mode='SECTION')
+    s.last_mode = 'SLICE'
+    with view.override():
+        bpy.ops.crosscut.section(axis='Y', mode='LAST')
+    check(T, "uses the last mode", s.mode == 'SLICE' and s.orientation == 'Y', f"{s.mode} {s.orientation}")
+    with view.override():
+        bpy.ops.crosscut.set_mode(mode='SLICE')
+    for o in scene.objects:
+        o.select_set(False)
+    box("part-002", (5, 5, 5), (40, 0, 0))
+    s.plane_object = None
+    s.last_mode = 'SECTION'
+    with view.override():
+        bpy.ops.crosscut.section(axis='OBJECT', mode='LAST')
+    check(T, "Object with nothing to pick stays on Object, no cut",
+          s.orientation == 'OBJECT' and s.mode == 'SECTION' and cc("engine").compute_planes(s) is None,
+          f"{s.orientation} {s.mode}")
+    check(T, "no draw errors", not errors(), str(errors()))
+
+
+@test
+def clip_scrub(view):
+    T = "clip_scrub"
+    if not bpy.app.use_event_simulate:
+        print("    skipped: run Blender with --enable-event-simulate")
+        return
+    scene = new_scene("cc-clip-scrub")
+    box("part-001", (60, 60, 60))
+    s = scene.crosscut
+    view.look((0, 0, 0), 300, (0, 0, 0), ortho=True)  # top view
+    settings(s, cap_style='SOLID', step=2.0)
+    yield 0.1
+    yield from settle()
+    win = bpy.context.window
+    r = view.region
+    with view.override():
+        bpy.ops.crosscut.alt_b('INVOKE_DEFAULT')
+    yield 0.1
+    a, b = view.px((-20, -10, 0)), view.px((20, 10, 0))
+    win.event_simulate('MOUSEMOVE', 'NOTHING', x=r.x + a[0], y=r.y + a[1])
+    yield 0.05
+    win.event_simulate('LEFTMOUSE', 'PRESS', x=r.x + a[0], y=r.y + a[1])
+    yield 0.05
+    win.event_simulate('MOUSEMOVE', 'NOTHING', x=r.x + b[0], y=r.y + b[1])
+    yield 0.05
+    win.event_simulate('LEFTMOUSE', 'RELEASE', x=r.x + b[0], y=r.y + b[1])
+    yield 0.2
+    check(T, "box drawn", view.rv3d.use_clip_planes)
+    # orbit so the walls along Y face the viewer most
+    view.look((0, 0, 0), 300, (70, 0, 0), ortho=True)
+    yield from settle()
+    Shot(view, "clip_scrub_start")
+    eng = cc("engine")
+    ax0 = eng.clip_axis(view.rv3d)
+    check(T, "picks the walls facing the view", abs(abs(float(ax0[0][1])) - 1.0) < 1e-3, str(ax0[0]))
+    check(T, "axis points at the viewer", float(ax0[0] @ np.array(view.rv3d.view_matrix.inverted())[:3, 2]) > 0)
+    check(T, "half width is the box's", abs(ax0[2] - 10.0) < 0.5, str(ax0[2]))
+    side0 = [tuple(p) for p in view.rv3d.clip_planes]
+    with view.override():
+        s.clip_position = ax0[1] + 8.0
+    ax1 = eng.clip_axis(view.rv3d)
+    check(T, "moved by the distance asked", abs(ax1[1] - ax0[1] - 8.0) < 1e-3, f"{ax0[1]} {ax1[1]}")
+    check(T, "size unchanged", abs(ax1[2] - ax0[2]) < 1e-3, f"{ax0[2]} {ax1[2]}")
+    # the walls across the slide (X) stay put
+    for p0, p1 in zip(side0, view.rv3d.clip_planes, strict=True):
+        if abs(p0[0]) > 0.9:
+            check(T, "other walls stay put", abs(p0[3] - p1[3]) < 1e-3, f"{p0} {tuple(p1)}")
+    yield from settle()
+    Shot(view, "clip_scrub_moved")
+    check(T, "caps follow", cc("draw").last_info(r).get("count", 0) >= 1, str(cc("draw").last_info(r)))
+    with view.override():
+        s.clip_scrub = 0.0
+        low = eng.clip_axis(view.rv3d)[1]
+        check(T, "slider 0: box just clear of the part on one side", abs(low + 30.0 + ax0[2]) < 0.6, str(low))
+        check(T, "slider reads back", s.clip_scrub < 1e-3, str(s.clip_scrub))
+        s.clip_scrub = 1.0
+        high = eng.clip_axis(view.rv3d)[1]
+        check(T, "slider 1: just clear on the other", abs(high - 30.0 - ax0[2]) < 0.6, str(high))
+        s.clip_scrub = 0.5
+        before = eng.clip_axis(view.rv3d)[1]
+        bpy.ops.crosscut.step(direction=1)
+        check(T, "step moves the box", abs(eng.clip_axis(view.rv3d)[1] - before - 2.0) < 1e-3)
+    planes_before = [tuple(p) for p in view.rv3d.clip_planes]
+    view.look((0, 0, 0), 300, (0, 70, 0), ortho=True)
+    yield from settle()
+    check(T, "orbiting doesn't move the box", [tuple(p) for p in view.rv3d.clip_planes] == planes_before)
+    check(T, "orbiting picks the other walls", abs(abs(float(eng.clip_axis(view.rv3d)[0][0])) - 1.0) < 1e-3)
+    Shot(view, "clip_scrub_other_axis")
+    view.rv3d.use_clip_planes = False
+    check(T, "no draw errors", not errors(), str(errors()))
+
+
+@test
 def alt_b_button(view):
     T = "alt_b_button"
     scene = new_scene("cc-altb-button")
@@ -1538,6 +1698,40 @@ def ui_panels(view):
     yield 0.2
     yield from settle()
     Shot(view, "ui_popover")
+    check(T, "no draw errors", not errors(), str(errors()))
+
+
+@test
+def print_preview(view):
+    T = "print_preview"
+    scene = new_scene("cc-print")
+    hollow_sphere("part-001", 40, 25)
+    bed = box("bucket-01", (120, 120, 120))
+    bed.display_type = 'WIRE'
+    s = scene.crosscut
+    view.look((0, 0, 0), 300, (55, 0, 30))
+    settings(s, mode='SECTION', orientation='Z', offset=0.0, range_source='OBJECT', range_object=bed)
+    s.print_preview = True
+    yield from settle()
+    shot = Shot(view, "print_preview")
+
+    def powder(c):
+        return min(c) > 195 and c[0] >= c[2]
+    c = shot.at(view.px((0, -32, 0)), r=2)
+    check(T, "the cut through the wall is the fused colour", max(c) < 60, f"{c}")
+    c = shot.at(view.px((45, 45, 0)), r=2)
+    check(T, "the bed surface is powder", powder(c), f"{c}")
+    c = shot.at(view.px((0, 0, 0)), r=2)
+    check(T, "powder inside the hollow part too", powder(c), f"{c}")
+    c = shot.at(view.px((0, -45, -45)), r=2)
+    check(T, "the part below the plane is buried (bed side or surface shows)", min(c) > 150, f"{c}")
+    lines = cc("draw").readout_lines(scene, s, cc("draw").last_info(view.region))[0]
+    check(T, "readout counts layers", bool(lines) and "layer " in lines[0] and "Print Preview" in lines[0],
+          str(lines))
+    s.print_preview = False
+    yield from settle()
+    c = Shot(view, "print_preview_off").at(view.px((0, -32, 0)), r=2)
+    check(T, "off again: the normal cap colour", is_green(c), f"{c}")
     check(T, "no draw errors", not errors(), str(errors()))
 
 

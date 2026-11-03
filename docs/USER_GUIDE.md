@@ -29,9 +29,8 @@ Units below assume 1 Blender unit = 1 mm, but Crosscut works in any unit.
   click it when lit to remove the box.
 
 Clicking a lit Section or Slice turns Crosscut off. Turning it off removes all clipping from the
-view, including an Alt+B box that was there before. The Scrub rows only show while Section or
-Slice is on. With both off, **View** starts a section; **X**, **Y**, **Z** and **Object** just
-choose the plane for next time.
+view, including an Alt+B box that was there before. With everything off, **X**, **Y**, **Z**,
+**Object** and **View** each start the plane they name, in the last mode you used.
 
 ### Cap style
 
@@ -131,7 +130,22 @@ and readout list any that are visible.
 volume. The eyedropper uses the active object. The range object is never capped, and with
 it the readout counts steps (for example `step 150 / 1500`).
 
+## Print Preview (experimental)
+
+Tick **Print Preview** in **Settings** while Section or Slice is on, with the Z plane and a build volume as the Scrub Range object. The bed fills with
+powder up to the plane, the parts below are buried in it, and each part's cut is drawn as the
+fused layer. Scrub to watch the build come up layer by layer; the readout counts layers at the
+Step size. **Powder** and **Fused** set the colours (white and black by default, as on a
+Multi Jet Fusion printer), **Grain** the speckle in the powder. Without a Scrub Range object the
+bed is the parts' bounds plus **Bed Margin**.
+
 ## Alt+B
+
+With **Clip** on, **Scrub** and the step arrows slide the box through the parts without changing its
+size. It slides along whichever of its axes faces you most, toward you as the value goes up; orbit
+to slide it along another axis. Orbiting never moves the box: the slider just shows where it is along
+the new axis. At 0 and 1 the box is just clear of the Scrub Range. **Scrub by Distance** shows
+where the box's middle is, as a distance.
 
 Blender's own clipping box gets caps too, in the current cap style (Backfaces turns this
 off). Pressing Alt+B while Crosscut is on gives clipping back to Blender and turns Crosscut

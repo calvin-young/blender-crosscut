@@ -10,6 +10,7 @@ this list is an assumption, tracked in the table at the end.
 
 | ID | Requirement | Status in 0.1.0 |
 | --- | --- | --- |
+| R-017 | After 0.9.3 (2026-11-02): a slider that slides the two Alt+B walls closest to parallel with the view along their normals, the box keeping its size (bounds and reset behaviour left to judgment); X/Y/Z/Object start a section while off; overlapping manifold shells inside one object must not cancel; Print Preview as a toggle under Settings for now | 0.9.4, see below |
 | R-016 | After 0.9.2 (2026-11-02): put the plane row back while off (View is used to start a plane); Alt+B button first in the row and named Clip; fix the button staying lit after the Alt+B key; 1.0 is not close: keep user testing, and push back when bugs and features keep coming; download buttons on the status page. Asked whether vanilla Alt+B can be scrubbed | 0.9.3, see below |
 | R-015 | Notes from using 0.9.1 on real work (2026-11-02): hide the axis row while off; align to an object's local XYZ; an Alt+B button; selected outline must win over a coincident black contour; readout hidden by the last-operation panel; Scrub by Distance and Step into Scrub Range, renamed Scrub Settings; X-ray should affect caps; Cap Targets right under Caps; Vary per Object must not change when parts are shown or hidden; warn when cutting through an open mesh even if the hole isn't on the plane, more severely when it is, and maybe lower the cap's opacity; "clashes on interference, both when enabled or disabled" | 0.9.2, see below |
 | R-014 | After testing 0.9.0 (2026-10-29): plane tint default 0.03, slider 0 to 0.1 but typing up to 1; choosing Object with a plane object that's no longer visible must clear it (and pick the only visible object); show selection outlines in a zero-thickness slice; stop Blender's selection outline clashing with Crosscut's outline in a slab; move Caps and everything below into a separate, collapsed settings panel; line "Range" up with the Scrub Range row; list open follow-ups at the end of every reply | 0.9.1, see below |
@@ -28,6 +29,45 @@ this list is an assumption, tracked in the table at the end.
 | R-001 | Main use: while modelling parts. Secondary: finding interferences when packing buckets | Drives defaults |
 
 ## Decisions
+
+### Changes after the maintainer's review of 0.9.3 (0.9.4, 2026-11-02)
+
+- **Overlapping shells** (D-028).
+- **Alt+B scrub** (D-027).
+- **Axis buttons while off** start the plane, in the last mode used, keeping the position if the axis
+  hasn't changed. They run an operator while off because a property update can't see the view, which
+  flipping to the cut side needs. Object with nothing to pick stays on Object and asks for one,
+  rather than falling back to Z as a toggle used to.
+- **Print Preview** merged from `mjf-preview` (D-022), as a sub-panel of Settings with its checkbox in
+  the header (*assumed*: last in the list). The branch stays for the demo reel in `demo-reels`.
+
+### D-028: Fill by winding number when normals allow it (2026-11-02)
+
+- **Context:** D-003's even-odd rule makes two overlapping closed shells in one object cancel (a hole
+  where a head and an eye overlap), while the same shells as separate objects fill. Slicers treat
+  such overlaps as solid.
+- **Decision:** Segments carry their direction from the triangle's normal. Fan triangles add to red or
+  green in an extra offscreen by which way they face; a resolve pass lights the mask where the two
+  differ, so nonzero winding counts as inside. Reversed inner shells still cut holes. Only for closed
+  meshes where every edge is used equally in both directions; anything else (open, or a flipped
+  face) stays even-odd, which doesn't depend on normals and doesn't streak. Each such part costs two
+  more passes. Inner shells' contours are still drawn inside the fill: they're real edges, and
+  they show there are overlapping shells.
+- **Not done:** a self-overlap isn't flagged as interference; that's for separate objects only.
+
+### D-027: Scrubbing an Alt+B box slides it rigidly, with no stored state (2026-11-02)
+
+- **Decision:** The pair of opposite walls most facing the viewer picks the axis, recomputed on every
+  read. The maintainer asked for those two walls to scoot; all the walls get the same translation, since
+  in perspective the box's walls aren't parallel and the others must shift a little for the box to keep
+  its shape. In orthographic the others don't change. The slider holds nothing: it reads where the box
+  is along the current axis, so orbiting never moves the box or needs a reset, the slider just
+  jumps to show the new axis (*assumed*). 0 and 1 are the box just clear of the Scrub Range (*assumed*),
+  and positive is toward the viewer (*assumed*, like View). Right after drawing, all four walls are
+  edge-on, so the slide is sideways on screen until you orbit (*assumed* acceptable).
+- **Limits:** Blender's faint box tint comes from a box Python can't move, so it may stay behind.
+  No undo per slide, as with the step buttons. Cursor, Center and Selection don't apply here.
+- **Revisit if:** the maintainer's use says otherwise; this was explicitly a first guess.
 
 ### Changes after the maintainer's review of 0.9.2 (0.9.3, 2026-11-02)
 
@@ -121,6 +161,22 @@ this list is an assumption, tracked in the table at the end.
   in a separate top-level **Settings** panel, closed by default: Readout, Scrub by Distance and
   Step at the top, then sub-panels Caps (with Interference), Plane, Cap Targets and Scrub Range
   (*assumed* split: plane display got its own sub-panel). "Range" sits in the label column.
+
+### D-022: Print Preview, on a branch (2026-10-30)
+
+- **Context:** the maintainer wanted a view of what each layer physically looks like in an MJF
+  printer (white powder, black fused cross-sections) for a demo video, and isn't sure it belongs
+  in the 1.0 release.
+- **Decision:** built on the `mjf-preview` branch. The powder is the bed box cut down to the kept
+  side of the plane (`section_math.clipped_box_faces`), drawn opaque before the caps so it hides
+  the parts below; the caps are drawn in the fused colour without hatching or interference.
+  The surface on the plane writes no depth, so the caps in the same plane win without
+  z-fighting (with Blender's default clip start a small offset still fought); the bed's sides do
+  write depth. Grain is a hash of plane-local millimetres, faded out where it would be smaller
+  than two pixels, so it doesn't shimmer.
+- **Alternatives considered:** a separate add-on extending Crosscut (would need a public hook
+  API); drawing it only in the demo script (no use to anyone else).
+- **Revisit if:** the maintainer wants it in main, or as its own add-on.
 
 ### D-021: Selected parts' contours use the selection colour (2026-10-29)
 
@@ -472,10 +528,12 @@ What `tests/blender/run_viewport_tests.py` and the screenshots showed in 0.1.0, 
 | Q-045 | A hidden plane object keeps cutting while Object stays chosen; it's only replaced when Object is chosen again | assumption | 0.9.1 | open |
 | Q-046 | Plane frame hidden behind parts and the near cap (it used to draw on top of everything) | assumption | 0.9.1 | open |
 | Q-047 | "Clashes on interference" (note cut short) means the banding between overlapping caps (D-023) | assumption | 0.9.2 | confirmed: fixed, per the maintainer |
-| Q-048 | The Alt+B button turns Section/Slice off and waits for a box, unlike the key | assumption | 0.9.2 | open |
+| Q-048 | The Alt+B button turns Section/Slice off and waits for a box, unlike the key | assumption | 0.9.2 | confirmed by the maintainer |
 | Q-049 | Local axes live under Object; Object prefers the selected part (D-025) | assumption | 0.9.2 | open |
-| Q-050 | Open-part caps at 50 %, with a setting; the plane-crossing warning is red (D-026) | assumption | 0.9.2 | open |
+| Q-050 | Open-part caps at 50 %, with a setting; the plane-crossing warning is red (D-026) | assumption | 0.9.2 | confirmed by the maintainer |
 | Q-051 | In X-ray, contours stay opaque while caps go translucent | assumption | 0.9.2 | open |
 | Q-052 | Readout at the bottom centre | assumption | 0.9.2 | open |
 | Q-053 | Whether the black-over-orange case seen was the flush-face one (D-024) | unasked question | 0.9.2 | orange has won so far; the maintainer reports if not |
 | Q-054 | The readout keeps "Alt+B clipping" while the button says Clip | assumption | 0.9.3 | open |
+| Q-055 | Alt+B scrub: slider reads the current axis, range to just clear of the Scrub Range, positive toward the viewer (D-027) | assumption | 0.9.4 | open |
+| Q-056 | Print Preview is last in Settings, marked experimental | assumption | 0.9.4 | open |
