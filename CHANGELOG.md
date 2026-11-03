@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.11.0 (2026-11-03)
+
+- **Clip remembers**: switching to Section or Slice and clicking Clip again brings your box back, where
+  you left it. Clicking Clip while it's lit removes the box for good.
+- **Overlaps** has a third option, **Highlight**, with its style, colours and opacity right below.
+  It replaces the separate Interference panel and its checkbox.
+- **Scrub** has a 0.5 button between its arrows.
+- **Caps** starts with **Cap**: Visible Objects, Selected Objects or Collection (was the Cap Targets panel).
+- **Section/Slice Plane** (was Plane) holds the scrub settings at its top (was Scrub Settings).
+- Cut outlines stay dark on problem parts, including red-capped ones; the readout does the warning.
+
 ## 0.10.0 (2026-11-03)
 
 The add-on is in development: expect changes before 1.0.

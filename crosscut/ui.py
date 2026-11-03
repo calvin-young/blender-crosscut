@@ -71,6 +71,7 @@ def _draw_main(layout, context, compact=False):
         r.prop(s, "position", slider=True)
     st = r.operator("crosscut.step", text="", icon='TRIA_LEFT')
     st.direction = -1
+    r.operator("crosscut.center", text="", icon='SNAP_MIDPOINT')
     st = r.operator("crosscut.step", text="", icon='TRIA_RIGHT')
     st.direction = 1
     if s.mode == 'SLICE':
@@ -142,6 +143,14 @@ class CROSSCUT_PT_display(bpy.types.Panel):
             if s.mode == 'SLICE':
                 _outline_row(col, s)  # a zero-thickness slice still shows its outline
             return
+        col.prop(s, "targets")
+        if s.targets == 'COLLECTION':
+            col.prop(s, "target_collection")
+        names = engine.hidden_from_caps(context, s)
+        if names:
+            more = f" (+{len(names) - 2})" if len(names) > 2 else ""
+            self.layout.label(text="Not capped (Wire/Bounds display): " + ", ".join(names[:2]) + more,
+                              icon='INFO')
         col.prop(s, "color_source")
         if s.color_source == 'SINGLE' or (s.color_source == 'AUTO' and draw.auto_uses_cap_color(context, s)):
             col.prop(s, "single_color")
@@ -164,6 +173,12 @@ class CROSSCUT_PT_display(bpy.types.Panel):
                 col.prop(s, "stripe_width_px", text="Stripe Width (px)")
             else:
                 col.prop(s, "stripe_width")
+        elif s.overlap_style == 'HIGHLIGHT':
+            col.prop(s, "interference_style")
+            col.prop(s, "interference_color")
+            if s.interference_style != 'SOLID':
+                col.prop(s, "interference_line_color")
+            col.prop(s, "interference_opacity", slider=True)
         col.prop(s, "open_opacity", slider=True)
 
 
@@ -172,34 +187,6 @@ def _outline_row(col, s):
     r.prop(s, "outline", text="")
     if s.outline:
         r.prop(s, "outline_width", text="")
-
-
-class CROSSCUT_PT_interference(bpy.types.Panel):
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'UI'
-    bl_category = "View"
-    bl_label = "Interference"
-    bl_parent_id = "CROSSCUT_PT_display"
-    bl_options = {'DEFAULT_CLOSED'}
-
-    @classmethod
-    def poll(cls, context):
-        return context.scene.crosscut.cap_style != 'BACKFACES'
-
-    def draw_header(self, context):
-        self.layout.prop(context.scene.crosscut, "interference", text="")
-
-    def draw(self, context):
-        s = context.scene.crosscut
-        col = _split(self.layout)
-        if not s.interference:
-            col.label(text="Off: overlaps show as Blend or Stripes")
-            return
-        col.prop(s, "interference_style")
-        col.prop(s, "interference_color")
-        if s.interference_style != 'SOLID':
-            col.prop(s, "interference_line_color")
-        col.prop(s, "interference_opacity", slider=True)
 
 
 class CROSSCUT_PT_print_preview(bpy.types.Panel):
@@ -250,48 +237,7 @@ class CROSSCUT_PT_plane(bpy.types.Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = "View"
-    bl_label = "Plane"
-    bl_parent_id = "CROSSCUT_PT_settings"
-    bl_options = {'DEFAULT_CLOSED'}
-
-    def draw(self, context):
-        s = context.scene.crosscut
-        col = _split(self.layout)
-        col.prop(s, "plane_display", text="Display")
-        if s.plane_display != 'NONE':
-            col.prop(s, "plane_color")
-            if s.mode == 'SLICE':
-                col.prop(s, "plane_color_2")
-            if s.plane_display in {'TINT', 'HATCH'}:
-                col.prop(s, "plane_opacity", slider=True)
-
-
-class CROSSCUT_PT_targets(bpy.types.Panel):
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'UI'
-    bl_category = "View"
-    bl_label = "Cap Targets"
-    bl_parent_id = "CROSSCUT_PT_settings"
-    bl_options = {'DEFAULT_CLOSED'}
-
-    def draw(self, context):
-        s = context.scene.crosscut
-        col = _split(self.layout)
-        col.prop(s, "targets")
-        if s.targets == 'COLLECTION':
-            col.prop(s, "target_collection")
-        names = engine.hidden_from_caps(context, s)
-        if names:
-            more = f" (+{len(names) - 2})" if len(names) > 2 else ""
-            self.layout.label(text="Not capped (Wire/Bounds display): " + ", ".join(names[:2]) + more,
-                              icon='INFO')
-
-
-class CROSSCUT_PT_range(bpy.types.Panel):
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'UI'
-    bl_category = "View"
-    bl_label = "Scrub Settings"
+    bl_label = "Section/Slice Plane"
     bl_parent_id = "CROSSCUT_PT_settings"
     bl_options = {'DEFAULT_CLOSED'}
 
@@ -312,6 +258,14 @@ class CROSSCUT_PT_range(bpy.types.Panel):
         sp.label(text=f"{draw.fmt_length(context.scene, lo)} → {draw.fmt_length(context.scene, hi)}")
         col.prop(s, "scrub_distance")
         col.prop(s, "step")
+        col.separator()
+        col.prop(s, "plane_display", text="Display")
+        if s.plane_display != 'NONE':
+            col.prop(s, "plane_color")
+            if s.mode == 'SLICE':
+                col.prop(s, "plane_color_2")
+            if s.plane_display in {'TINT', 'HATCH'}:
+                col.prop(s, "plane_opacity", slider=True)
 
 
 class CROSSCUT_PT_popover(bpy.types.Panel):
@@ -359,10 +313,7 @@ classes = (
     CROSSCUT_PT_main,
     CROSSCUT_PT_settings,
     CROSSCUT_PT_display,
-    CROSSCUT_PT_interference,
-    CROSSCUT_PT_targets,
     CROSSCUT_PT_plane,
-    CROSSCUT_PT_range,
     CROSSCUT_PT_print_preview,
     CROSSCUT_PT_popover,
     CROSSCUT_MT_pie,

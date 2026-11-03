@@ -112,30 +112,12 @@ closed by default.
 In X-ray (Alt+Z) caps follow the viewport's X-ray opacity, and nothing hides them or their
 contours.
 
-#### Interference
-
-With the header checkbox on, overlapping sections are highlighted. You can set the **Style**
-(Solid, Hatched, Cross), **Color**, **Line Color** and **Opacity**. Below full opacity, the
-blended or striped overlap shows through.
-
 ### Plane
 
 - **Display**: None, Frame, Tint or Hatched.
 - **Color** sets its colour, and **Second Plane** the colour of a slab's other plane.
 - **Opacity** sets the tint (default 3 %; the slider goes to 10 %, type a value for more).
   Looking through both planes of a slab doesn't double the tint.
-
-### Cap Targets
-
-Which parts get caps: all **Visible** solids, only **Selected** ones (everything is still
-clipped), or a **Collection**. Objects displayed as Wire or Bounds are never capped; the panel
-and readout list any that are visible.
-
-### Scrub Settings
-
-**Scrub by Distance** and **Step**: see Scrub above. **Scrub Range** is what Scrub sweeps across: the **Targets**' bounds, or an **Object**'s bounds, such as a build
-volume. The eyedropper uses the active object. The range object is never capped, and with
-it the readout counts steps (for example `step 150 / 1500`).
 
 ## Print Preview (experimental)
 

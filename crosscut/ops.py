@@ -81,8 +81,8 @@ def _view_window_region(context):
 
 
 class CROSSCUT_OT_clip(bpy.types.Operator):
-    """Blender's clipping region. When off, turns Section and Slice off and lets you draw a box in the
-    viewport; when on, removes the box"""
+    """Blender's clipping region. Turns Section and Slice off and brings back the box they replaced, or
+    lets you draw one in the viewport. When on, removes the box"""
     bl_idname = "crosscut.clip"
     bl_label = "Clip"
 
@@ -91,14 +91,17 @@ class CROSSCUT_OT_clip(bpy.types.Operator):
         return _view_window_region(context) is not None
 
     def invoke(self, context, _event):
+        from . import draw
         s = _s(context)
+        rv3d = context.space_data.region_3d
         if s.mode != 'OFF':
             s.last_mode = s.mode
             s.mode = 'OFF'  # this releases the view, so the operator below starts a new box
-        # Blender's operator toggles: removes a box, otherwise waits for one to be drawn.
         # Needs the viewport region: the button lives in the sidebar or header.
         with context.temp_override(region=_view_window_region(context)):
-            bpy.ops.view3d.clip_border('INVOKE_DEFAULT')
+            if rv3d.use_clip_planes or not draw.restore_clip(context, rv3d):
+                # Blender's operator toggles: removes a box, otherwise waits for one to be drawn.
+                bpy.ops.view3d.clip_border('INVOKE_DEFAULT')
         tag_redraw()
         return {'FINISHED'}
 
@@ -366,7 +369,7 @@ class CROSSCUT_OT_step(bpy.types.Operator):
 
 
 class CROSSCUT_OT_center(bpy.types.Operator):
-    """Move the plane to the middle of the scrub range"""
+    """Move the plane to the middle of the scrub range (0.5)"""
     bl_idname = "crosscut.center"
     bl_label = "Center"
     bl_options = {'REGISTER', 'UNDO'}

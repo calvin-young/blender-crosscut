@@ -246,9 +246,9 @@ def setup_view(view):
 def settings(s, **kw):
     base = dict(mode='OFF', orientation='Z', offset=0.0, flip=False, thickness=0.0,
                 cap_style='SOLID', targets='VISIBLE', color_source='SINGLE', single_color=GREEN,
-                hatch_vary=True, interference=True, outline=True, plane_display='NONE',
+                hatch_vary=True, outline=True, plane_display='NONE',
                 show_readout=True, range_source='TARGETS', range_object=None,
-                hatch_space='SCREEN', hatch_pitch_px=10.0, scrub_distance=False, overlap_style='BLEND',
+                hatch_space='SCREEN', hatch_pitch_px=10.0, scrub_distance=False, overlap_style='HIGHLIGHT',
                 interference_style='CROSS', interference_opacity=1.0, plane_opacity=0.10,
                 stripe_width_px=12.0, open_opacity=1.0, object_axis='Z', clip_tint=True)
     base.update(kw)
@@ -407,7 +407,7 @@ def multibody(view):
     c = shot.at(view.px((45, 0, 0)))
     check(T, "part-003 alone is its colour (green)", c[1] > c[0] + 20 and c[1] > c[2], f"{c}")
 
-    settings(s, mode='SECTION', orientation='Z', offset=0.0, color_source='OBJECT', interference=False)
+    settings(s, mode='SECTION', orientation='Z', offset=0.0, color_source='OBJECT', overlap_style='BLEND')
     yield from settle()
     shot = Shot(view, "multibody_no_interference")
     c = shot.at(view.px((4, 0, 0)))
@@ -420,8 +420,7 @@ def multibody(view):
           and not near(c, a1, 30) and not near(c, a2, 30), f"overlap {c} part-001 {a1} part-002 {a2}")
 
     # stripes: the overlap shows both parts' colours side by side
-    settings(s, mode='SECTION', orientation='Z', offset=0.0, color_source='OBJECT', interference=False,
-             overlap_style='STRIPES')
+    settings(s, mode='SECTION', orientation='Z', offset=0.0, color_source='OBJECT', overlap_style='STRIPES')
     yield from settle()
     shot = Shot(view, "multibody_stripes")
     cx, cy = view.px((4, 0, 0))
@@ -432,15 +431,13 @@ def multibody(view):
     check(T, "stripes: overlap has both colours", blue > 60 and orange > 60, f"blue {blue} orange {orange}")
 
     # interference appearance: solid, custom colour, half opacity over the stripes
-    settings(s, mode='SECTION', orientation='Z', offset=0.0, color_source='OBJECT', interference=True,
-             overlap_style='STRIPES', interference_style='SOLID', interference_color=(1.0, 0.0, 1.0),
+    settings(s, mode='SECTION', orientation='Z', offset=0.0, color_source='OBJECT', overlap_style='HIGHLIGHT', interference_style='SOLID', interference_color=(1.0, 0.0, 1.0),
              interference_opacity=1.0)
     yield from settle()
     shot = Shot(view, "multibody_interference_solid_magenta")
     c = shot.at(view.px((4, 0, 0)))
     check(T, "interference colour and style", c[0] > 200 and c[2] > 200 and c[1] < 60, f"{c}")
-    settings(s, mode='SECTION', orientation='Z', offset=0.0, color_source='OBJECT', interference=True,
-             overlap_style='STRIPES', interference_style='CROSS', interference_opacity=0.4)
+    settings(s, mode='SECTION', orientation='Z', offset=0.0, color_source='OBJECT', overlap_style='HIGHLIGHT', interference_style='CROSS', interference_opacity=0.4)
     yield from settle()
     Shot(view, "multibody_interference_translucent")
     s.interference_color = (0.86, 0.10, 0.08)
@@ -496,13 +493,12 @@ def coplanar_clash(view):
 
     for dist, rot in ((900, (70, 0, 25)), (1500, (65, 0, 40)), (150, (60, 0, 10))):
         view.look((0, 0, 0), dist, rot)
-        settings(s, mode='SECTION', orientation='Z', color_source='OBJECT', interference=False, outline=False)
+        settings(s, mode='SECTION', orientation='Z', color_source='OBJECT', overlap_style='BLEND', outline=False)
         yield 0.05
         yield from settle()
         d = spread(Shot(view, f"clash_blend_{dist}"))
         check(T, f"blend overlap is flat at {dist}", d <= 3, f"spread {d}")
-        settings(s, mode='SECTION', orientation='Z', color_source='OBJECT', interference=True,
-                 interference_style='SOLID', outline=False)
+        settings(s, mode='SECTION', orientation='Z', color_source='OBJECT', interference_style='SOLID', outline=False)
         yield from settle()
         d = spread(Shot(view, f"clash_interference_{dist}"))
         check(T, f"interference overlap is flat at {dist}", d <= 3, f"spread {d}")
@@ -961,6 +957,72 @@ def clip_scrub(view):
           == labels_before and [x[0].tolist() for x in eng.clip_axes(view.rv3d)] == signs_before)
     Shot(view, "clip_scrub_other_axis")
     view.rv3d.use_clip_planes = False
+    check(T, "no draw errors", not errors(), str(errors()))
+
+
+@test
+def clip_memory(view):
+    # Clip brings back the box Section or Slice replaced
+    T = "clip_memory"
+    if not bpy.app.use_event_simulate:
+        print("    skipped: run Blender with --enable-event-simulate")
+        return
+    scene = new_scene("cc-clip-memory")
+    box("part-001", (60, 60, 60))
+    s = scene.crosscut
+    view.look((0, 0, 0), 300, (0, 0, 0), ortho=True)
+    settings(s, cap_style='SOLID')
+    yield 0.1
+    win = bpy.context.window
+    r = view.region
+    with view.override():
+        bpy.ops.crosscut.clip('INVOKE_DEFAULT')
+    yield 0.1
+    a, b = view.px((-20, -10, 0)), view.px((20, 10, 0))
+    win.event_simulate('MOUSEMOVE', 'NOTHING', x=r.x + a[0], y=r.y + a[1])
+    yield 0.05
+    win.event_simulate('LEFTMOUSE', 'PRESS', x=r.x + a[0], y=r.y + a[1])
+    yield 0.05
+    win.event_simulate('MOUSEMOVE', 'NOTHING', x=r.x + b[0], y=r.y + b[1])
+    yield 0.05
+    win.event_simulate('LEFTMOUSE', 'RELEASE', x=r.x + b[0], y=r.y + b[1])
+    yield 0.3
+    planes = [tuple(round(v, 4) for v in p) for p in view.rv3d.clip_planes]
+    check(T, "box drawn", view.rv3d.use_clip_planes)
+    with view.override():
+        bpy.ops.crosscut.set_mode(mode='SLICE')
+    yield 0.2
+    yield from settle()
+    check(T, "Slice took over", s.mode == 'SLICE' and cc("draw").has_saved_clip(view.rv3d))
+    with view.override():
+        bpy.ops.crosscut.clip('INVOKE_DEFAULT')
+    yield 0.2
+    yield from settle()
+    now = [tuple(round(v, 4) for v in p) for p in view.rv3d.clip_planes]
+    check(T, "Clip brings the same box back", s.mode == 'OFF' and view.rv3d.use_clip_planes and now == planes, str(now[:2]))
+    Shot(view, "clip_memory_back")
+    info = cc("draw").last_info(r)
+    check(T, "it's the region again, with caps", info.get("native") and not info.get("ours"), str(info))
+    # Off and on: remembered through turning Section off, too
+    with view.override():
+        bpy.ops.crosscut.set_mode(mode='SECTION')
+    yield 0.2
+    with view.override():
+        bpy.ops.crosscut.set_mode(mode='SECTION')
+    yield 0.2
+    yield from settle()
+    check(T, "Section off leaves no clipping", not view.rv3d.use_clip_planes)
+    with view.override():
+        bpy.ops.crosscut.clip('INVOKE_DEFAULT')
+    yield 0.2
+    now = [tuple(round(v, 4) for v in p) for p in view.rv3d.clip_planes]
+    check(T, "still remembered", view.rv3d.use_clip_planes and now == planes)
+    # clicking the lit button removes it for good: next time asks for a new one
+    with view.override():
+        bpy.ops.crosscut.clip('INVOKE_DEFAULT')
+    yield 0.2
+    check(T, "click when lit removes it", not view.rv3d.use_clip_planes)
+    check(T, "and forgets it", not cc("draw").has_saved_clip(view.rv3d))
     check(T, "no draw errors", not errors(), str(errors()))
 
 
@@ -1965,6 +2027,20 @@ def ui_panels(view):
     for c in panels:
         c.bl_category = "View"
         bpy.utils.register_class(c)
+    # draw the closed sub-panels too, one at a time, in popups
+    s.overlap_style = 'HIGHLIGHT'
+    for name in ("display", "plane", "settings", "print_preview"):
+        with view.override():
+            bpy.ops.wm.call_panel(name=f"CROSSCUT_PT_{name}", keep_open=True)
+        yield 0.2
+        yield from settle()
+        Shot(view, f"ui_panel_{name}")
+        if bpy.app.use_event_simulate:
+            cx, cy = view.region.x + 40, view.region.y + 40
+            bpy.context.window.event_simulate('MOUSEMOVE', 'NOTHING', x=cx, y=cy)
+            bpy.context.window.event_simulate('ESC', 'PRESS', x=cx, y=cy)
+            bpy.context.window.event_simulate('ESC', 'RELEASE', x=cx, y=cy)
+            yield 0.2
     with view.override():
         bpy.ops.wm.call_panel(name="CROSSCUT_PT_popover", keep_open=True)
     yield 0.2
@@ -2043,6 +2119,7 @@ def _runner():
                 continue
             print(f"- {fn.__name__}")
             setup_view(view)
+            cc("draw").forget_saved_clips()
             try:
                 yield from fn(view)
             except Exception:

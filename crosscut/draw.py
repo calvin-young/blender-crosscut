@@ -37,6 +37,7 @@ _last_info = {}        # per-region info for the readout
 _clip_lit = {}         # rv3d pointer -> whether the sidebar's Clip button should be lit
 _tint_gone = set()     # rv3d pointers whose clipping region has had Blender's tinted box removed
 _tint_pending = set()
+_saved_clip = {}       # rv3d pointer -> the clipping region's planes when Section or Slice took over
 _measure = {"on": False, "region": None, "a": None, "b": None, "text": ""}
 
 
@@ -375,6 +376,27 @@ def _remove_tints():
     return None
 
 
+def has_saved_clip(rv3d):
+    return rv3d.as_pointer() in _saved_clip
+
+
+def restore_clip(context, rv3d):
+    """Bring back the clipping region Section or Slice replaced, on an empty box (D-008).
+    Run with the viewport region as context's region. False if there is none to bring back."""
+    planes = _saved_clip.pop(rv3d.as_pointer(), None)
+    if planes is None:
+        return False
+    bpy.ops.view3d.clip_border(xmin=0, xmax=0, ymin=0, ymax=0, wait_for_input=False)
+    rv3d.clip_planes = planes
+    rv3d.use_clip_planes = True
+    _tint_gone.add(rv3d.as_pointer())
+    return True
+
+
+def forget_saved_clips():
+    _saved_clip.clear()
+
+
 def request_tint_removal(rv3d):
     """Remove Blender's tinted box from this view's clipping region, once, as soon
     as Blender lets an operator run."""
@@ -417,6 +439,8 @@ def sync_clip(rv3d, desired, area=None):
             _request_mode_off()
             return False
     else:
+        if cur_on and any(not sm.plane_is_degenerate(p) for p in cur.reshape(6, 4)):
+            _saved_clip[key] = cur.reshape(6, 4).tolist()  # so Clip can bring it back
         st = {"ours": None}
         _clip_state[key] = st
         # Without Alt+B there may be no clipping box at all; with Alt+B,
@@ -717,7 +741,7 @@ def backface_color():
 
 
 SELECT_WIDTH = 2.0  # px, about the width of Blender's selection outline
-WARNING_RED = (1.0, 0.25, 0.2, 1.0)  # sRGB, in contours and the readout
+WARNING_RED = (1.0, 0.25, 0.2, 1.0)  # sRGB, for the readout
 
 
 def _selection_colors(context):
@@ -803,7 +827,6 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style, fill_override=None):
     eps = max(rv3d.view_distance, 1e-6) * 2e-4
 
     info = {"count": 0, "open": [], "open_mesh": [], "inside_out": [], "mixed_normals": []}
-    warned = set()  # parts whose contour shows a problem
     overlay = getattr(space, "overlay", None)
     overlays_on = overlay is None or overlay.show_overlays
     face_orientation = overlays_on and overlay is not None and overlay.show_face_orientation
@@ -843,11 +866,8 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style, fill_override=None):
             oriented[t.key] = engine.is_oriented(t, depsgraph)
             if engine.is_inside_out(t, depsgraph):
                 info["inside_out"].append(t.owner.name)
-                warned.add(t.key)
             elif not mesh_open and not oriented[t.key]:
                 info["mixed_normals"].append(t.owner.name)
-            if n_open:
-                warned.add(t.key)
             if n_open:
                 info["open"].append(t.owner.name)
             elif mesh_open:
@@ -862,7 +882,7 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style, fill_override=None):
             # with overlapping parts, count coverage so overlaps can blend and
             # (optionally) get the interference hatching
             several = len(hits) > 1
-            want_interference = s.interference and several and fill_override is None
+            want_interference = s.overlap_style == 'HIGHLIGHT' and several and fill_override is None
             stripes = several and s.overlap_style == 'STRIPES' and fill_override is None
             if several:
                 with accum_off.bind():
@@ -958,8 +978,6 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style, fill_override=None):
             if rank:
                 c = selection[rank - 1]
                 width = max(width, SELECT_WIDTH)
-            elif t.key in warned and overlays_on:
-                c = WARNING_RED  # open on the plane, or inside out; not orange, which means selected
             elif show_fill:
                 c = _srgb((col[0] * 0.01, col[1] * 0.01, col[2] * 0.01, 1.0))  # ~12% in sRGB
             else:
@@ -1270,6 +1288,8 @@ def draw_view():
         if _clip_lit.setdefault(rv3d.as_pointer(), lit) != lit:
             _clip_lit[rv3d.as_pointer()] = lit
             context.area.tag_redraw()
+        if lit:
+            _saved_clip.pop(rv3d.as_pointer(), None)  # a box is on: nothing to bring back
         if lit and not s.clip_tint:
             request_tint_removal(rv3d)
         elif not rv3d.use_clip_planes:
@@ -1476,6 +1496,7 @@ def unregister():
     _clip_lit.clear()
     _tint_gone.clear()
     _tint_pending.clear()
+    _saved_clip.clear()
     measure_stop()
     _errors.clear()
     global _FULLSCREEN

@@ -230,10 +230,11 @@ class CrosscutSettings(bpy.types.PropertyGroup):
     last_cap_style: StringProperty(default='HATCH', options={'HIDDEN'})
 
     targets: EnumProperty(
-        name="Targets", default='VISIBLE', update=tag_redraw,
+        name="Cap", default='VISIBLE', update=tag_redraw,
+        description="Which objects get caps",
         items=[
-            ('VISIBLE', "Visible", "Cap every visible solid object"),
-            ('SELECTED', "Selected", "Cap only selected objects (everything is still clipped)"),
+            ('VISIBLE', "Visible Objects", "Cap every visible solid object"),
+            ('SELECTED', "Selected Objects", "Cap only selected objects (everything is still clipped)"),
             ('COLLECTION', "Collection", "Cap only objects in a collection"),
         ],
     )
@@ -286,16 +287,12 @@ class CrosscutSettings(bpy.types.PropertyGroup):
         description="Cap opacity for parts with holes in their mesh: their cut may not show real "
                     "material, so the cap shouldn't read as solid",
     )
-    interference: BoolProperty(
-        name="Show Interference", default=True, update=tag_redraw,
-        description="Highlight areas where two or more objects' sections overlap (red cross-hatching "
-                    "by default; see Interference settings)",
-    )
     overlap_style: EnumProperty(
-        name="Overlaps", default='BLEND', update=tag_redraw,
+        name="Overlaps", default='HIGHLIGHT', update=tag_redraw,
         items=[
             ('BLEND', "Blend", "Overlapping caps mix their colours equally"),
             ('STRIPES', "Stripes", "Overlapping caps share the area in stripes, one per part"),
+            ('HIGHLIGHT', "Highlight", "Mark where parts overlap, in the color and style below"),
         ],
     )
     stripe_width: FloatProperty(name="Stripe Width", subtype='DISTANCE', unit='LENGTH', min=1e-4, default=1.0,
@@ -321,7 +318,7 @@ class CrosscutSettings(bpy.types.PropertyGroup):
     )
     interference_opacity: FloatProperty(
         name="Opacity", subtype='FACTOR', min=0.0, max=1.0, default=1.0, update=tag_redraw,
-        description="Fill opacity: below 1 the overlapping caps (blended or striped) show through",
+        description="Fill opacity: below 1 the overlapping caps show through, blended",
     )
     plane_display: EnumProperty(
         name="Plane", default='TINT', update=tag_redraw,

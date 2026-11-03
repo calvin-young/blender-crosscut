@@ -114,8 +114,8 @@ def configure(s, **kw):
     defaults = dict(mode='OFF', orientation='Y', offset=0.0, flip=False, thickness=0.0,
                     cap_style='HATCH', targets='VISIBLE', color_source='AUTO', hatch_vary=True,
                     range_source='TARGETS', range_object=None,
-                    interference=True, outline=True, plane_display='NONE', show_readout=True,
-                    hatch_space='SCREEN', hatch_pitch_px=10.0, overlap_style='BLEND',
+                    outline=True, plane_display='NONE', show_readout=True,
+                    hatch_space='SCREEN', hatch_pitch_px=10.0, overlap_style='HIGHLIGHT',
                     plane_opacity=0.10)
     defaults.update(kw)
     for k, v in defaults.items():
@@ -168,10 +168,9 @@ def main():
     look(area, (12, 0, 0), 190, (60, 0, 20))
     configure(s, mode='SECTION', orientation='Z', offset=0.0)
     shoot(area, region, "06_multibody_interference")
-    configure(s, mode='SECTION', orientation='Z', offset=0.0, hatch_vary=False, interference=False)
+    configure(s, mode='SECTION', orientation='Z', offset=0.0, hatch_vary=False, overlap_style='BLEND')
     shoot(area, region, "07_multibody_no_interference")
-    configure(s, mode='SECTION', orientation='Z', offset=0.0, cap_style='SOLID', interference=False,
-              overlap_style='STRIPES')
+    configure(s, mode='SECTION', orientation='Z', offset=0.0, cap_style='SOLID', overlap_style='STRIPES')
     shoot(area, region, "11_multibody_stripes")
 
     # 8: open (non-manifold) mesh is flagged

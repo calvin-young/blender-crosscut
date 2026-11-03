@@ -591,3 +591,4 @@ def on_load(*_args):
     invalidate_all()
     from . import draw
     draw.measure_stop()
+    draw.forget_saved_clips()
