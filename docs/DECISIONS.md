@@ -10,6 +10,7 @@ this list is an assumption, tracked in the table at the end.
 
 | ID | Requirement | Status in 0.1.0 |
 | --- | --- | --- |
+| R-016 | After 0.9.2 (2026-11-02): put the plane row back while off (View is used to start a plane); Alt+B button first in the row and named Clip; fix the button staying lit after the Alt+B key; 1.0 is not close: keep user testing, and push back when bugs and features keep coming; download buttons on the status page. Asked whether vanilla Alt+B can be scrubbed | 0.9.3, see below |
 | R-015 | Notes from using 0.9.1 on real work (2026-11-02): hide the axis row while off; align to an object's local XYZ; an Alt+B button; selected outline must win over a coincident black contour; readout hidden by the last-operation panel; Scrub by Distance and Step into Scrub Range, renamed Scrub Settings; X-ray should affect caps; Cap Targets right under Caps; Vary per Object must not change when parts are shown or hidden; warn when cutting through an open mesh even if the hole isn't on the plane, more severely when it is, and maybe lower the cap's opacity; "clashes on interference, both when enabled or disabled" | 0.9.2, see below |
 | R-014 | After testing 0.9.0 (2026-10-29): plane tint default 0.03, slider 0 to 0.1 but typing up to 1; choosing Object with a plane object that's no longer visible must clear it (and pick the only visible object); show selection outlines in a zero-thickness slice; stop Blender's selection outline clashing with Crosscut's outline in a slab; move Caps and everything below into a separate, collapsed settings panel; line "Range" up with the Scrub Range row; list open follow-ups at the end of every reply | 0.9.1, see below |
 | R-013 | After testing 0.4.0 (2026-10-29): no outline in Wireframe; show the Wire/Bounds note only when such objects exist, and warn in the readout; stripe width and plane colour/opacity settings; Object with no object must not cut, and the only visible object should be picked automatically; Cap Targets and Scrub Range under Settings; parts selectable in a zero-thickness slice; a slab's second plane in another colour or without stacked tint; hide rather than grey out (except Flip); turning off must not bring back the Alt+B box; prep everything for 1.0, release after review | 0.9.0 (1.0 candidate), see below |
@@ -27,6 +28,20 @@ this list is an assumption, tracked in the table at the end.
 | R-001 | Main use: while modelling parts. Secondary: finding interferences when packing buckets | Drives defaults |
 
 ## Decisions
+
+### Changes after the maintainer's review of 0.9.2 (0.9.3, 2026-11-02)
+
+- **Plane row** is back while off (reverses R-015's first item). X, Y, Z and Object still do nothing
+  visible until Section or Slice is on, which was the original complaint; left as it is until the
+  maintainer decides.
+- **Clip button**: first in the row, named after Blender's "Clipping Region". The readout still says
+  "Alt+B clipping" (*assumed*). The button went stale because the key only redraws the viewport;
+  the draw callback now tags the area when the lit state changes.
+- **1.0 is not close.** The maintainer called the 1.0 talk premature: keep testing on real work
+  first. Version numbers stay 0.9.x, though they suggest otherwise (*assumed*; renumbering would
+  confuse more).
+- **Scrubbing a plain Alt+B box**: checked, not built. Its four side planes can be moved from
+  Python and the caps follow; whether Blender's box tint follows wasn't checked ([issue](https://github.com/calvin-young/blender-crosscut/issues/9)).
 
 ### Changes after the maintainer's notes on 0.9.1 (0.9.2, 2026-11-02)
 
@@ -456,10 +471,11 @@ What `tests/blender/run_viewport_tests.py` and the screenshots showed in 0.1.0, 
 | Q-044 | Settings layout: Readout, Scrub by Distance, Step at the top of Settings; Plane as its own sub-panel | assumption | 0.9.1 | open |
 | Q-045 | A hidden plane object keeps cutting while Object stays chosen; it's only replaced when Object is chosen again | assumption | 0.9.1 | open |
 | Q-046 | Plane frame hidden behind parts and the near cap (it used to draw on top of everything) | assumption | 0.9.1 | open |
-| Q-047 | "Clashes on interference" (note cut short) means the banding between overlapping caps (D-023) | assumption | 0.9.2 | open |
+| Q-047 | "Clashes on interference" (note cut short) means the banding between overlapping caps (D-023) | assumption | 0.9.2 | confirmed: fixed, per the maintainer |
 | Q-048 | The Alt+B button turns Section/Slice off and waits for a box, unlike the key | assumption | 0.9.2 | open |
 | Q-049 | Local axes live under Object; Object prefers the selected part (D-025) | assumption | 0.9.2 | open |
 | Q-050 | Open-part caps at 50 %, with a setting; the plane-crossing warning is red (D-026) | assumption | 0.9.2 | open |
 | Q-051 | In X-ray, contours stay opaque while caps go translucent | assumption | 0.9.2 | open |
 | Q-052 | Readout at the bottom centre | assumption | 0.9.2 | open |
-| Q-053 | Whether the black-over-orange case seen was the flush-face one (D-024) | unasked question | 0.9.2 | open |
+| Q-053 | Whether the black-over-orange case seen was the flush-face one (D-024) | unasked question | 0.9.2 | orange has won so far; the maintainer reports if not |
+| Q-054 | The readout keeps "Alt+B clipping" while the button says Clip | assumption | 0.9.3 | open |

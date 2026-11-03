@@ -34,6 +34,7 @@ _batches = {}          # (target key, cap index, kind) -> (signature, batch)
 _clip_state = {}       # rv3d pointer -> {"ours": flat planes or None, "saved": (on, planes)}
 _errors = set()
 _last_info = {}        # per-region info for the readout
+_clip_lit = {}         # rv3d pointer -> whether the sidebar's Clip button should be lit
 
 
 # ------------------------------------------------------------------ shaders
@@ -922,6 +923,11 @@ def draw_view():
     try:
         planes = engine.compute_planes(s)
         ours = sync_clip(rv3d, planes[0] if planes else None, context.area)
+        # Alt+B on the keyboard only redraws the viewport: refresh the sidebar's Clip button too
+        lit = s.mode == 'OFF' and bool(rv3d.use_clip_planes)
+        if _clip_lit.setdefault(rv3d.as_pointer(), lit) != lit:
+            _clip_lit[rv3d.as_pointer()] = lit
+            context.area.tag_redraw()
         style = s.cap_style
         if ours:
             caps = planes[1]
@@ -1091,6 +1097,7 @@ def unregister():
     _batches.clear()
     _shaders.clear()
     _last_info.clear()
+    _clip_lit.clear()
     _errors.clear()
     global _FULLSCREEN
     _FULLSCREEN = None

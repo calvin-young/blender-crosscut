@@ -81,10 +81,10 @@ def _view_window_region(context):
 
 
 class CROSSCUT_OT_alt_b(bpy.types.Operator):
-    """Blender's clipping box (Alt+B). When off, turns Section and Slice off and lets you draw a box
-    in the viewport; when on, removes the box"""
+    """Blender's clipping region (Alt+B). When off, turns Section and Slice off and lets you draw a
+    box in the viewport; when on, removes the box"""
     bl_idname = "crosscut.alt_b"
-    bl_label = "Alt+B Clipping"
+    bl_label = "Clip"
 
     @classmethod
     def poll(cls, context):

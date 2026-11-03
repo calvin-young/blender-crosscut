@@ -13,19 +13,17 @@ def _draw_main(layout, context, compact=False):
     col = layout.column()
     # Section / Slice: one or neither (neither = only Alt+B clipping gets caps)
     row = col.row(align=True)
+    rv3d = getattr(context.space_data, "region_3d", None)
+    row.operator("crosscut.alt_b", text="Clip", icon='SHADING_BBOX',
+                 depress=s.mode == 'OFF' and rv3d is not None and rv3d.use_clip_planes)
     row.operator("crosscut.set_mode", text="Section", icon='MOD_BOOLEAN',
                  depress=s.mode == 'SECTION').mode = 'SECTION'
     row.operator("crosscut.set_mode", text="Slice", icon='ALIGN_JUSTIFY',
                  depress=s.mode == 'SLICE').mode = 'SLICE'
-    rv3d = getattr(context.space_data, "region_3d", None)
-    row.operator("crosscut.alt_b", text="Alt+B", icon='SHADING_BBOX',
-                 depress=s.mode == 'OFF' and rv3d is not None and rv3d.use_clip_planes)
     # applies to Section, Slice and Alt+B alike; Backfaces = no caps anywhere
     row = col.row(align=True)
     row.prop(s, "cap_style", expand=True)
 
-    if s.mode == 'OFF':
-        return  # hide, don't grey out, what doesn't apply (Flip below is the exception)
     col.separator()
     row = col.row(align=True)
     for key in ('X', 'Y', 'Z', 'OBJECT'):
@@ -42,6 +40,8 @@ def _draw_main(layout, context, compact=False):
         r = col.row(align=True)
         r.prop(s, "object_axis", expand=True)
 
+    if s.mode == 'OFF':
+        return  # hide, don't grey out, what doesn't apply (Flip above is the exception)
     box = col.column(align=True)
     r = box.row(align=True)
     if s.scrub_distance:

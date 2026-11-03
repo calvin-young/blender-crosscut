@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.3 (2026-11-02)
+
+- The plane row is back while Crosscut is off: View starts a section from there.
+- The Alt+B button is now **Clip**, first in the row.
+- Fixed: the Clip button stayed lit (or unlit) after Alt+B on the keyboard, until you hovered over it.
+
 ## 0.9.2 (2026-11-02)
 
 - Fixed: overlapping caps z-fought in bands, with interference on or off (came in with 0.9.1),

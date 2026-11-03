@@ -24,13 +24,14 @@ Units below assume 1 Blender unit = 1 mm, but Crosscut works in any unit.
 - **Section** keeps one side of the plane: a half section.
 - **Slice** keeps only what is near the plane. With **Thickness** 0 you see just the
   cross-section itself; with a thickness you see a slab, centred on the plane.
-- **Alt+B** is Blender's own clipping box, with caps (see below). The button is lit while the
-  view has a box. Click it to turn Section or Slice off and draw a box in the viewport; click
-  it when lit to remove the box.
+- **Clip** is Blender's own clipping region (Alt+B), with caps (see below). The button is lit
+  while the view has a box. Click it to turn Section or Slice off and draw a box in the viewport;
+  click it when lit to remove the box.
 
 Clicking a lit Section or Slice turns Crosscut off. Turning it off removes all clipping from the
-view, including an Alt+B box that was there before. The Plane and Scrub rows only show while
-Section or Slice is on.
+view, including an Alt+B box that was there before. The Scrub rows only show while Section or
+Slice is on. With both off, **View** starts a section; **X**, **Y**, **Z** and **Object** just
+choose the plane for next time.
 
 ### Cap style
 

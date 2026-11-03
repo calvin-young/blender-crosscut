@@ -729,6 +729,74 @@ def xray_caps(view):
 
 
 @test
+def clip_button_follows_key(view):
+    # the sidebar's Clip button lights and unlights with Alt+B on the keyboard, with no hovering
+    T = "clip_button_follows_key"
+    if not bpy.app.use_event_simulate:
+        print("    skipped: run Blender with --enable-event-simulate")
+        return
+    scene = new_scene("cc-clip-key")
+    box("part-001", (30, 30, 30))
+    s = scene.crosscut
+    view.look((0, 0, 0), 160, (60, 0, 30))
+    settings(s, cap_style='SOLID')
+    view.space.show_region_ui = True
+    ui = next(r for r in view.area.regions if r.type == 'UI')
+    panels = [c for c in cc("ui").classes if getattr(c, "bl_region_type", "") == 'UI']
+    for c in reversed(panels):
+        bpy.utils.unregister_class(c)
+    for c in panels:
+        c.bl_category = "Tool"
+        bpy.utils.register_class(c)
+    yield 0.3
+    win = bpy.context.window
+    r = view.region
+    cx, cy = r.x + r.width // 3, r.y + r.height // 2
+    win.event_simulate('MOUSEMOVE', 'NOTHING', x=cx, y=cy)
+    yield 0.5
+
+    def blue(name):
+        shot = Shot(view, name)
+        x0 = ui.x - view.area.x
+        p = shot.px[:, x0:x0 + ui.width]
+        return int(np.count_nonzero((p[:, :, 2] > p[:, :, 0] + 60) & (p[:, :, 2] > 120)))
+
+    off = blue("clip_key_before")
+    # draw a box with the key
+    win.event_simulate('B', 'PRESS', alt=True, x=cx, y=cy)
+    win.event_simulate('B', 'RELEASE', alt=True, x=cx, y=cy)
+    yield 0.2
+    a, b = view.px((-12, -12, 15)), view.px((12, 12, 15))
+    x0, x1 = sorted((a[0], b[0]))
+    y0, y1 = sorted((a[1], b[1]))
+    win.event_simulate('MOUSEMOVE', 'NOTHING', x=r.x + x0, y=r.y + y0)
+    yield 0.05
+    win.event_simulate('LEFTMOUSE', 'PRESS', x=r.x + x0, y=r.y + y0)
+    yield 0.05
+    win.event_simulate('MOUSEMOVE', 'NOTHING', x=r.x + x1, y=r.y + y1)
+    yield 0.05
+    win.event_simulate('LEFTMOUSE', 'RELEASE', x=r.x + x1, y=r.y + y1)
+    yield 0.6
+    check(T, "key drew a box", view.rv3d.use_clip_planes)
+    on = blue("clip_key_box")
+    check(T, "button lit by the key", on > off + 100, f"{on} vs {off}")
+    win.event_simulate('MOUSEMOVE', 'NOTHING', x=cx, y=cy)
+    win.event_simulate('B', 'PRESS', alt=True, x=cx, y=cy)
+    win.event_simulate('B', 'RELEASE', alt=True, x=cx, y=cy)
+    yield 0.6
+    check(T, "key removed the box", not view.rv3d.use_clip_planes)
+    now = blue("clip_key_after")
+    check(T, "button unlit by the key", now <= off + 20, f"{now} vs {off}")
+    view.space.show_region_ui = False
+    for c in reversed(panels):
+        bpy.utils.unregister_class(c)
+    for c in panels:
+        c.bl_category = "Crosscut"
+        bpy.utils.register_class(c)
+    check(T, "no draw errors", not errors(), str(errors()))
+
+
+@test
 def alt_b_button(view):
     T = "alt_b_button"
     scene = new_scene("cc-altb-button")
