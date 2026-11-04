@@ -27,13 +27,11 @@ def _draw_main(layout, context):
     col.separator()
     row = col.row(align=True)
     for key, label in (('X', "X"), ('Y', "Y"), ('Z', "Z"), ('OBJECT', "Object")):
-        if s.mode == 'OFF':  # nothing to re-aim: these start a section, as View does
-            op = row.operator("crosscut.section", text=label, depress=s.orientation == key)
-            op.axis = key
-            op.mode = 'LAST'
-        else:
-            row.prop_enum(s, "orientation", key)
-    row.operator("crosscut.from_view", text="View", depress=s.orientation == 'VIEW')
+        # from off these start a plane; a lit one turns it off again, as Section and Slice do
+        op = row.operator("crosscut.section", text=label, depress=s.orientation == key)
+        op.axis = key
+        op.mode = 'LAST'
+    row.operator("crosscut.from_view", text="View", depress=s.orientation == 'VIEW').toggle = True
     sub = row.row(align=True)
     sub.enabled = s.mode == 'SECTION'
     sub.operator("crosscut.flip", text="", icon='ARROW_LEFTRIGHT', depress=s.flip)
@@ -74,7 +72,7 @@ def _draw_main(layout, context):
         st.direction = 1
     if clipping or s.mode != 'OFF':
         col.separator()
-        col.operator("crosscut.measure", text="Measure Overlap", icon='DRIVER_DISTANCE',
+        col.operator("crosscut.measure", text="Measure", icon='DRIVER_DISTANCE',
                      depress=draw.measure_running())
 
 
@@ -112,6 +110,12 @@ def _draw_cut_faces(layout, context):
     col.prop(s, "color_source")
     if s.color_source == 'SINGLE' or (s.color_source == 'AUTO' and draw.auto_uses_cap_color(context, s)):
         col.prop(s, "single_color")
+    if s.color_source != 'SINGLE':
+        col.prop(s, "fill_saturation", slider=True)
+        col.prop(s, "fill_brightness", slider=True)
+        col.prop(s, "fill_tint")
+        col.prop(s, "fill_tint_amount", slider=True)
+    col.prop(s, "fill_opacity", slider=True)
     if s.cap_style == 'HATCH':
         col.prop(s, "hatch_space")
         if s.hatch_space == 'SCREEN':
@@ -178,9 +182,16 @@ def _draw_plane(layout, context):
 def _draw_measure(layout, context):
     s = context.scene.crosscut
     col = _split(layout)
-    col.prop(s, "measure_color")
+    for heading, on, color in (("Local Width", "measure_local", "measure_color"),
+                               ("Overlap Max", "measure_max", "measure_max_color"),
+                               ("Section Max", "measure_section_max", "measure_max_color")):
+        r = col.row(heading=heading)
+        r.prop(s, on, text="")
+        sub = r.row()
+        sub.active = getattr(s, on)
+        sub.prop(s, color, text="")
+    col.prop(s, "measure_ignore_overlaps")
     col.prop(s, "measure_text_size")
-    col.prop(s, "measure_local")
 
 
 def _draw_print_preview(layout, context):
@@ -212,7 +223,7 @@ def _draw_settings(layout, context):
     col.prop(s, "clip_tint")
     for prop, label, fn in (("ui_cut_faces", "Cut Faces", _draw_cut_faces),
                             ("ui_plane", "Section/Slice Plane", _draw_plane),
-                            ("ui_measure", "Measure Overlap", _draw_measure)):
+                            ("ui_measure", "Measure", _draw_measure)):
         header, sub = body.panel_prop(s, prop)
         header.label(text=label)
         if sub is not None:

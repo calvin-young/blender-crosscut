@@ -107,10 +107,10 @@ class CROSSCUT_OT_clip(bpy.types.Operator):
 
 
 class CROSSCUT_OT_measure(bpy.types.Operator):
-    """Measure how deep parts overlap: hover over an overlap on a cut to see its greatest depth.
-    Click again, or press Esc, to stop"""
+    """Measure on a cut: hover over a part to see its thickness at the mouse, or over an overlap to see
+    how wide it is. Click again, or press Esc, to stop"""
     bl_idname = "crosscut.measure"
-    bl_label = "Measure Overlap"
+    bl_label = "Measure"
 
     def invoke(self, context, _event):
         from . import draw
@@ -139,18 +139,25 @@ class CROSSCUT_OT_measure(bpy.types.Operator):
 
 class CROSSCUT_OT_from_view(bpy.types.Operator):
     """Put the plane parallel to the view, through the middle of the targets. It stays put when
-    you orbit; click again to face the current view"""
+    you orbit. Click again to turn it off"""
     bl_idname = "crosscut.from_view"
     bl_label = "Plane from View"
     bl_options = {'REGISTER', 'UNDO'}
 
+    toggle: BoolProperty(default=False, options={'HIDDEN'}, description="Turn off if it's already on")
+
     @classmethod
     def poll(cls, context):
-        return context.region_data is not None
+        return getattr(context.space_data, "region_3d", None) is not None
 
     def execute(self, context):
         s = _s(context)
-        rv3d = context.region_data
+        if self.toggle and s.mode != 'OFF' and s.orientation == 'VIEW':
+            s.last_mode = s.mode
+            s.mode = 'OFF'
+            tag_redraw()
+            return {'FINISHED'}
+        rv3d = context.space_data.region_3d
         # view-local +Z points at the viewer; Section keeps the side opposite
         # the normal, so the half nearest the viewer is the one cut away
         n = np.array(rv3d.view_rotation @ Vector((0.0, 0.0, 1.0)))
@@ -234,8 +241,9 @@ class CROSSCUT_OT_section(bpy.types.Operator):
     axis: EnumProperty(items=[('X', "X", ""), ('Y', "Y", ""), ('Z', "Z", ""), ('OBJECT', "Object", "")],
                        default='Z')
     mode: EnumProperty(items=[('KEEP', "Keep", "Keep the current mode (Section if off)"),
-                              ('LAST', "Last", "Turn the last used mode on, from off, keeping the "
-                                               "plane's position if the axis is unchanged"),
+                              ('LAST', "Last", "The panel's axis buttons: from off, turn the last used mode "
+                                               "on, keeping the plane's position if the axis is unchanged; "
+                                               "from on, re-aim, or turn off if it's this axis already"),
                               ('SECTION', "Section", ""), ('SLICE', "Slice", "")], default='KEEP')
 
     @classmethod
@@ -246,6 +254,15 @@ class CROSSCUT_OT_section(bpy.types.Operator):
         s = _s(context)
         was_off = s.mode == 'OFF'
         changed_axis = s.orientation != self.axis
+        if self.mode == 'LAST' and not was_off:
+            # the panel's axis buttons while on: a lit one turns off, another one re-aims
+            if changed_axis:
+                s.orientation = self.axis
+            else:
+                s.last_mode = s.mode
+                s.mode = 'OFF'
+            tag_redraw()
+            return {'FINISHED'}
         if self.mode == 'LAST' and was_off:
             # the panel's axis buttons while off: choose the plane and start, as View does
             if changed_axis or (self.axis == 'OBJECT' and not engine.is_shown(context, s.plane_object)):

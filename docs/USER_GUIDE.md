@@ -30,7 +30,8 @@ Units below assume 1 Blender unit = 1 mm, but Crosscut works in any unit.
 
 Clicking a lit Section or Slice turns Crosscut off. Turning it off removes all clipping from the
 view, including a clipping region that was there before. With everything off, **X**, **Y**, **Z**,
-**Object** and **View** each start the plane they name, in the last mode you used.
+**Object** and **View** each start the plane they name, in the last mode you used. Clicking the lit one
+turns it off again.
 
 ### Cap style
 
@@ -52,7 +53,7 @@ The cap style applies to Clip, Section and Slice alike.
   object is chosen. A part can be its own plane and is still capped; a flat mesh used
   as the plane is not.
 - **View**: the plane faces the view as it is when you click. It stays where it is when you
-  orbit; click **View** again to face the current view. Scrubbing moves it toward or away
+  orbit. Scrubbing moves it toward or away
   from you.
 - **Flip** (Section only) keeps the other side.
 
@@ -95,6 +96,9 @@ The faces Crosscut fills where the plane cuts a part (its "caps").
   - **Object**, **Material**: the object's or first material's viewport colour.
   - **Palette**: a distinct colour per part.
   - **Single**: the Fill Color everywhere.
+- **Saturation**, **Brightness** and **Tint** adjust colors that come from the parts (not the Fill Color). A filled cut
+  face has no lighting, so by default these sit a little grayer and darker than the part's own color.
+- **Fill Opacity** applies to every filled cut face.
 - **Hatching** (Hatched only):
   - **Hatch Space**: **Model** keeps the spacing in scene units, locked to the part. **Screen**
     keeps it in pixels at any zoom.
@@ -121,7 +125,7 @@ contours.
 
 ### Section/Slice Plane
 
-- **Scrub Range** is what Scrub sweeps across: the targets' bounds, or an **Object**'s bounds, such as a
+- **Scrub Range** is what Scrub sweeps across: the **Fill Targets**' bounds, or an **Object**'s bounds, such as a
   build volume. The eyedropper uses the active object. The range object is never capped, and with it
   the readout counts steps (for example `step 150 / 1500`).
 - **Scrub by Distance** and **Step**: see Scrub above.
@@ -155,14 +159,23 @@ Range. **Scrub by Distance** shows where the box's middle is, as a distance.
 **Clip Tint** in Settings shows the region's volume as a faint tint on the background. Blender's own tint
 is always removed, since it can't follow the box; Crosscut's follows it.
 
-## Measure Overlap
+## Measure
 
-Click **Measure Overlap**, then hover over a place where two parts overlap on a cut. Two lines show
-how much they overlap: the overlap's greatest depth anywhere (labelled "max"), which can be away from the mouse,
-and its width right where the mouse is, across from one part's edge to the other's. It runs until you click it
-again or press Esc. Where more than two parts overlap, it measures the first two. A very long, thin overlap can
-read as several short ones: hover over its deepest part. In Settings > Measure Overlap you can set the **Color**
-and **Text Size**, and turn **Local Width** off.
+Click **Measure**, then hover over a cut. It runs until you click it again or press Esc.
+
+- Over one part, a line shows the section's thickness at the mouse, straight across from the nearest wall.
+- Over an overlap, a line shows the overlap's width at the mouse, from one part's edge to the other's, and a
+  second line shows its greatest width anywhere (labelled "max"), which can be away from the mouse. Where more
+  than two parts overlap, it measures the first two. A very long, thin overlap can read as several short ones:
+  hover over its deepest part.
+
+In Settings > Measure:
+
+- **Local Width**: the line at the mouse, and its color.
+- **Overlap Max**: the "max" line over an overlap, and its color.
+- **Section Max**: over one part, a "max" line too, at the section's thickest place. Off by default.
+- **Ignore Overlaps**: always measure one part's thickness, even over an overlap. Off by default.
+- **Text Size** of the lengths.
 
 ## Selecting in a zero-thickness slice
 
@@ -175,6 +188,11 @@ doesn't work in this mode.
 ## Pie menu (Shift+Alt+B)
 
 Section X / Y / Z, On/Off, Backfaces/Caps, Section/Slice, Flip, and Section from View.
+
+## Painting and selecting with a cut on
+
+Weight painting and other tools work on what's kept, and not on what's cut away. Outside Object Mode, Blender's
+faint tint shows on the background while a cut is on: the tools rely on the same box that makes it.
 
 ## Limits
 

@@ -34,8 +34,7 @@ the maintainer's hand-made mock-ups in [docs/images/reference/](docs/images/refe
   caps go translucent, since the fill may not be real material. Where the hole is on the plane,
   the warning turns red; gaps are closed so the fill still makes sense.
 - **Scrub a clipping region**: slide it through the parts along either axis, without changing its size.
-- **Measure Overlap**: hover over where two parts overlap on a cut to see its greatest depth and its width
-  right there.
+- **Measure**: hover over a cut to see a part's thickness right there, or how wide an overlap is.
 - **Print Preview** (experimental): powder up to the plane and the fused layer on top, as inside a
   powder-bed printer.
 - **Selectable in a zero-thickness slice**: click a section to select its part.
@@ -65,7 +64,7 @@ walk-through is in the [user guide](docs/USER_GUIDE.md).
 
 | Where | What |
 |---|---|
-| Sidebar (N) > Crosscut | Clip / Section / Slice, cap style, plane, scrub, Measure Overlap; everything else in Settings (closed) |
+| Sidebar (N) > Crosscut | Clip / Section / Slice, cap style, plane, scrub, Measure; everything else in Settings (closed) |
 | **Shift+Alt+B** (3D View) | Pie: Section X / Y / Z, On/Off, Backfaces/Caps, Section/Slice, Flip, Section from View |
 | Header button (right) | Toggle on/off, popover with the main controls |
 | **Shift+Alt+Wheel** | Step the plane (Ctrl for x10) while Crosscut is on |
@@ -101,7 +100,7 @@ whole section.
 
 ## Status
 
-**In development (0.12.0).** It's used on real work and still getting bug fixes and new features. 0.1.0 was written without access to Blender; since 0.2.0
+**In development (0.13.0).** It's used on real work and still getting bug fixes and new features. 0.1.0 was written without access to Blender; since 0.2.0
 every build is run and tested in Blender with an automated in-viewport test suite
 ([`tests/blender/`](tests/blender/run_viewport_tests.py)), and 0.3.0 to 0.9.0 followed the
 maintainer's tests on real parts. Tested on Blender 4.2.23 LTS and 5.2.3 LTS (Linux, OpenGL;

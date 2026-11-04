@@ -141,8 +141,7 @@ ORIENTATIONS = [
     ('OBJECT', "Object", "Align to an object: one of its local axes (Z unless you pick another) is the normal, "
                          "through its origin. It follows the object when you move or rotate it. Picked "
                          "automatically: the only visible Empty, else the selected object, else the only object"),
-    ('VIEW', "View", "Plane facing the view as it was when chosen. It stays put when you orbit; "
-                     "click View again to face the current view"),
+    ('VIEW', "View", "Plane facing the view as it was when chosen. It stays put when you orbit"),
 ]
 
 CAP_STYLES = [
@@ -211,8 +210,24 @@ class CrosscutSettings(bpy.types.PropertyGroup):
         description="Show a clipping region's volume as a faint tint on the background",
     )
     measure_color: FloatVectorProperty(
-        name="Color", subtype='COLOR_GAMMA', size=3, min=0.0, max=1.0, default=(1.0, 1.0, 1.0),
-        description="Colour of Measure Overlap's lines and lengths", update=tag_redraw,
+        name="Local Color", subtype='COLOR_GAMMA', size=3, min=0.0, max=1.0, default=(0.50, 0.82, 1.0),
+        description="Colour of the local width's line and length", update=tag_redraw,
+    )
+    measure_max_color: FloatVectorProperty(
+        name="Max Color", subtype='COLOR_GAMMA', size=3, min=0.0, max=1.0, default=(1.0, 0.68, 0.28),
+        description="Colour of the max width's line and length", update=tag_redraw,
+    )
+    measure_max: BoolProperty(
+        name="Overlap Max", default=True, update=tag_redraw,
+        description="Over an overlap, also show its greatest width anywhere, which can be away from the mouse",
+    )
+    measure_section_max: BoolProperty(
+        name="Section Max", default=False, update=tag_redraw,
+        description="Over a single part, also show its section's greatest thickness, which can be away from the mouse",
+    )
+    measure_ignore_overlaps: BoolProperty(
+        name="Ignore Overlaps", default=False, update=tag_redraw,
+        description="Always measure one part's thickness, even over an overlap",
     )
     measure_text_size: IntProperty(
         name="Text Size", min=8, max=48, default=14, update=tag_redraw,
@@ -220,7 +235,7 @@ class CrosscutSettings(bpy.types.PropertyGroup):
     )
     measure_local: BoolProperty(
         name="Local Width", default=True, update=tag_redraw,
-        description="As well as the overlap's greatest depth, show its width right where the mouse is",
+        description="Show the width right where the mouse is: of a part's section, or of an overlap",
     )
     ui_settings: BoolProperty(name="Settings", default=False, options={'HIDDEN'})
     ui_cut_faces: BoolProperty(name="Cut Faces", default=False, options={'HIDDEN'})
@@ -290,6 +305,26 @@ class CrosscutSettings(bpy.types.PropertyGroup):
         name="Scale with Part", subtype='FACTOR', min=0.0, max=1.0, default=0.5, update=tag_redraw,
         description="How much the spacing follows each part's size. The Spacing above is for a 50 unit part. "
                     "At 0 every part gets the same; at 1 a part twice the size gets twice the spacing",
+    )
+    fill_saturation: FloatProperty(
+        name="Saturation", subtype='FACTOR', min=0.0, max=1.0, default=0.75, update=tag_redraw,
+        description="Grays out colors that come from the parts (Auto, Object, Material, Palette). 0 is gray",
+    )
+    fill_brightness: FloatProperty(
+        name="Brightness", subtype='FACTOR', min=0.0, max=1.0, default=0.75, update=tag_redraw,
+        description="Darkens colors that come from the parts, so an unlit cap sits with the shaded surfaces around it",
+    )
+    fill_tint: FloatVectorProperty(
+        name="Tint", subtype='COLOR_GAMMA', size=3, min=0.0, max=1.0, default=(1.0, 0.25, 0.2), update=tag_redraw,
+        description="Color to mix into colors that come from the parts",
+    )
+    fill_tint_amount: FloatProperty(
+        name="Tint Amount", subtype='FACTOR', min=0.0, max=1.0, default=0.0, update=tag_redraw,
+        description="How much of the Tint to mix in",
+    )
+    fill_opacity: FloatProperty(
+        name="Fill Opacity", subtype='FACTOR', min=0.0, max=1.0, default=1.0, update=tag_redraw,
+        description="Opacity of every filled cut face",
     )
     hatch_vary: BoolProperty(
         name="Vary per Object", default=True, update=tag_redraw,
@@ -364,7 +399,7 @@ class CrosscutSettings(bpy.types.PropertyGroup):
     range_source: EnumProperty(
         name="Scrub Range", default='TARGETS', update=tag_redraw,
         items=[
-            ('TARGETS', "Targets", "Scrub across the bounds of the targets"),
+            ('TARGETS', "Fill Targets", "Scrub across the bounds of the objects getting filled"),
             ('OBJECT', "Object", "Scrub across an object's bounds (e.g. a build volume). "
                                  "The object is excluded from capping"),
         ],

@@ -516,14 +516,16 @@ def _farthest(points, seg):
     return float(dist[p, k[p]]), points[p], near[p, k[p]]
 
 
-def _chord(sa, sb, point, angles=60):
+def _chord(sa, sb, point, angles=60, around=None):
     """The shortest line through `point` from one part's contour to the other's
-    (or between any two contours if no such line exists): (length, end, end)."""
+    (or between any two contours if no such line exists): (length, end, end).
+    With `around`, only lines within 15 degrees of that direction (radians)."""
     seg = np.concatenate([sa, sb])
     part = np.concatenate([np.zeros(len(sa), dtype=bool), np.ones(len(sb), dtype=bool)])
     a = seg[:, 0] - point
     e = seg[:, 1] - seg[:, 0]
-    th = np.linspace(0.0, np.pi, angles, endpoint=False)
+    th = np.linspace(0.0, np.pi, angles, endpoint=False) if around is None else around + np.radians(np.linspace(-15.0, 15.0, 11))
+    angles = len(th)
     dx, dy = np.cos(th)[:, None], np.sin(th)[:, None]
     with np.errstate(divide='ignore', invalid='ignore'):
         denom = dx * e[:, 1] - dy * e[:, 0]
@@ -624,6 +626,67 @@ def overlap_measures(seg_a, seg_b, point, oriented=(True, True), half=1.0, cells
                 best = r
     near = _chord(sa, sb, np.array([px, py], dtype=np.float64)) if local else None
     return best, near
+
+
+def section_measures(seg, point, oriented=True, half=1.0, cells=160, local=True, greatest=False):
+    """How thick one part's section is at `point` (all 2D, in the plane): (greatest,
+    local), each (distance, end, end) or None. `local` is the shortest line through
+    the point across the section, within 15 degrees of straight across from the nearest wall. `greatest` is the same at the island's thickest
+    place: where eroding it from the outside lasts longest."""
+    if not len(seg):
+        return None, None
+    p = np.array(point, dtype=np.float64)
+    pts = seg.reshape(-1, 2)
+    most = float(np.abs(pts - p).max()) * 1.01 + 1e-9
+    lo, hi = seg.min(axis=1), seg.max(axis=1)
+
+    def chord_at(c):
+        h = min(half, most)
+        while True:
+            keep = (hi[:, 0] >= c[0] - h) & (lo[:, 0] <= c[0] + h) & (hi[:, 1] >= c[1] - h) & (lo[:, 1] <= c[1] + h)
+            r = None
+            if keep.any():
+                # straight across from the nearest wall: a line left free to be shortest cuts corners
+                d, _c, q = _farthest(c[None, :], seg[keep])
+                if d <= h or h >= most:
+                    away = c - q
+                    around = float(np.arctan2(away[1], away[0])) if d > 1e-12 else 0.0
+                    r = _chord(seg[keep], np.zeros((0, 2, 2)), c, around=around)
+            # only trust a line that ended inside the segments looked at
+            if h >= most or (r is not None and max(np.abs(r[1] - c).max(), np.abs(r[2] - c).max()) <= h):
+                return r
+            h = min(h * 2.0, most)
+
+    near = chord_at(p) if local else None
+    if not greatest:
+        return None, near
+    h = min(half, most)
+    while True:
+        xs = np.linspace(p[0] - h, p[0] + h, cells)
+        ys = np.linspace(p[1] - h, p[1] + h, cells)
+        inside = _inside_rows(seg, oriented, xs, ys)
+        j = i = cells // 2
+        if not inside[j, i]:
+            return None, near
+        island = _flood(inside, j, i)
+        if h >= most or not (island[0].any() or island[-1].any() or island[:, 0].any() or island[:, -1].any()):
+            break
+        h = min(h * 2.0, most)
+    core = island
+    while True:
+        shrunk = core.copy()
+        shrunk[1:] &= core[:-1]
+        shrunk[:-1] &= core[1:]
+        shrunk[:, 1:] &= core[:, :-1]
+        shrunk[:, :-1] &= core[:, 1:]
+        shrunk[0] = shrunk[-1] = False
+        shrunk[:, 0] = shrunk[:, -1] = False
+        if not shrunk.any():
+            break
+        core = shrunk
+    cells_left = np.argwhere(core)
+    cj, ci = cells_left[np.abs(cells_left - cells_left.mean(axis=0)).sum(axis=1).argmin()]
+    return chord_at(np.array([xs[ci], ys[cj]])), near
 
 
 def palette_color(key):

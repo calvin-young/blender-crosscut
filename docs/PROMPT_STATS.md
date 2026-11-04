@@ -23,7 +23,7 @@ line below carries a category.
 
 | Bugs found | UI tweaks | New features | Direction | Total |
 |---|---|---|---|---|
-| 23 | 49 | 23 | 10 | 105 |
+| 26 | 54 | 25 | 10 | 115 |
 
 ## Sessions
 
@@ -33,7 +33,7 @@ steering lines matters more than the count of prompts.
 
 | Date | Tool and model | Prompts | Steering lines | Notes |
 |---|---|---|---|---|
-| 2026-11-02 | Claude Code (workstation), Opus 5.5 | 7 | 45 | 0.9.2 to 0.12.0 from the maintainer's notes after several days of real use |
+| 2026-11-02 | Claude Code (workstation), Opus 5.5 | 8 | 55 | 0.9.2 to 0.13.0 from the maintainer's notes after several days of real use |
 | 2026-10-30 | Claude Code (workstation), Opus 5.5 | 3 | 3 | `mjf-preview` branch: Print Preview, for the demo reel in the demo-reels repo |
 | 2026-10-29 | Claude Code (workstation), Opus 5.5 | 5 | 17 | First in-Blender test pass: viewport test suite, 0.2.0 fixes, zip; then 0.3.0, 0.4.0, the 0.9.0 release candidate and 0.9.1 from the maintainer's tests |
 | 2026-10-26 | Claude (cloud session), Opus 5.5 | 1 | 3 | Repo created; first user test; handoff to Claude Code |
@@ -45,6 +45,16 @@ One line for each thing the human contributed that the AI would not have done on
 newest first, tagged with its kind (decide, correct, domain, tested, scope) and, from 2026-11-03, its
 category (bug, ui, feature, direction).
 
+- 2026-11-03 [tested][bug]: weight painting does nothing with clipping on.
+- 2026-11-03 [tested][bug]: Clip Tint doesn't appear at all.
+- 2026-11-03 [tested][bug]: slices read red on the back.
+- 2026-11-03 [decide][ui]: Measure colors: light blue at the cursor, a complementary max; legible text.
+- 2026-11-03 [decide][ui]: a toggle for the max.
+- 2026-11-03 [decide][ui]: "Fill Targets".
+- 2026-11-03 [decide][ui]: a lit X/Y/Z/View turns off, as Section and Slice do.
+- 2026-11-03 [tested][ui]: fill colors too bright next to the shaded surface.
+- 2026-11-03 [decide][feature]: adjust fill colors: grayer, redder, darker, transparent.
+- 2026-11-03 [domain][feature]: Measure on single parts: thickness at the cursor, max optional, Ignore Overlaps.
 - 2026-11-03 [tested][ui]: no outlines through parts' interiors in Print Preview.
 - 2026-11-03 [tested][bug]: Slice looks exactly like Section in Print Preview.
 - 2026-11-03 [decide][ui]: Slice Thickness into the Section/Slice Plane settings.

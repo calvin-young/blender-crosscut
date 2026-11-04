@@ -319,6 +319,23 @@ def test_overlap_local_width():
     assert sm.overlap_measures(a, b, pt, (False, False), local=False)[1] is None
 
 
+def test_section_measures():
+    a = _rect(0, 0, 30, 10)
+    best, near = sm.section_measures(a, (5, 5), False, half=1.0)
+    assert best is None and abs(near[0] - 10.0) < 0.01          # across, not along
+    best, near = sm.section_measures(a, (5, 5), False, half=1.0, greatest=True, local=False)
+    assert near is None and abs(best[0] - 10.0) < 0.2
+    # a thick and a thin arm joined: the max is in the thick one, wherever the mouse is
+    p = [(0, 0), (40, 0), (40, 20), (30, 20), (30, 2), (0, 2)]
+    l_shape = np.array([[p[i], p[(i + 1) % 6]] for i in range(6)], dtype=np.float64)
+    best, near = sm.section_measures(l_shape, (10, 1), False, half=1.0, greatest=True)
+    assert abs(near[0] - 2.0) < 0.05 and best[0] > 9.0, (near[0], best[0])
+    # near a corner: straight across from the nearest wall, not cutting the corner
+    _b, near = sm.section_measures(_rect(0, 0, 40, 30), (38, 15), False)
+    assert 39.0 < near[0] < 41.5, near[0]
+    assert sm.section_measures(a, (50, 5), False, greatest=True, local=False) == (None, None)
+
+
 def test_overlap_span_contained():
     d, _p, _q = sm.overlap_span(_rect(4, 4, 6, 6), _rect(0, 0, 10, 10), (5, 5))
     assert d > 3.9  # from the small part to the big part's nearest wall

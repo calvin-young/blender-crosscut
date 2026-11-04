@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.13.0 (2026-11-03)
+
+- Fixed: **weight painting did nothing** with Section, Slice or a clipping region on, and neither did other tools
+  that test against Blender's clipping box. They now work on what's kept, and only there.
+- **Measure** (was Measure Overlap) works on any cut: hover over a part for its thickness at the mouse, or over an
+  overlap for its width. **Section Max** (off by default) adds the section's greatest thickness; **Ignore
+  Overlaps** (off) always measures one part. **Overlap Max** can be turned off too.
+- Measure's two lines have their own default colors, light blue at the mouse and orange for the max, with
+  dark outlines on the lengths.
+- **Fill colors** that come from the parts can be adjusted: **Saturation**, **Brightness** and **Tint**, plus
+  **Fill Opacity**. By default they're now a little grayer and darker, closer to the shaded surfaces around them.
+- Clicking a lit **X**, **Y**, **Z**, **Object** or **View** turns the plane off, as Section and Slice do. View no
+  longer re-aims on a second click: turn it off and on.
+- Fixed: **Clip Tint** tinted the whole screen in an orthographic view, so it looked like nothing.
+- Fixed: a zero-thickness slice read red from one side with Face Orientation on. It has no inside, so neither side does.
+- Scrub Range's **Targets** is now **Fill Targets**.
+
 ## 0.12.0 (2026-11-03)
 
 - **Measure Overlap** shows two measures: the overlap's greatest depth (labelled "max") and its width right

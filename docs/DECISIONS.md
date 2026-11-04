@@ -10,6 +10,7 @@ this list is an assumption, tracked in the table at the end.
 
 | ID | Requirement | Status in 0.1.0 |
 | --- | --- | --- |
+| R-021 | After 0.12.0 (2026-11-03): Measure in light blue at the cursor and a complementary color for the max, legible text, a toggle for the max; Clip Tint doesn't work (revert unless easy); "Fill Targets"; slices red on the back. Then: lit X/Y/Z/View turns off; weight painting doesn't work with clipping on; a way to adjust fill colors (grayer, redder, darker, transparent); Measure on single parts, thickness at the cursor, max optional and off, maybe an Ignore Overlaps toggle | 0.13.0, see below |
 | R-020 | After 0.11.0 (2026-11-03): no outlines through interiors in Print Preview; Slice looks the same as Section there; Slice Thickness into Section/Slice Plane; cursor, center, selection as small buttons between the arrows; even out the gaps around Measure Overlap, closer to Settings; settings for Measure Overlap (color, text size) and a local width at the mouse, on by default; is "Caps" too unintuitive; Clip Tint doesn't come back after off/on or after Section; left-align the three settings; back on its own tab, as a single panel | 0.12.0, see below |
 | R-019 | After 0.10.0 (2026-11-03): outlines stay black on problem parts; a 0.5 button in the scrub row; Targets inside Caps as "Cap: Visible Objects..."; Interference becomes a third Overlaps option, Highlight, its settings right below; Plane renamed Section/Slice Plane with the scrub settings at its top; Clip remembers the last box; the release plan accepted, with no full release until the maintainer signals | 0.11.0, see below |
 | R-018 | After 0.9.4 (2026-11-03): in development rather than test-only; a steering tally on the status page; guidance on releases; overlays off hide the plane; orange outlines stuck on; hatch scales with part size; caps match Random shading; move to the View tab with Settings folded in; annotations stay over caps; inside-out warning and a Face Orientation toggle; no "Alt+B" wording; drop the faint box, at least once scrubbing; two sliders or a toggle for the clip walls; an easy way to measure an overlap; a translucent cap seen from behind should read red like from outside | 0.10.0, see below |
@@ -32,6 +33,43 @@ this list is an assumption, tracked in the table at the end.
 | R-001 | Main use: while modelling parts. Secondary: finding interferences when packing buckets | Drives defaults |
 
 ## Decisions
+
+### Changes after the maintainer's notes on 0.12.0 (0.13.0, 2026-11-03)
+
+- **Tools through a cut** (D-035).
+- **Measure on single parts** (D-036). One button for both: what's under the mouse decides (*assumed*, as
+  the maintainer suggested). Overlap Max stays on by default, Section Max off.
+- **Clip Tint**: the orthographic prism was wrong. Rounding made a box's four parallel walls look as if they
+  met far away, so the tint covered the whole screen, which looks like nothing. `lstsq` now ignores tiny
+  singular values. Kept, since it was an easy fix and costs 12 triangles a frame, only when on.
+- **Fill colors** (`fill_saturation`, `fill_brightness`, `fill_tint`, `fill_tint_amount`, `fill_opacity`):
+  adjust colors that come from the parts, in linear. An explicit Fill Color is left alone, except for
+  opacity. Defaults 0.75 and 0.75 (*assumed*: a cap is unlit, so at full strength it's brighter than
+  the shaded surface beside it).
+- **Lit axis buttons** turn off. View's re-capture on a second click (D-014) is gone from the panel; the pie
+  still re-captures, since there it isn't a lit toggle (*assumed*).
+- **Zero-thickness slice** never reads as a backface: it has no inside, and the side that read red was arbitrary.
+- **Matcaps**: caps keep their color under a matcap, deliberately for now. They identify the part rather than
+  show its surface.
+
+### D-036: Thickness at the mouse is straight across from the nearest wall (2026-11-03)
+
+- **Decision:** From the nearest point on the section's contour, through the mouse, to the far side, trying 15 degrees
+  either way for the shortest. Left free to be shortest overall (as overlaps' local width is), the line cuts
+  across a corner near one. Section Max erodes the island on a grid to its thickest place, then measures there.
+- **Limits:** a part's own inner shells count as walls.
+
+### D-035: A clipping box fitted for tools outside Object Mode (2026-11-03)
+
+- **Context:** Weight paint, and other tools that call `ED_view3d_clipping_local`, test against the four sides of
+  `rv3d->clipbb`, not `clip_planes`. D-008's empty box therefore clipped everything: painting did nothing with
+  Section or Slice on since 0.1.0, or on a clipping region since 0.10.0 removed its box. Blender itself is fine.
+- **Decision:** Outside Object Mode, whenever the planes change, fit a real box: for an instant, in one Python call,
+  turn the view orthographic and line it up with the cut, run `view3d.clip_border` with the rectangle's sides on the
+  cut and any free sides far away (`rv3d.update()` makes it take effect at once), and put the view back. Back in Object
+  Mode the empty box returns. A clipping region drawn in perspective becomes a straight prism, slightly off at the
+  far end. Its near and far faces mean nothing to these tools, which is why it's the sides that have to fit.
+- **Drawback:** Blender tints that box on the background while outside Object Mode.
 
 ### Changes after the maintainer's notes on 0.11.0 (0.12.0, 2026-11-03)
 
@@ -653,6 +691,9 @@ What `tests/blender/run_viewport_tests.py` and the screenshots showed in 0.1.0, 
 | Q-061 | Two fixed sliders for a clipping region, labelled by nearest world axis | assumption | 0.10.0 | feels good so far, per the maintainer |
 | Q-062 | Numbering jumps to 0.10.0, and the release guidance in chat | unasked question | 0.10.0 | agreed (R-019) |
 | Q-063 | A kept clipping box isn't saved with the file | assumption | 0.11.0 | open |
-| Q-064 | "Caps" renamed Cut Faces, Cap to Fill | assumption | 0.12.0 | open |
+| Q-064 | "Caps" renamed Cut Faces, Cap to Fill | assumption | 0.12.0 | confirmed by the maintainer |
 | Q-065 | Slice in Print Preview means one layer of powder, or a band | assumption | 0.12.0 | open |
-| Q-066 | Our Clip Tint follows a scrub rather than disappearing | assumption | 0.12.0 | open |
+| Q-066 | Our Clip Tint follows a scrub rather than disappearing | assumption | 0.12.0 | confirmed by the maintainer |
+| Q-067 | Fill Saturation and Brightness default to 0.75 | assumption | 0.13.0 | open |
+| Q-068 | One Measure button for parts and overlaps | assumption | 0.13.0 | open |
+| Q-069 | The pie's Section from View still re-captures on a second click | assumption | 0.13.0 | open |

@@ -23,6 +23,7 @@ import bpy
 import gpu
 import numpy as np
 from gpu_extras.batch import batch_for_shader
+from mathutils import Matrix, Vector
 
 from . import engine
 from . import section_math as sm
@@ -37,6 +38,8 @@ _last_info = {}        # per-region info for the readout
 _clip_lit = {}         # rv3d pointer -> whether the sidebar's Clip button should be lit
 _tint_gone = set()     # rv3d pointers whose clipping region has had Blender's tinted box removed
 _tint_pending = set()
+_tool_box = {}         # rv3d pointer -> the planes its clipping box was last fitted for
+_tool_box_pending = set()
 _saved_clip = {}       # rv3d pointer -> the clipping region's planes when Section or Slice took over
 _measure = {"on": False, "region": None, "a": None, "b": None, "text": "", "la": None, "lb": None, "ltext": ""}
 
@@ -376,6 +379,98 @@ def _remove_tints():
     return None
 
 
+def _fit_tool_box(win, area, region, rv3d):
+    """Fit this view's clipping box to what's kept. Painting, sculpting and some Edit Mode
+    selection test against the box's four sides (rv3d->clipbb), not the planes, and the empty box
+    of D-008 counts as everything clipped. Python can't write the box, but view3d.clip_border
+    makes it from a rectangle in the view, so line the view up with the cut for a moment,
+    with the rectangle's sides on the cut and any free sides far away (D-035)."""
+    s = win.scene.crosscut
+    planes = [list(p) for p in rv3d.clip_planes]
+    keep = engine.compute_planes(s)
+    pts = engine.target_points(bpy.context, s)
+    size = float(np.linalg.norm(np.ptp(pts, axis=0))) if len(pts) else 100.0
+    size = max(size, 1e-3)
+    # each axis: (direction, low, high), None for a free side
+    if keep:
+        walls = keep[0]
+        if len(walls) == 1 and sm.plane_is_degenerate(walls[0]) or walls[0][3] == sm.CLIP_ALL[3] and not any(walls[0][:3]):
+            return  # a zero-thickness slice: nothing kept to work on
+        x = sm.normalize(np.asarray(walls[0][:3], dtype=np.float64))
+        low = -float(walls[0][3]) / float(np.linalg.norm(walls[0][:3]))
+        high = low + s.thickness if len(walls) == 2 else None
+        u, v = sm.plane_basis(x)
+        axes = [(x, low, high), (u, None, None)]
+    else:
+        found = engine.clip_axes(rv3d)
+        if len(found) != 2:
+            return
+        x = found[0][0]
+        y = sm.normalize(found[1][0] - x * float(found[1][0] @ x))
+        axes = [(x, found[0][1] - found[0][2], found[0][1] + found[0][2]),
+                (y, found[1][1] - found[1][2], found[1][1] + found[1][2])]
+    vx, vy = axes[0][0], axes[1][0]
+    vz = np.cross(vx, vy)
+    saved = (rv3d.view_location.copy(), rv3d.view_rotation.copy(), rv3d.view_distance, rv3d.view_perspective)
+    far = 10000000  # px: a free side, well past the scene at this zoom
+    try:
+        from bpy_extras.view3d_utils import location_3d_to_region_2d
+        rv3d.view_perspective = 'ORTHO'
+        rv3d.view_rotation = Matrix((vx, vy, vz)).transposed().to_quaternion()
+        rv3d.view_distance = size / 40.0
+        centre = np.array([(lo + hi) / 2.0 if lo is not None and hi is not None else (lo if lo is not None else 0.0)
+                           for _d, lo, hi in axes])
+        origin = vx * centre[0] + vy * centre[1]
+        rv3d.view_location = Vector(origin)
+        rv3d.update()
+
+        def pixel(a, b):
+            p = location_3d_to_region_2d(region, rv3d, Vector(vx * a + vy * b))
+            return p.x, p.y
+
+        x0, y0 = pixel(centre[0], centre[1])
+        x_lo = x0 - far if axes[0][1] is None else pixel(axes[0][1], centre[1])[0]
+        x_hi = x0 + far if axes[0][2] is None else pixel(axes[0][2], centre[1])[0]
+        y_lo = y0 - far if axes[1][1] is None else pixel(centre[0], axes[1][1])[1]
+        y_hi = y0 + far if axes[1][2] is None else pixel(centre[0], axes[1][2])[1]
+        with bpy.context.temp_override(window=win, area=area, region=region):
+            bpy.ops.view3d.clip_border(xmin=int(round(x_lo)), xmax=int(round(x_hi)), ymin=int(round(y_lo)),
+                                       ymax=int(round(y_hi)), wait_for_input=False)
+    except (RuntimeError, TypeError, ValueError, AttributeError) as ex:
+        print("Crosscut: could not fit the clipping box:", ex)
+    finally:
+        rv3d.view_location, rv3d.view_rotation, rv3d.view_distance, rv3d.view_perspective = saved
+        rv3d.clip_planes = planes
+        rv3d.use_clip_planes = True
+        rv3d.update()
+    area.tag_redraw()
+
+
+def _fit_tool_boxes():
+    pending = set(_tool_box_pending)
+    _tool_box_pending.clear()
+    for win, area, region, rv3d in _iter_views():
+        key = rv3d.as_pointer()
+        if key not in pending or not rv3d.use_clip_planes:
+            continue
+        _fit_tool_box(win, area, region, rv3d)
+        _tool_box[key] = _flat(rv3d.clip_planes)
+    return None
+
+
+def request_tool_box(rv3d):
+    """Fit the clipping box for tools outside Object Mode, once per set of planes."""
+    key = rv3d.as_pointer()
+    if key in _tool_box_pending:
+        return
+    last = _tool_box.get(key)
+    if last is not None and np.allclose(last, _flat(rv3d.clip_planes), atol=1e-5, rtol=1e-6):
+        return
+    if not _tool_box_pending:
+        bpy.app.timers.register(_fit_tool_boxes, first_interval=0.0)
+    _tool_box_pending.add(key)
+
+
 def has_saved_clip(rv3d):
     return rv3d.as_pointer() in _saved_clip
 
@@ -515,6 +610,19 @@ def _is_plain(rgb):
     return max(rgb) - min(rgb) < 0.08
 
 
+def _adjusted(s, rgb):
+    """A color that came from a part (linear), adjusted by the Fill settings: unlit caps look
+    brighter than the shaded surfaces around them."""
+    r, g, b = rgb[:3]
+    gray = 0.2126 * r + 0.7152 * g + 0.0722 * b
+    k = s.fill_saturation
+    c = np.array([gray + (r - gray) * k, gray + (g - gray) * k, gray + (b - gray) * k]) * s.fill_brightness
+    a = s.fill_tint_amount
+    if a > 0.0:
+        c = c * (1.0 - a) + np.array(_lin(tuple(s.fill_tint))) * a
+    return tuple(float(x) for x in c)
+
+
 def target_color(s, target, shading):
     src = s.color_source
     owner = target.owner
@@ -529,7 +637,7 @@ def target_color(s, target, shading):
         return _lin(s.single_color)
     if src == 'RANDOM':
         lib = orig.library.filepath if orig.library is not None else None
-        return sm.random_shading_color(orig.name, lib)
+        return _adjusted(s, sm.random_shading_color(orig.name, lib))
     rgb = None
     if src == 'OBJECT':
         rgb = owner.color[:3]
@@ -540,8 +648,8 @@ def target_color(s, target, shading):
         if auto and _is_plain(rgb):
             # a white part with a white cap reads as uncut: use the Cap Color instead
             return _lin(s.single_color)
-        return tuple(rgb)
-    return _lin(sm.palette_color(owner.name_full))
+        return _adjusted(s, rgb)
+    return _adjusted(s, _lin(sm.palette_color(owner.name_full)))
 
 
 # --------------------------------------------------------------------- draw
@@ -879,7 +987,9 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style, fill_override=None, out
         info["count"] = max(info["count"], len(hits))
 
         # with Face Orientation on, a cap seen from inside the part reads as a backface
-        behind = face_orientation and _seen_from_behind(rv3d, plane)
+        # (a zero-thickness slice has no inside: neither side is its back)
+        behind = (face_orientation and _seen_from_behind(rv3d, plane)
+                  and not (s.mode == 'SLICE' and s.thickness <= 1e-9))
         if show_fill:
             # with overlapping parts, count coverage so overlaps can blend and
             # (optionally) get the interference hatching
@@ -919,7 +1029,8 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style, fill_override=None, out
                     gpu.state.depth_test_set(depth_test)
                     gpu.state.depth_mask_set(False)
                     gpu.state.blend_set('ALPHA')
-                    opacity = xray_alpha * (s.open_opacity if mesh_open and fill_override is None else 1.0)
+                    opacity = xray_alpha * s.fill_opacity
+                    opacity *= s.open_opacity if mesh_open and fill_override is None else 1.0
                     hatch = _hatch_vec(s, idx, style, size=engine.part_size(t, depsgraph))
                     _cap_uniforms(cap_sh, vp, fill, linec, hatch, 0.5, s.hatch_width,
                                   mask_off.texture_color, accum_off.texture_color if several else None,
@@ -1137,7 +1248,8 @@ def _clip_prism(context, rv3d):
     centre = float(np.array(rv3d.view_location) @ w)
     normals = np.array([p[:3] for p in walls])
     offsets = -np.array([p[3] for p in walls])
-    apex, _res, rank, _sv = np.linalg.lstsq(normals, offsets, rcond=None)
+    # rcond: an orthographic box's walls are parallel but for rounding, so they meet nowhere
+    apex, _res, rank, _sv = np.linalg.lstsq(normals, offsets, rcond=1e-3)
     if rank == 3:  # walls that meet at the eye the box was drawn from
         start = float(apex @ w)
         ahead = apex + w * max(reach, 1.0)
@@ -1252,8 +1364,8 @@ def _view_under_mouse(context, x, y):
 
 
 def _measure_at(context, region, x, y):
-    """The overlap under the mouse, in the world: (end, end, greatest depth, local) or None,
-    where local is (end, end, width at the mouse), or None."""
+    """What's under the mouse, in the world: {"max": ..., "local": ...}, or None. Each is (end, end,
+    length) or None: an overlap's width, or a single part's thickness."""
     from bpy_extras import view3d_utils
     scene = context.scene
     s = scene.crosscut
@@ -1277,24 +1389,30 @@ def _measure_at(context, region, x, y):
     depsgraph = context.evaluated_depsgraph_get()
     for _t, ci, plane, bounds, p in sorted(hits, key=lambda h: h[0]):
         parts = engine.targets_at(context, s, p, plane, depsgraph, ci, bounds)
-        if len(parts) < 2:
+        if not parts:
             continue
         n = sm.normalize(plane[:3])
         u, v = sm.plane_basis(n)
         basis = np.stack([u, v])
-        (ta, sa), (tb, sb) = parts[0], parts[1]
         # the search starts about 32 pixels across, whatever the zoom
         px = float(np.linalg.norm(np.array(view3d_utils.region_2d_to_location_3d(region, rv3d, (xy[0] + 16, xy[1]), p))
                                   - np.array(view3d_utils.region_2d_to_location_3d(region, rv3d, xy, p))))
-        res, near = sm.overlap_measures(sa @ basis.T, sb @ basis.T, p @ basis.T,
-                                        (engine.is_oriented(ta, depsgraph), engine.is_oriented(tb, depsgraph)),
-                                        half=max(px, 1e-6), local=s.measure_local)
-        if res is None:
-            return None
+        ta, sa = parts[0]
+        if len(parts) >= 2 and not s.measure_ignore_overlaps:
+            tb, sb = parts[1]
+            res, near = sm.overlap_measures(sa @ basis.T, sb @ basis.T, p @ basis.T,
+                                            (engine.is_oriented(ta, depsgraph), engine.is_oriented(tb, depsgraph)),
+                                            half=max(px, 1e-6), local=s.measure_local)
+            if not s.measure_max:
+                res = None
+        else:
+            res, near = sm.section_measures(sa @ basis.T, p @ basis.T, engine.is_oriented(ta, depsgraph),
+                                            half=max(px, 1e-6), local=s.measure_local,
+                                            greatest=s.measure_section_max)
         lift = n * float(p @ n)
         world = [(m[1][0] * u + m[1][1] * v + lift, m[2][0] * u + m[2][1] * v + lift, m[0])
                  if m is not None else None for m in (res, near)]
-        return (*world[0], world[1])
+        return {"max": world[0], "local": world[1]} if world[0] or world[1] else None
     return None
 
 
@@ -1311,46 +1429,51 @@ def measure_update(context, x, y):
             _errors.add(msg)
             import traceback
             traceback.print_exc()
-    had = _measure["a"] is not None
+    had = _measure_shown()
     if res is None:
         _measure.update(region=None, a=None, b=None, text="", la=None, lb=None, ltext="")
     else:
-        local = res[3]
-        # the same line twice would only collide: show it once
-        same = local is not None and abs(local[2] - res[2]) <= 0.01 * max(res[2], 1e-12) and (
-            np.linalg.norm(np.asarray(local[0]) - res[0]) + np.linalg.norm(np.asarray(local[1]) - res[1]) < 2.0 * res[2]
-            or np.linalg.norm(np.asarray(local[0]) - res[1]) + np.linalg.norm(np.asarray(local[1]) - res[0]) < 2.0 * res[2])
-        if same:
+        top, local = res["max"], res["local"]
+        # the same line twice would only collide: show it once, as the max
+        if top is not None and local is not None and abs(local[2] - top[2]) <= 0.01 * max(top[2], 1e-12) and (
+                np.linalg.norm(local[0] - top[0]) + np.linalg.norm(local[1] - top[1]) < 2.0 * top[2]
+                or np.linalg.norm(local[0] - top[1]) + np.linalg.norm(local[1] - top[0]) < 2.0 * top[2]):
             local = None
-        length = fmt_length(context.scene, res[2])
-        _measure.update(region=found[1].as_pointer(), a=res[0], b=res[1],
-                        text="max " + length if local is not None else length,
+        _measure.update(region=found[1].as_pointer(),
+                        a=None if top is None else top[0], b=None if top is None else top[1],
+                        text="" if top is None else ("max " if local is not None else "") + fmt_length(context.scene, top[2]),
                         la=None if local is None else local[0], lb=None if local is None else local[1],
                         ltext="" if local is None else fmt_length(context.scene, local[2]))
     if found is not None and (had or res is not None):
         found[0].tag_redraw()
 
 
+def _measure_shown():
+    return _measure["a"] is not None or _measure["la"] is not None
+
+
 def _draw_measure(context):
-    if _measure["a"] is None or _measure["region"] != context.region.as_pointer():
+    if not _measure_shown() or _measure["region"] != context.region.as_pointer():
         return
+    s = context.scene.crosscut
     sh = _shader("line")
     region = context.region
-    seg = [tuple(_measure["a"]), tuple(_measure["b"])]
-    if _measure["la"] is not None:
-        seg += [tuple(_measure["la"]), tuple(_measure["lb"])]
     gpu.state.depth_test_set('NONE')
     gpu.state.depth_mask_set(False)
     gpu.state.blend_set('ALPHA')
     sh.bind()
     sh.uniform_float("viewportSize", (region.width, region.height))
     ui = bpy.context.preferences.system.ui_scale
-    batch = batch_for_shader(sh, 'LINES', {"pos": seg})
     # dark under light, so it shows on any hatch
-    for width, color in ((4.0, (0.0, 0.0, 0.0, 0.9)), (2.0, tuple(context.scene.crosscut.measure_color) + (1.0,))):
-        sh.uniform_float("lineWidth", width * ui)
-        sh.uniform_float("color", color)
-        batch.draw(sh)
+    for a, b, color in ((_measure["a"], _measure["b"], s.measure_max_color),
+                        (_measure["la"], _measure["lb"], s.measure_color)):
+        if a is None:
+            continue
+        batch = batch_for_shader(sh, 'LINES', {"pos": [tuple(a), tuple(b)]})
+        for width, c in ((5.0, (0.0, 0.0, 0.0, 0.9)), (2.5, tuple(color) + (1.0,))):
+            sh.uniform_float("lineWidth", width * ui)
+            sh.uniform_float("color", c)
+            batch.draw(sh)
 
 
 def draw_view():
@@ -1371,7 +1494,14 @@ def draw_view():
             context.area.tag_redraw()
         if lit:
             _saved_clip.pop(rv3d.as_pointer(), None)  # a box is on: nothing to bring back
-        if lit:
+        tools = context.mode != 'OBJECT' and bool(rv3d.use_clip_planes) and (ours or lit)
+        if tools:
+            _tint_gone.discard(rv3d.as_pointer())
+            request_tool_box(rv3d)
+        elif rv3d.as_pointer() in _tool_box:
+            del _tool_box[rv3d.as_pointer()]  # back to Object Mode: back to no box and no tint
+            request_tint_removal(rv3d)
+        elif lit:
             request_tint_removal(rv3d)  # it can't follow the region; _draw_clip_tint can
         elif not rv3d.use_clip_planes:
             _tint_gone.discard(rv3d.as_pointer())
@@ -1519,26 +1649,35 @@ def draw_readout():
     blf.size(font, 12 * ui)
     blf.enable(font, blf.SHADOW)
     blf.shadow(font, 3, 0.0, 0.0, 0.0, 0.85)
-    if _measure["a"] is not None and _measure["region"] == context.region.as_pointer():
+    if _measure_shown() and _measure["region"] == context.region.as_pointer():
         from bpy_extras.view3d_utils import location_3d_to_region_2d
         blf.size(font, s.measure_text_size * ui)
-        blf.color(font, *s.measure_color, 1.0)
-        for a, b, text in ((_measure["a"], _measure["b"], _measure["text"]),
-                           (_measure["la"], _measure["lb"], _measure["ltext"])):
+        blf.disable(font, blf.SHADOW)
+        for a, b, text, color in ((_measure["a"], _measure["b"], _measure["text"], s.measure_max_color),
+                                  (_measure["la"], _measure["lb"], _measure["ltext"], s.measure_color)):
             if a is None:
                 continue
             p = location_3d_to_region_2d(context.region, context.region_data,
                                          tuple(0.5 * (np.asarray(a) + np.asarray(b))))
-            if p is not None:
-                blf.position(font, p.x + 12 * ui, p.y + 8 * ui, 0)
+            if p is None:
+                continue
+            x, y = p.x + 12 * ui, p.y + 8 * ui
+            # a dark outline, to read on any hatch or highlight
+            blf.color(font, 0.0, 0.0, 0.0, 1.0)
+            for dx, dy in ((-1, -1), (0, -1), (1, -1), (-1, 0), (1, 0), (-1, 1), (0, 1), (1, 1)):
+                blf.position(font, x + dx * 1.5 * ui, y + dy * 1.5 * ui, 0)
                 blf.draw(font, text)
+            blf.color(font, *color, 1.0)
+            blf.position(font, x, y, 0)
+            blf.draw(font, text)
+        blf.enable(font, blf.SHADOW)
         blf.size(font, 12 * ui)
     if not s.show_readout:
         blf.disable(font, blf.SHADOW)
         return
     lines, warn, severe = readout_lines(scene, s, _last_info.get(context.region.as_pointer()))
     if _measure["on"]:
-        lines = lines + ["Measure Overlap: hover over an overlap (Esc to stop)"]
+        lines = lines + ["Measure: hover over a cut (Esc to stop)"]
     if not lines and not warn and not severe:
         blf.disable(font, blf.SHADOW)
         return
@@ -1585,6 +1724,8 @@ def unregister():
     _tint_gone.clear()
     _tint_pending.clear()
     _saved_clip.clear()
+    _tool_box.clear()
+    _tool_box_pending.clear()
     measure_stop()
     _errors.clear()
     global _FULLSCREEN

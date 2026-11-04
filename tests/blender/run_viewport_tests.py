@@ -250,7 +250,10 @@ def settings(s, **kw):
                 show_readout=True, range_source='TARGETS', range_object=None,
                 hatch_space='SCREEN', hatch_pitch_px=10.0, scrub_distance=False, overlap_style='HIGHLIGHT',
                 interference_style='CROSS', interference_opacity=1.0, plane_opacity=0.10,
-                stripe_width_px=12.0, open_opacity=1.0, object_axis='Z', clip_tint=True)
+                stripe_width_px=12.0, open_opacity=1.0, object_axis='Z', clip_tint=True,
+                measure_max=True, measure_local=True, measure_section_max=False,
+                measure_ignore_overlaps=False, fill_saturation=1.0, fill_brightness=1.0, fill_tint_amount=0.0,
+                fill_opacity=1.0)
     base.update(kw)
     for k, v in base.items():
         setattr(s, k, v)
@@ -865,6 +868,24 @@ def axis_buttons_start_section(view):
     with view.override():
         bpy.ops.crosscut.section(axis='Y', mode='LAST')
     check(T, "uses the last mode", s.mode == 'SLICE' and s.orientation == 'Y', f"{s.mode} {s.orientation}")
+    # a lit button turns it off, another one re-aims
+    with view.override():
+        bpy.ops.crosscut.section(axis='X', mode='LAST')
+    check(T, "another axis re-aims", s.mode == 'SLICE' and s.orientation == 'X', f"{s.mode} {s.orientation}")
+    with view.override():
+        bpy.ops.crosscut.section(axis='X', mode='LAST')
+    check(T, "the lit axis turns it off", s.mode == 'OFF', s.mode)
+    with view.override():
+        bpy.ops.crosscut.section(axis='X', mode='LAST')
+    check(T, "and back on", s.mode == 'SLICE')
+    with view.override():
+        bpy.ops.crosscut.from_view(toggle=True)
+    check(T, "View turns on the view plane", s.mode == 'SLICE' and s.orientation == 'VIEW')
+    with view.override():
+        bpy.ops.crosscut.from_view(toggle=True)
+    check(T, "the lit View turns it off", s.mode == 'OFF', s.mode)
+    with view.override():
+        bpy.ops.crosscut.section(axis='Y', mode='LAST')
     with view.override():
         bpy.ops.crosscut.set_mode(mode='SLICE')
     for o in scene.objects:
@@ -1027,6 +1048,130 @@ def clip_memory(view):
 
 
 @test
+def tools_through_clipping(view):
+    # painting and Edit Mode box select work through Section, Slice and a clipping region
+    T = "tools_through_clipping"
+    scene = new_scene("cc-paint")
+    bm = bmesh.new()
+    bmesh.ops.create_grid(bm, x_segments=40, y_segments=40, size=20.0)
+    me = bpy.data.meshes.new("part-001")
+    bm.to_mesh(me)
+    bm.free()
+    ob = _link("part-001", me)
+    vg = ob.vertex_groups.new(name="g")
+    bpy.context.view_layer.objects.active = ob
+    ob.select_set(True)
+    s = scene.crosscut
+    view.look((0, 0, 0), 80, (0, 0, 0), ortho=True)
+    settings(s)
+    yield 0.1
+    rv = view.rv3d
+    area, r, sp = view.area, view.region, view.space
+
+    def over():
+        return bpy.context.temp_override(window=view.window, area=area, region=r, space_data=sp, region_data=rv,
+                                         active_object=ob, object=ob)
+
+    def paint(co):
+        for v in ob.data.vertices:
+            vg.remove([v.index])
+        x, y = view.px(co)
+        valid = bpy.types.OperatorStrokeElement.bl_rna.properties.keys()
+        pts = []
+        for i in range(6):
+            d = {"name": "", "mouse": (x + i * 4, y), "mouse_event": (x + i * 4, y), "pen_flip": False,
+                 "is_start": i == 0, "location": tuple(co), "pressure": 1.0, "size": 60.0, "time": float(i),
+                 "x_tilt": 0.0, "y_tilt": 0.0}
+            pts.append({k: v for k, v in d.items() if k in valid})
+        with over():
+            bpy.ops.paint.weight_paint(stroke=pts, mode='NORMAL')
+        return sum(1 for v in ob.data.vertices for g in v.groups if g.weight > 1e-3)
+
+    with over():
+        bpy.ops.object.mode_set(mode='WEIGHT_PAINT')
+    yield 0.2
+    yield from settle()
+    plain = paint((6, 0, 0))
+    check(T, "painting works with no clipping (test sees it)", plain > 0, str(plain))
+    settings(s, mode='SECTION', orientation='X', offset=0.0, flip=True)  # keeps x >= 0
+    yield 0.3
+    yield from settle()
+    yield 0.2
+    yield from settle()
+    n = paint((6, 0, 0))
+    check(T, "Section: paints on the kept side", n == plain, f"{n} vs {plain}")
+    check(T, "Section: not on the side cut away", paint((-6, 0, 0)) == 0)
+    x = view.rv3d.view_perspective
+    check(T, "the view is left as it was", x == 'ORTHO' and abs(view.rv3d.view_distance - 80) < 1e-3
+          and abs(sp.clip_end - 100000.0) < 1e-3, f"{x} {view.rv3d.view_distance} {sp.clip_end}")
+    # right up to the cut, on both sides of it
+    near_cut = (paint((0.8, 0, 0)), paint((-0.8, 0, 0)))
+    check(T, "Section: the box's edge is on the cut", near_cut[0] > near_cut[1], str(near_cut))
+    settings(s, mode='SLICE', orientation='X', offset=6.0, thickness=8.0)
+    yield 0.3
+    yield from settle()
+    yield 0.2
+    yield from settle()
+    check(T, "Slice slab: paints inside it", paint((6, 0, 0)) == plain)
+    check(T, "Slice slab: not outside it", paint((-6, 0, 0)) == 0)
+    settings(s)
+    yield 0.2
+    yield from settle()
+    with over():
+        bpy.ops.view3d.clip_border(xmin=r.width // 2 - 60, xmax=r.width // 2 + 200, ymin=r.height // 2 - 150,
+                                   ymax=r.height // 2 + 150, wait_for_input=False)
+    yield 0.3
+    yield from settle()
+    yield 0.2
+    yield from settle()
+    n = paint((2, 0, 0))
+    check(T, "clipping region: paints inside it", n > 0, str(n))
+    axes = cc("engine").clip_axes(rv)
+    i = [cc("engine").clip_axis_label(a[0]) for a in axes].index('X')
+    with over():
+        setattr(s, f"clip_position_{i + 1}", axes[i][1] + 300.0)
+    yield 0.3
+    yield from settle()
+    yield 0.2
+    yield from settle()
+    check(T, "clipping region, scrubbed away: paints nothing there", paint((2, 0, 0)) == 0)
+    rv.use_clip_planes = False
+    with over():
+        bpy.ops.object.mode_set(mode='OBJECT')
+    yield 0.2
+    # Edit Mode box select
+    def box_select():
+        with over():
+            bpy.ops.object.mode_set(mode='EDIT')
+            bpy.ops.mesh.select_all(action='DESELECT')
+            ax, ay = view.px((3, -3, 0))
+            bx, by = view.px((9, 3, 0))
+            bpy.ops.view3d.select_box(xmin=ax, xmax=bx, ymin=ay, ymax=by, mode='SET', wait_for_input=False)
+            bpy.ops.object.mode_set(mode='OBJECT')
+        return sum(v.select for v in ob.data.vertices)
+
+    plain = box_select()
+    check(T, "box select works with no clipping (test sees it)", plain > 0, str(plain))
+    settings(s, mode='SECTION', orientation='X', offset=0.0, flip=True)
+    yield 0.2
+    with over():
+        bpy.ops.object.mode_set(mode='EDIT')
+    yield 0.2
+    yield from settle()
+    yield 0.2
+    yield from settle()
+    with over():
+        bpy.ops.object.mode_set(mode='OBJECT')
+    n = box_select()
+    check(T, "Edit Mode: box select works on the kept side", n == plain, f"{n} vs {plain}")
+    settings(s)
+    yield 0.1
+    # Object Mode: no box or tint left behind
+    yield from settle()
+    check(T, "no draw errors", not errors(), str(errors()))
+
+
+@test
 def clip_tint(view):
     # Blender's faint box goes by default, and as soon as you scrub with the setting on
     T = "clip_tint"
@@ -1054,6 +1199,21 @@ def clip_tint(view):
         win.event_simulate('LEFTMOUSE', 'RELEASE', x=r.x + b[0], y=r.y + b[1])
         yield 0.2
         view.look((0, 0, 0), 300, (0, 0, 0), ortho=True)
+        yield from settle()
+
+    def draw_box_here():
+        a, b = view.px((-10, -10, 0)), view.px((10, 10, 0))
+        with view.override():
+            bpy.ops.crosscut.clip('INVOKE_DEFAULT')
+        yield 0.1
+        win.event_simulate('MOUSEMOVE', 'NOTHING', x=r.x + a[0], y=r.y + a[1])
+        yield 0.05
+        win.event_simulate('LEFTMOUSE', 'PRESS', x=r.x + a[0], y=r.y + a[1])
+        yield 0.05
+        win.event_simulate('MOUSEMOVE', 'NOTHING', x=r.x + b[0], y=r.y + b[1])
+        yield 0.05
+        win.event_simulate('LEFTMOUSE', 'RELEASE', x=r.x + b[0], y=r.y + b[1])
+        yield 0.2
         yield from settle()
 
     far = (view.region.width // 8, view.region.height // 2)  # plain background
@@ -1102,6 +1262,19 @@ def clip_tint(view):
     yield from settle()
     on, d = tinted("tint_scrubbed")
     check(T, "it moves with the box: the old place is clear", not on, d)
+    # in perspective, where a box's walls meet at the eye, and after orbiting
+    with view.override():
+        bpy.ops.crosscut.clip('INVOKE_DEFAULT')  # removes it
+    yield 0.1
+    view.look((0, 0, 0), 300, (0, 0, 0))
+    yield from settle()
+    yield from draw_box_here()
+    shot = Shot(view, "tint_perspective")
+    inside, bg = shot.at(view.px((0, 0, 0)), r=2), shot.at(far, r=2)
+    check(T, "perspective: shows", not near(inside, bg, 2), f"{inside} {bg}")
+    view.look((0, 0, 0), 300, (50, 0, 40))
+    yield from settle()
+    Shot(view, "tint_perspective_orbit")
     view.rv3d.use_clip_planes = False
     check(T, "no draw errors", not errors(), str(errors()))
 
@@ -1124,6 +1297,29 @@ def random_colors(view):
     for ob, x in ((a, -30), (b, 30)):
         top, side = shot.at(view.px((x, 0, 0))), shot.at(view.px((x, -15, -8)))
         check(T, f"{ob.name}: cap matches the part", near(top, side, 3), f"{top} {side}")
+    # the Fill settings take a followed color down
+    p = view.px((-30, 0, 0))
+    full = shot.at(p)
+    s.fill_brightness = 0.5
+    yield from settle()
+    dark = Shot(view, "random_colors_dark").at(p)
+    check(T, "Brightness darkens it", max(dark) < max(full) - 30, f"{dark} {full}")
+    s.fill_brightness, s.fill_saturation = 1.0, 0.0
+    yield from settle()
+    gray = Shot(view, "random_colors_gray").at(p)
+    check(T, "Saturation grays it", max(gray) - min(gray) < 4 < max(full) - min(full), f"{gray} {full}")
+    s.fill_saturation, s.fill_tint_amount, s.fill_tint = 1.0, 1.0, (1.0, 0.0, 0.0)
+    yield from settle()
+    tinted = Shot(view, "random_colors_tint").at(p)
+    check(T, "Tint mixes in", tinted[0] > 200 and tinted[1] < 30, f"{tinted}")
+    # over the part's own inside, which Flat light shows in its full colour
+    s.fill_tint_amount, s.fill_brightness = 0.0, 0.3
+    yield from settle()
+    solid = Shot(view, "random_colors_opaque").at(p)
+    s.fill_opacity = 0.5
+    yield from settle()
+    half = Shot(view, "random_colors_opacity").at(p)
+    check(T, "Fill Opacity lets things through", max(half) > max(solid) + 15, f"{half} {solid}")
     view.space.shading.color_type = 'OBJECT'
     view.space.shading.light = 'STUDIO'
     check(T, "no draw errors", not errors(), str(errors()))
@@ -1198,6 +1394,16 @@ def face_orientation(view):
     view.space.overlay.show_face_orientation = False
     check(T, "from inside with Face Orientation: reads red", is_red(back), f"{back}")
     check(T, "from the cut side: its own colour", is_green(front), f"{front}")
+    # a zero-thickness slice has no inside: both sides keep the cap's colour
+    settings(s, mode='SLICE', orientation='Y', offset=0.0)
+    view.space.overlay.show_face_orientation = True
+    for name, rot in (("a", (20, 0, 0)), ("b", (20, 0, 180))):
+        view.look((0, 0, 0), 200, rot)
+        yield 0.1
+        yield from settle()
+        c = Shot(view, f"slice_side_{name}").at(view.px((0, 0, 10)))
+        check(T, f"zero-thickness slice, side {name}: not red", is_green(c), f"{c}")
+    view.space.overlay.show_face_orientation = False
     check(T, "no draw errors", not errors(), str(errors()))
 
 
@@ -1284,13 +1490,24 @@ def measure_overlap(view):
     r = view.region
     with view.override():
         res = dr._measure_at(bpy.context, r, r.x + view.px((2.5, 0, 0))[0], r.y + view.px((2.5, 0, 0))[1])
-        check(T, "the overlap's depth", res is not None and abs(res[2] - 5.0) < 0.1, str(res and res[2]))
+        check(T, "the overlap's depth", res is not None and abs(res["max"][2] - 5.0) < 0.1, str(res))
         s.measure_local = False
         res2 = dr._measure_at(bpy.context, r, r.x + view.px((2.5, 0, 0))[0], r.y + view.px((2.5, 0, 0))[1])
-        check(T, "Local Width off: one measure", res2 is not None and res2[3] is None)
+        check(T, "Local Width off: one measure", res2 is not None and res2["local"] is None)
         s.measure_local = True
         px = view.px((-20, 0, 0))
-        check(T, "over one part: nothing", dr._measure_at(bpy.context, r, r.x + px[0], r.y + px[1]) is None)
+        res3 = dr._measure_at(bpy.context, r, r.x + px[0], r.y + px[1])
+        check(T, "over one part: its thickness at the mouse, no max", res3 is not None and res3["max"] is None
+              and abs(res3["local"][2] - 30.0) < 0.5, str(res3))
+        s.measure_section_max = True
+        res3 = dr._measure_at(bpy.context, r, r.x + px[0], r.y + px[1])
+        check(T, "Section Max on: the greatest too", res3["max"] is not None and res3["max"][2] > 29.0, str(res3))
+        s.measure_section_max = False
+        s.measure_ignore_overlaps = True
+        res3 = dr._measure_at(bpy.context, r, r.x + view.px((2.5, 0, 0))[0], r.y + view.px((2.5, 0, 0))[1])
+        check(T, "Ignore Overlaps: thickness even over an overlap", res3["max"] is None and abs(res3["local"][2] - 40.0) < 1.5,
+              str(res3))
+        s.measure_ignore_overlaps = False
     if bpy.app.use_event_simulate:
         win = bpy.context.window
         with view.override():
@@ -1303,7 +1520,12 @@ def measure_overlap(view):
         yield from settle()
         Shot(view, "measure_overlap")
         check(T, "hover shows it", "5.0" in dr._measure["text"] or "4.9" in dr._measure["text"], dr._measure["text"])
-        x, y = view.px((-20, 0, 0))
+        s.measure_max = False
+        win.event_simulate('MOUSEMOVE', 'NOTHING', x=r.x + x + 1, y=r.y + y)
+        yield 0.3
+        check(T, "Max Width off: no max line", dr._measure["a"] is None, str(dr._measure["text"]))
+        s.measure_max = True
+        x, y = view.px((-200, 0, 0))
         win.event_simulate('MOUSEMOVE', 'NOTHING', x=r.x + x, y=r.y + y)
         yield 0.3
         check(T, "leaving clears it", dr._measure["a"] is None)
@@ -1327,7 +1549,7 @@ def measure_overlap(view):
         max_d = float(np.linalg.norm(np.asarray(m["a"]) - m["b"]))
         loc_d = float(np.linalg.norm(np.asarray(m["la"]) - m["lb"])) if m["la"] is not None else 0.0
         check(T, "the local width is narrower here", 0.0 < loc_d < max_d - 0.2, f"{loc_d} {max_d}")
-        x, y = view.px((-20, 0, 0))
+        x, y = view.px((-110, 0, 0))
         win.event_simulate('MOUSEMOVE', 'NOTHING', x=r.x + x, y=r.y + y)
         yield 0.3
         check(T, "leaving clears both", dr._measure["a"] is None and dr._measure["la"] is None)
