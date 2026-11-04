@@ -641,13 +641,15 @@ def snap_to_contour(seg, target, avoid=None, radius=0.0):
     return _farthest(np.asarray(target, dtype=np.float64)[None, :], seg)[2]
 
 
-def aim_at_contour(seg, anchor, target, radius=0.0):
-    """Where a line from `anchor` toward `target` first meets the contours (K,2,2), so it
-    sweeps round a section's edges, corners included, like a beam. If it meets none,
-    as when aimed out of the part: the nearest point to the target instead."""
-    d = np.asarray(target, dtype=np.float64) - anchor
+def follow_cursor(seg, anchor, cursor, oriented=False, radius=0.0):
+    """Where the free end of a line anchored at `anchor` goes, for the mouse at `cursor`.
+    Inside the section: the line runs through the cursor to the first contour beyond it,
+    so the cursor is always on the line. Outside: the nearest point on the contours."""
+    cursor = np.asarray(cursor, dtype=np.float64)
+    inside = _inside_rows(seg, oriented, np.array([cursor[0]]), np.array([cursor[1]]))[0, 0]
+    d = cursor - anchor
     length = float(np.hypot(d[0], d[1]))
-    if length > 1e-12:
+    if inside and length > 1e-12:
         d = d / length
         a = seg[:, 0] - anchor
         e = seg[:, 1] - seg[:, 0]
@@ -655,11 +657,10 @@ def aim_at_contour(seg, anchor, target, radius=0.0):
             denom = d[0] * e[:, 1] - d[1] * e[:, 0]
             t = (a[:, 0] * e[:, 1] - a[:, 1] * e[:, 0]) / denom
             u = (a[:, 0] * d[1] - a[:, 1] * d[0]) / denom
-        # past the anchor's own wall: anything nearer than this is where the line starts
-        ahead = np.isfinite(t) & (u >= 0.0) & (u <= 1.0) & (t > 1e-3 * max(length, radius))
+        ahead = np.isfinite(t) & (u >= 0.0) & (u <= 1.0) & (t >= length * (1.0 - 1e-9))
         if ahead.any():
             return anchor + d * float(t[ahead].min())
-    return snap_to_contour(seg, target, anchor, radius)
+    return snap_to_contour(seg, cursor, anchor, radius)
 
 
 def section_measures(seg, point, oriented=True, half=1.0, cells=160, local=True, greatest=False):

@@ -72,8 +72,12 @@ def _draw_main(layout, context):
         st.direction = 1
     if clipping or s.mode != 'OFF':
         col.separator()
-        col.operator("crosscut.measure", text="Measure", icon='DRIVER_DISTANCE',
-                     depress=draw.measure_running())
+        r = col.row(align=True)
+        r.operator("crosscut.measure", text="Measure", icon='DRIVER_DISTANCE', depress=draw.measure_running())
+        sub = r.row(align=True)
+        sub.enabled = draw.measure_has_lines()  # greyed, not hidden, so the row doesn't jump
+        sub.operator("crosscut.measure_clear", text="", icon='X')
+        r.prop(s, "measure_keep", text="", icon='PINNED' if s.measure_keep else 'UNPINNED', toggle=True)
 
 
 def _window_region(context):
@@ -205,7 +209,10 @@ def _draw_measure(layout, context):
         sub.active = getattr(s, on)
         sub.prop(s, color, text="")
     col.prop(s, "measure_ignore_overlaps")
-    col.prop(s, "measure_text_size")
+    if s.hatch_space == 'SCREEN':
+        col.prop(s, "measure_text_size", text="Text Size (px)")
+    else:
+        col.prop(s, "measure_text_height")
 
 
 def _draw_print_preview(layout, context):
@@ -333,6 +340,10 @@ def _add_keymaps():
     km = kc.keymaps.new(name="3D View", space_type='VIEW_3D')
     kmi = km.keymap_items.new("wm.call_menu_pie", 'B', 'PRESS', shift=True, alt=True)
     kmi.properties.name = "CROSSCUT_MT_pie"
+    _keymaps.append((km, kmi))
+    # Esc clears pinned measuring lines; with none, the operator's poll lets it through
+    kmi = km.keymap_items.new("crosscut.measure_clear", 'ESC', 'PRESS')
+    kmi.properties.from_key = True
     _keymaps.append((km, kmi))
     # click-select by section in a zero-thickness slice (the operator passes the
     # click on to Blender's own selection everywhere else)

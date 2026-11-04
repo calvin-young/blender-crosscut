@@ -8,7 +8,7 @@ The human-facing overview is in [README.md](README.md).
 - **What it is:** a Blender add-on that adds filled (solid or hatched) caps to viewport
   clipping, plus section and slice views with a scrub slider. It drives the same
   `RegionView3D.clip_planes` that Alt+B uses and draws the caps with the `gpu` module.
-- **Status:** in development (0.14.1, 2026-11-04), used on real work, not close to 1.0; tested in Blender (4.2.23 and 5.2.3,
+- **Status:** in development (0.15.0, 2026-11-04), used on real work, not close to 1.0; tested in Blender (4.2.23 and 5.2.3,
   OpenGL; 5.2 on Vulkan too) with the in-viewport suite below. Waiting for the maintainer's
   test on real work. See "State and next steps".
 - **Runs in:** Blender 4.2+ as an extension (`crosscut/blender_manifest.toml`); Python 3.11
@@ -109,9 +109,10 @@ this file, the reasons behind decisions and the approaches that were dropped go 
 - 0.12.0: local width in Measure Overlap (D-034), own Clip Tint (D-032), one panel on its own tab (D-033), Print Preview Slice is one layer. 257 viewport checks.
 - 0.13.0: tools work through a cut (D-035), Measure on single parts (D-036), fill color adjustments, lit axis buttons turn off. 284 viewport checks.
 - 0.14.0: Measure lines can be anchored, slid along the contour and pinned (D-037); Cut Faces grouped. Measure stays in Crosscut (D-038). 0.14.1: an anchored line aims like a beam (D-039).
+- 0.15.0: the free end follows the cursor; Esc stops, a further Esc clears (D-040); Clear and Keep buttons.
 - **1.0 is not close (maintainer, 2026-11-02).** It's in development, not a test-only stretch (2026-11-03).
   Say so plainly when bugs and features are still coming; don't call it nearly done.
-- Next: the maintainer keeps testing. Open questions Q-030 to Q-071 in DECISIONS.md. Then the Issues.
+- Next: the maintainer keeps testing. Open questions Q-030 to Q-073 in DECISIONS.md. Then the Issues.
 - Not tested yet: macOS/Windows, HiDPI scaling above 1, Metal, very large multi-object scenes.
 
 ## Before you change things

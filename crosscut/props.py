@@ -225,13 +225,22 @@ class CrosscutSettings(bpy.types.PropertyGroup):
         name="Section Max", default=False, update=tag_redraw,
         description="Over a single part, also show its section's greatest thickness, which can be away from the mouse",
     )
+    measure_keep: BoolProperty(
+        name="Keep Pinned Lines", default=False, update=tag_redraw,
+        description="Pinned lines survive Esc, and only the Clear button removes them",
+    )
     measure_ignore_overlaps: BoolProperty(
         name="Ignore Overlaps", default=False, update=tag_redraw,
         description="Always measure one part's thickness, even over an overlap",
     )
     measure_text_size: IntProperty(
         name="Text Size", min=8, max=48, default=14, update=tag_redraw,
-        description="Size of Measure Overlap's lengths",
+        description="Size of Measure's lengths in pixels, when hatching is in Screen space",
+    )
+    measure_text_height: FloatProperty(
+        name="Text Size", subtype='DISTANCE', unit='LENGTH', min=1e-3, default=2.0, precision=2, update=tag_redraw,
+        description="Size of Measure's lengths in scene units, when hatching is in Model space: "
+                    "they scale with the view, as the hatching does",
     )
     measure_local: BoolProperty(
         name="Local Width", default=True, update=tag_redraw,

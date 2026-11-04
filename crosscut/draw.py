@@ -850,6 +850,8 @@ def backface_color():
 
 
 CLIP_TINT_COLOR = (1.0, 1.0, 1.0, 0.012)
+MEASURE_DEAD_PIXELS = 4
+MEASURE_TEXT_MIN, MEASURE_TEXT_MAX = 7.0, 200.0  # px
 SELECT_WIDTH = 2.0  # px, about the width of Blender's selection outline
 WARNING_RED = (1.0, 0.25, 0.2, 1.0)  # sRGB, for the readout
 
@@ -1330,13 +1332,20 @@ def measure_running():
 
 
 def measure_start():
-    _measure.update(on=True, region=None, a=None, b=None, text="", la=None, lb=None, ltext="", cut=None, anchor=None,
-                    dims=[])
+    _measure.update(on=True, region=None, a=None, b=None, text="", la=None, lb=None, ltext="", cut=None, anchor=None)
 
 
 def measure_stop():
-    _measure.update(on=False, region=None, a=None, b=None, text="", la=None, lb=None, ltext="", cut=None, anchor=None,
-                    dims=[])
+    """Stop measuring. Pinned lines stay, until measure_clear."""
+    _measure.update(on=False, region=None, a=None, b=None, text="", la=None, lb=None, ltext="", cut=None, anchor=None)
+
+
+def measure_clear():
+    _measure["dims"] = []
+
+
+def measure_has_lines():
+    return bool(_measure["dims"])
 
 
 def native_or_lit(s, rv3d):
@@ -1420,7 +1429,9 @@ def _measure_at(context, region, x, y):
         overlap = len(parts) >= 2 and not s.measure_ignore_overlaps
         return {"max": world[0], "local": world[1],
                 "cut": {"plane": plane, "basis": basis, "lift": lift,
-                        "contours": [sa @ basis.T, parts[1][1] @ basis.T] if overlap else [sa @ basis.T]}}
+                        "contours": [sa @ basis.T, parts[1][1] @ basis.T] if overlap else [sa @ basis.T],
+                        "oriented": [engine.is_oriented(ta, depsgraph), engine.is_oriented(parts[1][0], depsgraph)]
+                        if overlap else [engine.is_oriented(ta, depsgraph)]}}
     return None
 
 
@@ -1476,15 +1487,20 @@ def measure_click(context, x, y):
     if _screen_distance(region, b, b, x, y) < _screen_distance(region, a, a, x, y):
         a, b = b, a
     cut = _measure["cut"]
-    start = _on_cut(region, x, y, cut)
-    if start is None:
-        return False
     fixed, free = a @ cut["basis"].T, b @ cut["basis"].T
     # the free end keeps to the contour it's on (an overlap has two)
-    contour = min(cut["contours"], key=lambda seg: float(np.linalg.norm(sm.snap_to_contour(seg, free) - free)))
+    which = min(range(len(cut["contours"])),
+                key=lambda i: float(np.linalg.norm(sm.snap_to_contour(cut["contours"][i], free) - free)))
+    # about 8 pixels: what counts as too close to the anchor to end on
+    from bpy_extras import view3d_utils
+    xy = (x - region.x, y - region.y)
+    radius = float(np.linalg.norm(
+        np.array(view3d_utils.region_2d_to_location_3d(region, region.data, (xy[0] + 8, xy[1]), tuple(a)))
+        - np.array(view3d_utils.region_2d_to_location_3d(region, region.data, xy, tuple(a)))))
     _measure.update(region=None, a=None, b=None, text="", la=None, lb=None, ltext="")
-    _measure["anchor"] = {"region": region.as_pointer(), "a": a, "b": b, "fixed": fixed, "free": free, "start": start,
-                          "contour": contour, "radius": 0.25 * float(np.linalg.norm(free - fixed)), "cut": cut}
+    _measure["anchor"] = {"region": region.as_pointer(), "a": a, "b": b, "fixed": fixed, "click": (x, y), "moved": False,
+                          "contour": cut["contours"][which], "oriented": cut["oriented"][which], "radius": radius,
+                          "cut": cut}
     area.tag_redraw()
     return True
 
@@ -1498,8 +1514,13 @@ def _anchor_update(context, x, y):
     p = _on_cut(found[1], x, y, cut)
     if p is None:
         return
-    # the free end moves as far as the mouse has since the click; the line aims at that
-    q = sm.aim_at_contour(pin["contour"], pin["fixed"], pin["free"] + p - pin["start"], pin["radius"])
+    # the line holds still until the mouse really leaves the click, as the click point is
+    # near the anchor and tells nothing about where it's meant to go
+    if not pin["moved"]:
+        if max(abs(x - pin["click"][0]), abs(y - pin["click"][1])) < MEASURE_DEAD_PIXELS:
+            return
+        pin["moved"] = True
+    q = sm.follow_cursor(pin["contour"], pin["fixed"], p, pin["oriented"], pin["radius"])
     pin["b"] = q[0] * cut["basis"][0] + q[1] * cut["basis"][1] + cut["lift"]
     found[0].tag_redraw()
 
@@ -1549,6 +1570,22 @@ def measure_update(context, x, y):
 
 def _measure_shown():
     return _measure["a"] is not None or _measure["la"] is not None
+
+
+def _measure_text_px(context, s, world):
+    """The size to draw a length at: fixed in Screen space; in Model space, a height in
+    scene units, like the hatching, but never too small to read."""
+    ui = context.preferences.system.ui_scale
+    if s.hatch_space == 'SCREEN':
+        return s.measure_text_size * ui
+    from bpy_extras.view3d_utils import location_3d_to_region_2d
+    rv3d = context.region.data
+    side = np.array(rv3d.view_matrix.inverted())[:3, 0]
+    a = location_3d_to_region_2d(context.region, rv3d, tuple(world))
+    b = location_3d_to_region_2d(context.region, rv3d, tuple(np.asarray(world) + side * s.measure_text_height))
+    if a is None or b is None:
+        return s.measure_text_size * ui
+    return min(max(float((b - a).length), MEASURE_TEXT_MIN * ui), MEASURE_TEXT_MAX * ui)
 
 
 def _measure_lines(context):
@@ -1765,13 +1802,13 @@ def draw_readout():
     measured = _measure_lines(context)
     if measured:
         from bpy_extras.view3d_utils import location_3d_to_region_2d
-        blf.size(font, s.measure_text_size * ui)
         blf.disable(font, blf.SHADOW)
         for a, b, text, color in measured:
-            p = location_3d_to_region_2d(context.region, context.region_data,
-                                         tuple(0.5 * (np.asarray(a) + np.asarray(b))))
+            middle = 0.5 * (np.asarray(a) + np.asarray(b))
+            p = location_3d_to_region_2d(context.region, context.region_data, tuple(middle))
             if p is None:
                 continue
+            blf.size(font, _measure_text_px(context, s, middle))
             x, y = p.x + 12 * ui, p.y + 8 * ui
             # a dark outline, to read on any hatch or highlight
             blf.color(font, 0.0, 0.0, 0.0, 1.0)
@@ -1789,7 +1826,9 @@ def draw_readout():
     lines, warn, severe = readout_lines(scene, s, _last_info.get(context.region.as_pointer()))
     if _measure["on"]:
         lines = lines + ["Measure: click to place the line, Esc to drop it" if _measure["anchor"] is not None
-                         else "Measure: hover over a cut, click a line to adjust and pin it, Esc to clear and stop"]
+                         else "Measure: hover over a cut, click a line to adjust and pin it, Esc to stop"]
+    elif _measure["dims"] and not s.measure_keep:
+        lines = lines + ["Pinned measurements: Esc to clear"]
     if not lines and not warn and not severe:
         blf.disable(font, blf.SHADOW)
         return
@@ -1839,6 +1878,7 @@ def unregister():
     _tool_box.clear()
     _tool_box_pending.clear()
     measure_stop()
+    measure_clear()
     _errors.clear()
     global _FULLSCREEN
     _FULLSCREEN = None

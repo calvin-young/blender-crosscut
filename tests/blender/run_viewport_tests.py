@@ -252,7 +252,7 @@ def settings(s, **kw):
                 interference_style='CROSS', interference_opacity=1.0, plane_opacity=0.10,
                 stripe_width_px=12.0, open_opacity=1.0, object_axis='Z', clip_tint=True,
                 measure_max=True, measure_local=True, measure_section_max=False,
-                measure_ignore_overlaps=False, fill_saturation=1.0, fill_brightness=1.0, fill_tint_amount=0.0,
+                measure_ignore_overlaps=False, measure_keep=False, fill_saturation=1.0, fill_brightness=1.0, fill_tint_amount=0.0,
                 fill_opacity=1.0)
     base.update(kw)
     for k, v in base.items():
@@ -1610,6 +1610,48 @@ def measure_overlap(view):
         win.event_simulate('ESC', 'RELEASE', x=r.x + x, y=r.y + y)
         yield 0.2
         check(T, "Esc stops it", not dr.measure_running())
+        check(T, "and leaves the pinned lines", len(dr._measure["dims"]) == 1, str(len(dr._measure["dims"])))
+        yield from settle()
+        Shot(view, "measure_pinned_after_stop")
+        # (Esc only reaches the viewport's keymap with the mouse over it)
+        x, y = r.width // 3, r.height // 2
+        win.event_simulate('MOUSEMOVE', 'NOTHING', x=r.x + x, y=r.y + y)
+        yield 0.1
+        s.measure_keep = True
+        win.event_simulate('ESC', 'PRESS', x=r.x + x, y=r.y + y)
+        win.event_simulate('ESC', 'RELEASE', x=r.x + x, y=r.y + y)
+        yield 0.2
+        check(T, "Keep Pinned Lines: Esc leaves them", len(dr._measure["dims"]) == 1)
+        with view.override():
+            bpy.ops.crosscut.measure_clear('INVOKE_DEFAULT')
+        check(T, "the Clear button clears them anyway", not dr._measure["dims"])
+        s.measure_keep = False
+        dr._measure["dims"].append((np.zeros(3), np.array((1.0, 0.0, 0.0)), "1"))
+        win.event_simulate('ESC', 'PRESS', x=r.x + x, y=r.y + y)
+        win.event_simulate('ESC', 'RELEASE', x=r.x + x, y=r.y + y)
+        yield 0.2
+        check(T, "a second Esc clears them", not dr._measure["dims"])
+        # lengths follow the hatch space
+        def text_px():
+            yield from settle()  # the redraw resets the context, so read it after
+            with view.override():
+                sizes.append(dr._measure_text_px(bpy.context, s, (0, 0, 0)))
+
+        sizes = []
+        s.hatch_space = 'SCREEN'
+        yield from text_px()
+        view.look((0, 0, 0), 240, (0, 0, 0), ortho=True)
+        yield from text_px()
+        s.hatch_space = 'MODEL'
+        s.measure_text_height = 4.0
+        yield from text_px()
+        view.look((0, 0, 0), 120, (0, 0, 0), ortho=True)
+        yield from text_px()
+        screen_a, screen_b, model_b, model_a = sizes
+        check(T, "Screen space: text stays the same size", abs(screen_a - screen_b) < 1e-3, f"{screen_a} {screen_b}")
+        check(T, "Model space: zooming out shrinks it with the view", abs(model_a / model_b - 2.0) < 0.05,
+              f"{model_a} {model_b}")
+        s.hatch_space = 'SCREEN'
         # a wall: anchored on its inner edge, the outer end slides around the outer edge
         for ob in list(scene.objects):
             bpy.data.objects.remove(ob)
@@ -1631,11 +1673,27 @@ def measure_overlap(view):
         yield 0.2
         pin = dr._measure["anchor"]
         check(T, "anchored on the inner edge", pin is not None and abs(float(np.linalg.norm(pin["a"][:2])) - 25.0) < 0.2)
-        x2, y2 = view.px((26, 12, 0))
+        before = np.asarray(pin["b"]).copy()
+        win.event_simulate('MOUSEMOVE', 'NOTHING', x=r.x + x + 1, y=r.y + y)
+        yield 0.1
+        check(T, "a nudge doesn't move the line", np.allclose(pin["b"], before), str(pin["b"]))
+        x2, y2 = view.px((30, 12, 0))
         win.event_simulate('MOUSEMOVE', 'NOTHING', x=r.x + x2, y=r.y + y2)
         yield 0.2
         yield from settle()
         Shot(view, "measure_wall_anchored")
+        # the cursor is on the line, in the wall, with no need to overshoot
+        cur = np.array((30.0, 12.0))
+        along = pin["b"][:2] - pin["a"][:2]
+        off = abs(float(np.cross(along / np.linalg.norm(along), cur - pin["a"][:2])))
+        check(T, "the line runs through the cursor", off < 0.2, str(off))
+        win.event_simulate('MOUSEMOVE', 'NOTHING', x=r.x + view.px((60, 20, 0))[0], y=r.y + view.px((60, 20, 0))[1])
+        yield 0.2
+        outside = np.array((60.0, 20.0))
+        direct = 40.0 * outside / np.linalg.norm(outside)
+        check(T, "outside it, the nearest point on the edge", np.linalg.norm(pin["b"][:2] - direct) < 0.3, str(pin["b"]))
+        win.event_simulate('MOUSEMOVE', 'NOTHING', x=r.x + x2, y=r.y + y2)
+        yield 0.2
         out = float(np.linalg.norm(pin["b"][:2]))
         check(T, "the free end slides round the outer edge", abs(out - 40.0) < 0.2 and abs(float(pin["b"][1])) > 3.0,
               f"{out} {pin['b']}")
@@ -1651,6 +1709,7 @@ def measure_overlap(view):
         win.event_simulate('ESC', 'PRESS', x=r.x + x3, y=r.y + y3)
         win.event_simulate('ESC', 'RELEASE', x=r.x + x3, y=r.y + y3)
         yield 0.2
+        dr.measure_clear()
         check(T, "and clears the pinned lines", not dr._measure["dims"])
     dr.measure_stop()
     check(T, "no draw errors", not errors(), str(errors()))
@@ -2504,6 +2563,7 @@ def _runner():
             print(f"- {fn.__name__}")
             setup_view(view)
             cc("draw").forget_saved_clips()
+            cc("draw").measure_clear()
             try:
                 yield from fn(view)
             except Exception:

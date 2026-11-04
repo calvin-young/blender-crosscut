@@ -327,17 +327,21 @@ def test_snap_to_contour():
         np.allclose(sm.snap_to_contour(a, (5, 1), avoid=np.array([5.0, 0.0]), radius=2.0), (0, 1))
 
 
-def test_aim_at_contour():
-    # anchored mid-way along the bottom of a square, the line follows round the other edges
+def test_follow_cursor():
+    # anchored mid-way along the bottom of a square: the line runs through the cursor
     a = _rect(0, 0, 10, 10)
     anchor = np.array([5.0, 0.0])
-    assert np.allclose(sm.aim_at_contour(a, anchor, (5, 10), 2.5), (5, 10))    # opposite edge
-    assert np.allclose(sm.aim_at_contour(a, anchor, (8, 10), 2.5), (8, 10))    # along it
-    assert np.allclose(sm.aim_at_contour(a, anchor, (20, 10), 2.5), (10, 10 / 3))  # round onto the next edge
-    assert np.allclose(sm.aim_at_contour(a, anchor, (-20, 10), 2.5), (0, 2.0))     # and the other way
-    # aimed out of the part: the nearest place, away from where it's anchored
-    q = sm.aim_at_contour(a, anchor, (5, -6), 2.5)
-    assert np.linalg.norm(q - anchor) >= 2.5, q
+    assert np.allclose(sm.follow_cursor(a, anchor, (5, 5)), (5, 10))           # straight up
+    assert np.allclose(sm.follow_cursor(a, anchor, (8, 5)), (10, 25 / 3))      # onto the next edge, no overshoot
+    assert np.allclose(sm.follow_cursor(a, anchor, (2, 5)), (0, 25 / 3))       # and the other way
+    assert np.allclose(sm.follow_cursor(a, anchor, (9.999, 3)), (10, 3), atol=0.01)  # close to an edge, it lands there
+    # outside: the nearest point
+    assert np.allclose(sm.follow_cursor(a, anchor, (12, 3)), (10, 3))
+    assert np.allclose(sm.follow_cursor(a, anchor, (3, 11)), (3, 10))
+    # beyond a wall of a hollow section, it goes where the cursor is, not to the first wall
+    ring = np.concatenate([_rect(0, 0, 30, 10), _rect(10, 2, 20, 8)[::-1, ::-1]])
+    q = sm.follow_cursor(ring, np.array([5.0, 5.0]), (25, 5), False)
+    assert np.allclose(q, (30, 5)), q
 
 
 def test_section_measures():

@@ -12,6 +12,7 @@ this list is an assumption, tracked in the table at the end.
 | --- | --- | --- |
 | R-021 | After 0.12.0 (2026-11-03): Measure in light blue at the cursor and a complementary color for the max, legible text, a toggle for the max; Clip Tint doesn't work (revert unless easy); "Fill Targets"; slices red on the back. Then: lit X/Y/Z/View turns off; weight painting doesn't work with clipping on; a way to adjust fill colors (grayer, redder, darker, transparent); Measure on single parts, thickness at the cursor, max optional and off, maybe an Ignore Overlaps toggle | 0.13.0, see below |
 | R-022 | After 0.13.0 (2026-11-04): Brightness default 50 %; group the Cut Faces settings; a project-share pie on the status page; Measure: click anchors the end nearest the cursor, moving slides the other end along the contour, a second click pins it, repeatable, Esc clears. Asked for guidance on whether Measure should be a separate branch, release or add-on, and on dimensioned drawings | 0.14.0, see below |
+| R-023 | After 0.14.1 (2026-11-04): the free end must follow the cursor wherever it lands, or find the closest point on a curve, without overshooting; Esc shouldn't clear pinned lines at the first press; a Clear button and a way to keep them through Esc. Asked whether capturing Esc inhibits other Blender functionality | 0.15.0, see below |
 | R-020 | After 0.11.0 (2026-11-03): no outlines through interiors in Print Preview; Slice looks the same as Section there; Slice Thickness into Section/Slice Plane; cursor, center, selection as small buttons between the arrows; even out the gaps around Measure Overlap, closer to Settings; settings for Measure Overlap (color, text size) and a local width at the mouse, on by default; is "Caps" too unintuitive; Clip Tint doesn't come back after off/on or after Section; left-align the three settings; back on its own tab, as a single panel | 0.12.0, see below |
 | R-019 | After 0.10.0 (2026-11-03): outlines stay black on problem parts; a 0.5 button in the scrub row; Targets inside Caps as "Cap: Visible Objects..."; Interference becomes a third Overlaps option, Highlight, its settings right below; Plane renamed Section/Slice Plane with the scrub settings at its top; Clip remembers the last box; the release plan accepted, with no full release until the maintainer signals | 0.11.0, see below |
 | R-018 | After 0.9.4 (2026-11-03): in development rather than test-only; a steering tally on the status page; guidance on releases; overlays off hide the plane; orange outlines stuck on; hatch scales with part size; caps match Random shading; move to the View tab with Settings folded in; annotations stay over caps; inside-out warning and a Face Orientation toggle; no "Alt+B" wording; drop the faint box, at least once scrubbing; two sliders or a toggle for the clip walls; an easy way to measure an overlap; a translucent cap seen from behind should read red like from outside | 0.10.0, see below |
@@ -34,6 +35,26 @@ this list is an assumption, tracked in the table at the end.
 | R-001 | Main use: while modelling parts. Secondary: finding interferences when packing buckets | Drives defaults |
 
 ## Decisions
+
+### Changes after the maintainer's notes on 0.14.1 (0.15.0, 2026-11-04)
+
+- **The free end follows the cursor** (replaces D-037 and D-039's aim). The mouse's movement since the click was the
+  wrong input, since it made the end lag behind where the cursor was. Inside the section, the line runs through the cursor
+  to the first contour beyond it, past any walls before the cursor. Outside it, the nearest point on the contour,
+  leaving out segments within 8 pixels of the anchor. Nothing moves until the mouse leaves the click by 4 pixels: the click
+  is near the anchor, so it says nothing about where the end should go.
+- **Esc** (D-040).
+- **Text size follows Hatch Space**: `measure_text_height` in Model space (default 2 units, *assumed*), never below 7 pixels
+  (*assumed*, so a far view stays readable); `measure_text_size` in Screen space.
+
+### D-040: Pinned lines outlast the tool, and Esc clears them through a keymap entry (2026-11-04)
+
+- **Decision:** Esc stops the Measure modal and leaves pinned lines. The next Esc reaches `crosscut.measure_clear`, a normal
+  3D View keymap entry whose poll fails with no lines, so it costs other tools nothing, and the operator passes the
+  event through under Keep Pinned Lines. A modal wasn't kept running for this: Blender postpones auto-save while
+  any modal operator runs, so a tool left on would hold auto-save off for as long as lines were pinned.
+- **Costs of the modal while Measure is on:** auto-save waits until it stops, and Esc goes to Measure first. A transform or
+  other modal started during Measure gets Esc first, being newer.
 
 ### Changes after the maintainer's notes on 0.13.0 (0.14.0, 2026-11-04)
 
@@ -734,3 +755,5 @@ What `tests/blender/run_viewport_tests.py` and the screenshots showed in 0.1.0, 
 | Q-069 | The pie's Section from View still re-captures on a second click | assumption | 0.13.0 | open |
 | Q-070 | Measure stays in Crosscut, no branch or second add-on (D-038) | unasked question | 0.14.0 | agreed by the maintainer |
 | Q-071 | A click on a showing Measure line doesn't select; Esc while placing drops only that line | assumption | 0.14.0 | open |
+| Q-072 | With the cursor beyond a wall, the free end goes past that wall to the edge beyond the cursor | assumption | 0.15.0 | open |
+| Q-073 | Pinned lines aren't saved with the file | assumption | 0.15.0 | open |

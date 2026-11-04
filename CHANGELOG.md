@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.15.0 (2026-11-04)
+
+- **Measure**: while placing a line, it follows the cursor directly. Inside the section the line runs through
+  the cursor to the edge beyond; outside it, the end goes to the nearest point on the edge.
+- Measure's lengths follow **Hatch Space**: in Model space they're a height in scene units and scale with the view; in
+  Screen space they stay a fixed size.
+- **Esc** stops Measure and leaves pinned lines on screen; a further Esc clears them. Next to the Measure button,
+  **X** clears them, and the pin (**Keep Pinned Lines**) makes them survive Esc.
+
 ## 0.14.1 (2026-11-04)
 
 - **Measure**: an anchored line now sweeps like a beam around the section, so the free end follows onto adjacent

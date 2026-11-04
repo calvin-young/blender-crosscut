@@ -161,8 +161,7 @@ is always removed, since it can't follow the box; Crosscut's follows it.
 
 ## Measure
 
-Click **Measure**, then hover over a cut. It runs until you click it again or press Esc, and either clears
-any pinned lines.
+Click **Measure**, then hover over a cut. It runs until you click it again or press Esc.
 
 - Over one part, a line shows the section's thickness at the mouse, straight across from the nearest wall.
 - Over an overlap, a line shows the overlap's width at the mouse, from one part's edge to the other's, and a
@@ -170,9 +169,14 @@ any pinned lines.
   than two parts overlap, it measures the first two. A very long, thin overlap can read as several short ones:
   hover over its deepest part.
 
-To get the exact line you want, click a showing line: the end nearer the mouse stays put, and moving the mouse
-swings the line around that end, with the other end following the section's edges. Click again to pin it, and carry on to measure and pin more. Esc while
-placing a line drops just that one. Pinned lines stay where they are if you move a part or the plane.
+To get the exact line you want, click a showing line: the end nearer the mouse stays put, and the other end
+follows the mouse. Inside the section the line runs through the mouse to the edge beyond it; outside it, the end
+goes to the nearest point on the edge. Click again to pin it, and carry on to measure and pin more. Esc while placing
+a line drops just that one. Pinned lines stay where they are if you move a part or the plane.
+
+Pinned lines outlast Measure. Esc stops measuring and leaves them; press Esc again to clear them, or use the **X**
+beside the Measure button. With the pin beside it on (**Keep Pinned Lines**), Esc leaves them alone and only the
+X clears them. They last until you clear them or open another file.
 
 In Settings > Measure:
 
@@ -180,7 +184,8 @@ In Settings > Measure:
 - **Overlap Max**: the "max" line over an overlap, and its color.
 - **Section Max**: over one part, a "max" line too, at the section's thickest place. Off by default.
 - **Ignore Overlaps**: always measure one part's thickness, even over an overlap. Off by default.
-- **Text Size** of the lengths.
+- **Text Size** of the lengths. It follows **Hatch Space**: in Model space it's a height in scene units, so lengths
+  scale with the view like the hatching (never below a readable size); in Screen space it's in pixels.
 
 ## Selecting in a zero-thickness slice
 

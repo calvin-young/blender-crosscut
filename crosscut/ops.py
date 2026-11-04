@@ -108,7 +108,7 @@ class CROSSCUT_OT_clip(bpy.types.Operator):
 
 class CROSSCUT_OT_measure(bpy.types.Operator):
     """Measure on a cut: hover over a part to see its thickness at the mouse, or over an overlap to see
-    how wide it is. Click a line to adjust and pin it. Click this again, or press Esc, to clear and stop"""
+    how wide it is. Click a line to adjust and pin it. Click this again, or press Esc, to stop"""
     bl_idname = "crosscut.measure"
     bl_label = "Measure"
     swallow = False
@@ -145,6 +145,27 @@ class CROSSCUT_OT_measure(bpy.types.Operator):
         if event.type == 'MOUSEMOVE':
             draw.measure_update(context, event.mouse_x, event.mouse_y)
         return {'PASS_THROUGH'}
+
+
+class CROSSCUT_OT_measure_clear(bpy.types.Operator):
+    """Remove the pinned measuring lines"""
+    bl_idname = "crosscut.measure_clear"
+    bl_label = "Clear Pinned Lines"
+
+    from_key: BoolProperty(default=False, options={'HIDDEN'}, description="Esc, which Keep Pinned Lines ignores")
+
+    @classmethod
+    def poll(cls, context):
+        from . import draw
+        return draw.measure_has_lines()
+
+    def invoke(self, context, _event):
+        from . import draw
+        if self.from_key and _s(context).measure_keep:
+            return {'PASS_THROUGH'}
+        draw.measure_clear()
+        tag_redraw()
+        return {'FINISHED'}
 
 
 class CROSSCUT_OT_from_view(bpy.types.Operator):
@@ -532,6 +553,7 @@ classes = (
     CROSSCUT_OT_set_mode,
     CROSSCUT_OT_clip,
     CROSSCUT_OT_measure,
+    CROSSCUT_OT_measure_clear,
     CROSSCUT_OT_from_view,
     CROSSCUT_OT_select_section,
     CROSSCUT_OT_section,
