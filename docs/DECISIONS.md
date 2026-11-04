@@ -755,5 +755,5 @@ What `tests/blender/run_viewport_tests.py` and the screenshots showed in 0.1.0, 
 | Q-069 | The pie's Section from View still re-captures on a second click | assumption | 0.13.0 | open |
 | Q-070 | Measure stays in Crosscut, no branch or second add-on (D-038) | unasked question | 0.14.0 | agreed by the maintainer |
 | Q-071 | A click on a showing Measure line doesn't select; Esc while placing drops only that line | assumption | 0.14.0 | open |
-| Q-072 | With the cursor beyond a wall, the free end goes past that wall to the edge beyond the cursor | assumption | 0.15.0 | open |
+| Q-072 | With the cursor beyond a wall, the free end goes past that wall to the edge beyond the cursor | assumption | 0.15.0 | feels great, per the maintainer |
 | Q-073 | Pinned lines aren't saved with the file | assumption | 0.15.0 | open |

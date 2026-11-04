@@ -8,7 +8,7 @@ The human-facing overview is in [README.md](README.md).
 - **What it is:** a Blender add-on that adds filled (solid or hatched) caps to viewport
   clipping, plus section and slice views with a scrub slider. It drives the same
   `RegionView3D.clip_planes` that Alt+B uses and draws the caps with the `gpu` module.
-- **Status:** in development (0.15.0, 2026-11-04), used on real work, not close to 1.0; tested in Blender (4.2.23 and 5.2.3,
+- **Status:** in development (0.15.1, 2026-11-04), used on real work, not close to 1.0; tested in Blender (4.2.23 and 5.2.3,
   OpenGL; 5.2 on Vulkan too) with the in-viewport suite below. Waiting for the maintainer's
   test on real work. See "State and next steps".
 - **Runs in:** Blender 4.2+ as an extension (`crosscut/blender_manifest.toml`); Python 3.11
@@ -112,7 +112,14 @@ this file, the reasons behind decisions and the approaches that were dropped go 
 - 0.15.0: the free end follows the cursor; Esc stops, a further Esc clears (D-040); Clear and Keep buttons.
 - **1.0 is not close (maintainer, 2026-11-02).** It's in development, not a test-only stretch (2026-11-03).
   Say so plainly when bugs and features are still coming; don't call it nearly done.
-- Next: the maintainer keeps testing. Open questions Q-030 to Q-073 in DECISIONS.md. Then the Issues.
+- 0.15.1: Measure's lines hide with overlays. 300+ viewport checks.
+- **Picking this up in a new session:** the maintainer works by Remote Control and tests each build: attach the zip at the
+  top of the reply. Each round: tests on 5.2, 5.2 Vulkan and 4.2 (a 4.2 hang is issue #8: rerun), look at screenshots,
+  update CHANGELOG, DECISIONS, PROMPT_STATS (one tagged line per thing asked, and the tally), tag, pre-release, Workbench row.
+  Simulated Esc only reaches the viewport's keymap with the mouse over it, and a redraw resets a test's context override.
+- Next, the maintainer's ideas, not started and not yet prioritised: [snap the free end](https://github.com/calvin-young/blender-crosscut/issues/11), [save pinned lines](https://github.com/calvin-young/blender-crosscut/issues/12),
+  [Print Preview for FDM](https://github.com/calvin-young/blender-crosscut/issues/13), [Print Preview for the 580](https://github.com/calvin-young/blender-crosscut/issues/14). Print Preview would then need a profile choice.
+  Open questions Q-030 to Q-073 in DECISIONS.md.
 - Not tested yet: macOS/Windows, HiDPI scaling above 1, Metal, very large multi-object scenes.
 
 ## Before you change things

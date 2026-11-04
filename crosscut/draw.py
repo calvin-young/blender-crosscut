@@ -1607,8 +1607,8 @@ def _measure_lines(context):
 
 def _draw_measure(context):
     lines = _measure_lines(context)
-    if not lines:
-        return
+    if not lines or not context.space_data.overlay.show_overlays:
+        return  # like the lengths, which the readout hides with overlays
     sh = _shader("line")
     region = context.region
     gpu.state.depth_test_set('NONE')

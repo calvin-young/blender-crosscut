@@ -1345,7 +1345,17 @@ def overlays_off(view):
           f"{on.at(corner)} {off.at(corner)} {bg}")
     readout_area = off.px[off.oy + 8:off.oy + 30, off.ox + view.region.width // 3:off.ox + 2 * view.region.width // 3]
     check(T, "readout hides with overlays", int(np.ptp(readout_area, axis=(0, 1)).max()) <= 3)
+    # measuring lines go with their lengths
+    dr = cc("draw")
+    dr._measure["dims"].append((np.array((-60.0, 40.0, 0.0)), np.array((60.0, 40.0, 0.0)), "1"))
+    yield from settle()
+    spot = view.px((50, 40, 0))
+    gone = Shot(view, "overlays_off_line").at(spot, r=0)
     view.space.overlay.show_overlays = True
+    yield from settle()
+    shown = Shot(view, "overlays_on_line").at(spot, r=0)
+    dr.measure_clear()
+    check(T, "a pinned line hides with overlays", near(gone, bg, 4) and not near(shown, bg, 4), f"{gone} {shown}")
     check(T, "no draw errors", not errors(), str(errors()))
 
 

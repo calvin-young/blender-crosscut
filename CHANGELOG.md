@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.15.1 (2026-11-04)
+
+- Fixed: Measure's lines stayed on screen with overlays off (Alt+Shift+Z), though their lengths hid.
+
 ## 0.15.0 (2026-11-04)
 
 - **Measure**: while placing a line, it follows the cursor directly. Inside the section the line runs through

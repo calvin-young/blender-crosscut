@@ -23,7 +23,7 @@ line below carries a category.
 
 | Bugs found | UI tweaks | New features | Direction | Total |
 |---|---|---|---|---|
-| 28 | 60 | 26 | 12 | 126 |
+| 29 | 60 | 30 | 12 | 131 |
 
 ## Sessions
 
@@ -33,7 +33,7 @@ steering lines matters more than the count of prompts.
 
 | Date | Tool and model | Prompts | Steering lines | Notes |
 |---|---|---|---|---|
-| 2026-11-02 | Claude Code (workstation), Opus 5.5 | 11 | 65 | 0.9.2 to 0.15.0 from the maintainer's notes after several days of real use |
+| 2026-11-02 | Claude Code (workstation), Opus 5.5 | 12 | 70 | 0.9.2 to 0.15.1 from the maintainer's notes after several days of real use |
 | 2026-10-30 | Claude Code (workstation), Opus 5.5 | 3 | 3 | `mjf-preview` branch: Print Preview, for the demo reel in the demo-reels repo |
 | 2026-10-29 | Claude Code (workstation), Opus 5.5 | 5 | 17 | First in-Blender test pass: viewport test suite, 0.2.0 fixes, zip; then 0.3.0, 0.4.0, the 0.9.0 release candidate and 0.9.1 from the maintainer's tests |
 | 2026-10-26 | Claude (cloud session), Opus 5.5 | 1 | 3 | Repo created; first user test; handoff to Claude Code |
@@ -45,6 +45,11 @@ One line for each thing the human contributed that the AI would not have done on
 newest first, tagged with its kind (decide, correct, domain, tested, scope) and, from 2026-11-03, its
 category (bug, ui, feature, direction).
 
+- 2026-11-04 [tested][bug]: Measure's lines stay on screen with overlays off.
+- 2026-11-04 [decide][feature]: snap the free end to natural targets, such as orthogonal.
+- 2026-11-04 [decide][feature]: save pinned lines with the file.
+- 2026-11-04 [domain][feature]: Print Preview for FDM: filament lines and simple infill.
+- 2026-11-04 [domain][feature]: Print Preview for the 580: a color shell on the layer.
 - 2026-11-04 [tested][ui]: Measure's text should follow Hatch Space, not stay one size in Model space.
 - 2026-11-04 [tested][bug]: the free end lags: you have to move past where you want it to land.
 - 2026-11-04 [tested][ui]: Esc cleared pinned lines when only stopping was meant.
