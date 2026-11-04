@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.14.0 (2026-11-04)
+
+- **Measure**: click a line to anchor its nearer end; moving the mouse slides the other end along the contour.
+  A second click pins it, and you can carry on and pin more. Esc while placing drops that line; otherwise it
+  clears them all and stops.
+- **Brightness** of fill colors now defaults to 50 %.
+- **Cut Faces** settings are grouped with rules: which parts, their color, the lines on them, overlaps. Open Part
+  Opacity moved up beside Fill Opacity.
+
 ## 0.13.0 (2026-11-03)
 
 - Fixed: **weight painting did nothing** with Section, Slice or a clipping region on, and neither did other tools

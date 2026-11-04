@@ -319,6 +319,14 @@ def test_overlap_local_width():
     assert sm.overlap_measures(a, b, pt, (False, False), local=False)[1] is None
 
 
+def test_snap_to_contour():
+    a = _rect(0, 0, 30, 10)
+    assert np.allclose(sm.snap_to_contour(a, (5, 12)), (5, 10))
+    # near the anchored wall, it goes elsewhere
+    assert np.allclose(sm.snap_to_contour(a, (5, 1), avoid=np.array([5.0, 0.0]), radius=2.0), (5, 10)) or \
+        np.allclose(sm.snap_to_contour(a, (5, 1), avoid=np.array([5.0, 0.0]), radius=2.0), (0, 1))
+
+
 def test_section_measures():
     a = _rect(0, 0, 30, 10)
     best, near = sm.section_measures(a, (5, 5), False, half=1.0)

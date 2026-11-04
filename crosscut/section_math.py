@@ -628,6 +628,19 @@ def overlap_measures(seg_a, seg_b, point, oriented=(True, True), half=1.0, cells
     return best, near
 
 
+def snap_to_contour(seg, target, avoid=None, radius=0.0):
+    """The point on the contours (K,2,2) nearest `target`, leaving out segments that pass
+    within `radius` of `avoid` (the wall a measuring line is anchored on), if any remain."""
+    if avoid is not None and radius > 0.0:
+        a = seg[:, 0]
+        d = seg[:, 1] - a
+        t = np.clip(np.einsum("ij,ij->i", avoid - a, d) / np.maximum(np.einsum("ij,ij->i", d, d), 1e-30), 0.0, 1.0)
+        away = np.linalg.norm(a + t[:, None] * d - avoid, axis=1) > radius
+        if away.any():
+            seg = seg[away]
+    return _farthest(np.asarray(target, dtype=np.float64)[None, :], seg)[2]
+
+
 def section_measures(seg, point, oriented=True, half=1.0, cells=160, local=True, greatest=False):
     """How thick one part's section is at `point` (all 2D, in the plane): (greatest,
     local), each (distance, end, end) or None. `local` is the shortest line through

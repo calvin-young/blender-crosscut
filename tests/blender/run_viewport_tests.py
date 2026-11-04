@@ -1549,14 +1549,109 @@ def measure_overlap(view):
         max_d = float(np.linalg.norm(np.asarray(m["a"]) - m["b"]))
         loc_d = float(np.linalg.norm(np.asarray(m["la"]) - m["lb"])) if m["la"] is not None else 0.0
         check(T, "the local width is narrower here", 0.0 < loc_d < max_d - 0.2, f"{loc_d} {max_d}")
+        # click a line: its nearer end stays, the other follows the mouse along its contour
+        before_sel = [o.name for o in bpy.context.selected_objects]
+        la_hover = np.asarray(m["la"]).copy()
+        end = view.px(tuple(la_hover))
+        win.event_simulate('MOUSEMOVE', 'NOTHING', x=r.x + end[0], y=r.y + end[1])
+        yield 0.2
+        local_now = dr._measure["la"]
+        check(T, "still a line to click", local_now is not None)
+        fixed_expect = None
+        if local_now is not None:
+            near_end = min((dr._measure["la"], dr._measure["lb"]), key=lambda q: np.linalg.norm(np.asarray(q) - la_hover))
+            fixed_expect = np.asarray(near_end).copy()
+        win.event_simulate('LEFTMOUSE', 'PRESS', x=r.x + end[0], y=r.y + end[1])
+        win.event_simulate('LEFTMOUSE', 'RELEASE', x=r.x + end[0], y=r.y + end[1])
+        yield 0.2
+        pin = dr._measure["anchor"]
+        check(T, "click anchors the nearer end", pin is not None and np.allclose(pin["a"], fixed_expect, atol=1e-3)
+              if fixed_expect is not None else False, str(pin and pin["a"]))
+        check(T, "the click doesn't select anything", [o.name for o in bpy.context.selected_objects] == before_sel)
+        length0 = float(np.linalg.norm(pin["a"] - pin["b"])) if pin else 0.0
+        if pin:
+            win.event_simulate('MOUSEMOVE', 'NOTHING', x=r.x + end[0], y=r.y + end[1] + 60)
+            yield 0.2
+            yield from settle()
+            Shot(view, "measure_anchored")
+            check(T, "the anchor stays put", np.allclose(pin["a"], fixed_expect, atol=1e-3))
+            length1 = float(np.linalg.norm(pin["a"] - pin["b"]))
+            check(T, "the other end moves, so the length changes", abs(length1 - length0) > 0.01, f"{length0} {length1}")
+            # still on the other part's circle (radius 30)
+            b = np.asarray(pin["b"])
+            on_circle = min(abs(np.hypot(b[0] + 26, b[1]) - 30), abs(np.hypot(b[0] - 26, b[1]) - 30))
+            check(T, "and stays on a contour", on_circle < 0.1, str(on_circle))
+            win.event_simulate('LEFTMOUSE', 'PRESS', x=r.x + end[0], y=r.y + end[1] + 60)
+            win.event_simulate('LEFTMOUSE', 'RELEASE', x=r.x + end[0], y=r.y + end[1] + 60)
+            yield 0.2
+            check(T, "a second click pins it", len(dr._measure["dims"]) == 1 and dr._measure["anchor"] is None)
+        # and it carries on: another line, and another pin
+        x, y = view.px((0, -6, 0))
+        win.event_simulate('MOUSEMOVE', 'NOTHING', x=r.x + x, y=r.y + y)
+        yield 0.2
+        win.event_simulate('LEFTMOUSE', 'PRESS', x=r.x + x, y=r.y + y)
+        win.event_simulate('LEFTMOUSE', 'RELEASE', x=r.x + x, y=r.y + y)
+        yield 0.2
+        check(T, "another line anchors", dr._measure["anchor"] is not None)
+        win.event_simulate('ESC', 'PRESS', x=r.x + x, y=r.y + y)
+        win.event_simulate('ESC', 'RELEASE', x=r.x + x, y=r.y + y)
+        yield 0.2
+        check(T, "Esc while placing drops only that line", dr._measure["anchor"] is None and len(dr._measure["dims"]) == 1
+              and dr.measure_running())
+        win.event_simulate('LEFTMOUSE', 'PRESS', x=r.x + x + 1, y=r.y + y)
+        win.event_simulate('LEFTMOUSE', 'RELEASE', x=r.x + x + 1, y=r.y + y)
+        yield 0.2
         x, y = view.px((-110, 0, 0))
         win.event_simulate('MOUSEMOVE', 'NOTHING', x=r.x + x, y=r.y + y)
         yield 0.3
+        Shot(view, "measure_pinned")
         check(T, "leaving clears both", dr._measure["a"] is None and dr._measure["la"] is None)
         win.event_simulate('ESC', 'PRESS', x=r.x + x, y=r.y + y)
         win.event_simulate('ESC', 'RELEASE', x=r.x + x, y=r.y + y)
         yield 0.2
         check(T, "Esc stops it", not dr.measure_running())
+        # a wall: anchored on its inner edge, the outer end slides around the outer edge
+        for ob in list(scene.objects):
+            bpy.data.objects.remove(ob)
+        hollow_sphere("part-001", 40, 25, segs=128)
+        view.look((0, 0, 0), 120, (0, 0, 0), ortho=True)
+        settings(s, mode='SECTION', orientation='Z', cap_style='HATCH', color_source='OBJECT')
+        yield 0.1
+        yield from settle()
+        with view.override():
+            bpy.ops.crosscut.measure('INVOKE_DEFAULT')
+        yield 0.1
+        x, y = view.px((26, 0, 0))
+        win.event_simulate('MOUSEMOVE', 'NOTHING', x=r.x + x, y=r.y + y)
+        yield 0.2
+        check(T, "a wall's thickness", dr._measure["la"] is not None and abs(float(np.linalg.norm(
+            np.asarray(dr._measure["la"]) - dr._measure["lb"])) - 15.0) < 0.5, dr._measure["ltext"])
+        win.event_simulate('LEFTMOUSE', 'PRESS', x=r.x + x, y=r.y + y)
+        win.event_simulate('LEFTMOUSE', 'RELEASE', x=r.x + x, y=r.y + y)
+        yield 0.2
+        pin = dr._measure["anchor"]
+        check(T, "anchored on the inner edge", pin is not None and abs(float(np.linalg.norm(pin["a"][:2])) - 25.0) < 0.2)
+        x2, y2 = view.px((26, 12, 0))
+        win.event_simulate('MOUSEMOVE', 'NOTHING', x=r.x + x2, y=r.y + y2)
+        yield 0.2
+        yield from settle()
+        Shot(view, "measure_wall_anchored")
+        out = float(np.linalg.norm(pin["b"][:2]))
+        check(T, "the free end slides round the outer edge", abs(out - 40.0) < 0.2 and abs(float(pin["b"][1])) > 3.0,
+              f"{out} {pin['b']}")
+        win.event_simulate('LEFTMOUSE', 'PRESS', x=r.x + x2, y=r.y + y2)
+        win.event_simulate('LEFTMOUSE', 'RELEASE', x=r.x + x2, y=r.y + y2)
+        yield 0.2
+        x3, y3 = view.px((0, 30, 0))
+        win.event_simulate('MOUSEMOVE', 'NOTHING', x=r.x + x3, y=r.y + y3)
+        yield 0.2
+        yield from settle()
+        Shot(view, "measure_wall_pinned")
+        check(T, "pinned, with a new line hovering", len(dr._measure["dims"]) == 1 and dr._measure["la"] is not None)
+        win.event_simulate('ESC', 'PRESS', x=r.x + x3, y=r.y + y3)
+        win.event_simulate('ESC', 'RELEASE', x=r.x + x3, y=r.y + y3)
+        yield 0.2
+        check(T, "and clears the pinned lines", not dr._measure["dims"])
     dr.measure_stop()
     check(T, "no draw errors", not errors(), str(errors()))
 

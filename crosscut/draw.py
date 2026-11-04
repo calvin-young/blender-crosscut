@@ -41,7 +41,8 @@ _tint_pending = set()
 _tool_box = {}         # rv3d pointer -> the planes its clipping box was last fitted for
 _tool_box_pending = set()
 _saved_clip = {}       # rv3d pointer -> the clipping region's planes when Section or Slice took over
-_measure = {"on": False, "region": None, "a": None, "b": None, "text": "", "la": None, "lb": None, "ltext": ""}
+_measure = {"on": False, "region": None, "a": None, "b": None, "text": "", "la": None, "lb": None, "ltext": "",
+            "cut": None, "anchor": None, "dims": []}  # hover lines, the line being placed, pinned lines
 
 
 # ------------------------------------------------------------------ shaders
@@ -1329,11 +1330,13 @@ def measure_running():
 
 
 def measure_start():
-    _measure.update(on=True, region=None, a=None, b=None, text="", la=None, lb=None, ltext="")
+    _measure.update(on=True, region=None, a=None, b=None, text="", la=None, lb=None, ltext="", cut=None, anchor=None,
+                    dims=[])
 
 
 def measure_stop():
-    _measure.update(on=False, region=None, a=None, b=None, text="", la=None, lb=None, ltext="")
+    _measure.update(on=False, region=None, a=None, b=None, text="", la=None, lb=None, ltext="", cut=None, anchor=None,
+                    dims=[])
 
 
 def native_or_lit(s, rv3d):
@@ -1412,12 +1415,107 @@ def _measure_at(context, region, x, y):
         lift = n * float(p @ n)
         world = [(m[1][0] * u + m[1][1] * v + lift, m[2][0] * u + m[2][1] * v + lift, m[0])
                  if m is not None else None for m in (res, near)]
-        return {"max": world[0], "local": world[1]} if world[0] or world[1] else None
+        if not (world[0] or world[1]):
+            return None
+        overlap = len(parts) >= 2 and not s.measure_ignore_overlaps
+        return {"max": world[0], "local": world[1],
+                "cut": {"plane": plane, "basis": basis, "lift": lift,
+                        "contours": [sa @ basis.T, parts[1][1] @ basis.T] if overlap else [sa @ basis.T]}}
     return None
+
+
+def _on_cut(region, x, y, cut):
+    """The mouse, on the plane of `cut`, in the plane's own 2D coordinates. None if it misses."""
+    from bpy_extras import view3d_utils
+    rv3d = region.data
+    xy = (x - region.x, y - region.y)
+    origin = np.array(view3d_utils.region_2d_to_origin_3d(region, rv3d, xy))
+    ray = np.array(view3d_utils.region_2d_to_vector_3d(region, rv3d, xy))
+    plane = cut["plane"]
+    denom = float(plane[:3] @ ray)
+    if abs(denom) < 1e-12:
+        return None
+    p = origin + ray * (-(float(plane[:3] @ origin) + float(plane[3])) / denom)
+    return p @ cut["basis"].T
+
+
+def _screen_distance(region, a, b, x, y):
+    """Pixels from the mouse to the segment a-b on screen."""
+    from bpy_extras.view3d_utils import location_3d_to_region_2d
+    pa = location_3d_to_region_2d(region, region.data, tuple(a))
+    pb = location_3d_to_region_2d(region, region.data, tuple(b))
+    if pa is None or pb is None:
+        return float("inf")
+    m = np.array((x - region.x, y - region.y), dtype=np.float64)
+    pa, pb = np.array(pa), np.array(pb)
+    d = pb - pa
+    t = min(1.0, max(0.0, float((m - pa) @ d) / max(float(d @ d), 1e-12)))
+    return float(np.linalg.norm(pa + d * t - m))
+
+
+def measure_click(context, x, y):
+    """A click while measuring. On a showing line: anchor its nearer end, so the other end
+    follows the mouse along a contour. While anchored: pin the line. True if it was used."""
+    found = _view_under_mouse(context, x, y)
+    if found is None:
+        return False
+    area, region = found
+    pin = _measure["anchor"]
+    if pin is not None:
+        if pin["region"] != region.as_pointer():
+            return False
+        _measure["dims"].append((pin["a"], pin["b"], fmt_length(context.scene, float(np.linalg.norm(pin["a"] - pin["b"])))))
+        _measure["anchor"] = None
+        area.tag_redraw()
+        return True
+    if not _measure_shown() or _measure["region"] != region.as_pointer() or _measure["cut"] is None:
+        return False
+    lines = [(a, b) for a, b in ((_measure["a"], _measure["b"]), (_measure["la"], _measure["lb"])) if a is not None]
+    a, b = min(lines, key=lambda ln: _screen_distance(region, ln[0], ln[1], x, y))
+    # the end nearer the mouse stays; the other one follows it
+    if _screen_distance(region, b, b, x, y) < _screen_distance(region, a, a, x, y):
+        a, b = b, a
+    cut = _measure["cut"]
+    start = _on_cut(region, x, y, cut)
+    if start is None:
+        return False
+    fixed, free = a @ cut["basis"].T, b @ cut["basis"].T
+    # the free end keeps to the contour it's on (an overlap has two)
+    contour = min(cut["contours"], key=lambda seg: float(np.linalg.norm(sm.snap_to_contour(seg, free) - free)))
+    _measure.update(region=None, a=None, b=None, text="", la=None, lb=None, ltext="")
+    _measure["anchor"] = {"region": region.as_pointer(), "a": a, "b": b, "fixed": fixed, "free": free, "start": start,
+                          "contour": contour, "radius": 0.25 * float(np.linalg.norm(free - fixed)), "cut": cut}
+    area.tag_redraw()
+    return True
+
+
+def _anchor_update(context, x, y):
+    pin = _measure["anchor"]
+    found = _view_under_mouse(context, x, y)
+    if found is None or found[1].as_pointer() != pin["region"]:
+        return
+    cut = pin["cut"]
+    p = _on_cut(found[1], x, y, cut)
+    if p is None:
+        return
+    # moves as far as the mouse has since the click, then back onto the contour
+    q = sm.snap_to_contour(pin["contour"], pin["free"] + p - pin["start"], pin["fixed"], pin["radius"])
+    pin["b"] = q[0] * cut["basis"][0] + q[1] * cut["basis"][1] + cut["lift"]
+    found[0].tag_redraw()
+
+
+def measure_cancel_anchor():
+    """Esc while anchored: drop that line and keep measuring. True if there was one."""
+    had = _measure["anchor"] is not None
+    _measure["anchor"] = None
+    return had
 
 
 def measure_update(context, x, y):
     """Called on every mouse move while measuring."""
+    if _measure["anchor"] is not None:
+        _anchor_update(context, x, y)
+        return
     found = _view_under_mouse(context, x, y)
     res = None
     try:
@@ -1431,8 +1529,9 @@ def measure_update(context, x, y):
             traceback.print_exc()
     had = _measure_shown()
     if res is None:
-        _measure.update(region=None, a=None, b=None, text="", la=None, lb=None, ltext="")
+        _measure.update(region=None, a=None, b=None, text="", la=None, lb=None, ltext="", cut=None)
     else:
+        _measure["cut"] = res["cut"]
         top, local = res["max"], res["local"]
         # the same line twice would only collide: show it once, as the max
         if top is not None and local is not None and abs(local[2] - top[2]) <= 0.01 * max(top[2], 1e-12) and (
@@ -1452,10 +1551,27 @@ def _measure_shown():
     return _measure["a"] is not None or _measure["la"] is not None
 
 
-def _draw_measure(context):
-    if not _measure_shown() or _measure["region"] != context.region.as_pointer():
-        return
+def _measure_lines(context):
+    """(end, end, text, color) of every measuring line to draw in this region."""
     s = context.scene.crosscut
+    key = context.region.as_pointer()
+    out = [(a, b, text, s.measure_color) for a, b, text in _measure["dims"]]
+    pin = _measure["anchor"]
+    if pin is not None and pin["region"] == key:
+        out.append((pin["a"], pin["b"], fmt_length(context.scene, float(np.linalg.norm(pin["a"] - pin["b"]))),
+                    s.measure_color))
+    if _measure["region"] == key:
+        if _measure["a"] is not None:
+            out.append((_measure["a"], _measure["b"], _measure["text"], s.measure_max_color))
+        if _measure["la"] is not None:
+            out.append((_measure["la"], _measure["lb"], _measure["ltext"], s.measure_color))
+    return out
+
+
+def _draw_measure(context):
+    lines = _measure_lines(context)
+    if not lines:
+        return
     sh = _shader("line")
     region = context.region
     gpu.state.depth_test_set('NONE')
@@ -1465,10 +1581,7 @@ def _draw_measure(context):
     sh.uniform_float("viewportSize", (region.width, region.height))
     ui = bpy.context.preferences.system.ui_scale
     # dark under light, so it shows on any hatch
-    for a, b, color in ((_measure["a"], _measure["b"], s.measure_max_color),
-                        (_measure["la"], _measure["lb"], s.measure_color)):
-        if a is None:
-            continue
+    for a, b, _text, color in lines:
         batch = batch_for_shader(sh, 'LINES', {"pos": [tuple(a), tuple(b)]})
         for width, c in ((5.0, (0.0, 0.0, 0.0, 0.9)), (2.5, tuple(color) + (1.0,))):
             sh.uniform_float("lineWidth", width * ui)
@@ -1649,14 +1762,12 @@ def draw_readout():
     blf.size(font, 12 * ui)
     blf.enable(font, blf.SHADOW)
     blf.shadow(font, 3, 0.0, 0.0, 0.0, 0.85)
-    if _measure_shown() and _measure["region"] == context.region.as_pointer():
+    measured = _measure_lines(context)
+    if measured:
         from bpy_extras.view3d_utils import location_3d_to_region_2d
         blf.size(font, s.measure_text_size * ui)
         blf.disable(font, blf.SHADOW)
-        for a, b, text, color in ((_measure["a"], _measure["b"], _measure["text"], s.measure_max_color),
-                                  (_measure["la"], _measure["lb"], _measure["ltext"], s.measure_color)):
-            if a is None:
-                continue
+        for a, b, text, color in measured:
             p = location_3d_to_region_2d(context.region, context.region_data,
                                          tuple(0.5 * (np.asarray(a) + np.asarray(b))))
             if p is None:
@@ -1677,7 +1788,8 @@ def draw_readout():
         return
     lines, warn, severe = readout_lines(scene, s, _last_info.get(context.region.as_pointer()))
     if _measure["on"]:
-        lines = lines + ["Measure: hover over a cut (Esc to stop)"]
+        lines = lines + ["Measure: click to place the line, Esc to drop it" if _measure["anchor"] is not None
+                         else "Measure: hover over a cut, click a line to adjust and pin it, Esc to clear and stop"]
     if not lines and not warn and not severe:
         blf.disable(font, blf.SHADOW)
         return

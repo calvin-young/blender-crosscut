@@ -311,7 +311,7 @@ class CrosscutSettings(bpy.types.PropertyGroup):
         description="Grays out colors that come from the parts (Auto, Object, Material, Palette). 0 is gray",
     )
     fill_brightness: FloatProperty(
-        name="Brightness", subtype='FACTOR', min=0.0, max=1.0, default=0.75, update=tag_redraw,
+        name="Brightness", subtype='FACTOR', min=0.0, max=1.0, default=0.5, update=tag_redraw,
         description="Darkens colors that come from the parts, so an unlit cap sits with the shaded surfaces around it",
     )
     fill_tint: FloatVectorProperty(

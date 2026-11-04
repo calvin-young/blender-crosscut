@@ -92,6 +92,13 @@ def _split(layout):
     return layout.column()
 
 
+def _rule(col):
+    try:
+        col.separator(factor=1.5, type='LINE')
+    except TypeError:  # older Blender
+        col.separator()
+
+
 def _draw_cut_faces(layout, context):
     s = context.scene.crosscut
     col = _split(layout)
@@ -100,13 +107,16 @@ def _draw_cut_faces(layout, context):
         if s.mode == 'SLICE':
             _outline_row(col, s)  # a zero-thickness slice still shows its outline
         return
+    # which parts
     col.prop(s, "targets")
     if s.targets == 'COLLECTION':
         col.prop(s, "target_collection")
     names = engine.hidden_from_caps(context, s)
     if names:
         more = f" (+{len(names) - 2})" if len(names) > 2 else ""
-        layout.label(text="Not filled (Wire/Bounds display): " + ", ".join(names[:2]) + more, icon='INFO')
+        col.label(text="Not filled (Wire/Bounds display): " + ", ".join(names[:2]) + more, icon='INFO')
+    _rule(col)
+    # their color
     col.prop(s, "color_source")
     if s.color_source == 'SINGLE' or (s.color_source == 'AUTO' and draw.auto_uses_cap_color(context, s)):
         col.prop(s, "single_color")
@@ -116,6 +126,9 @@ def _draw_cut_faces(layout, context):
         col.prop(s, "fill_tint")
         col.prop(s, "fill_tint_amount", slider=True)
     col.prop(s, "fill_opacity", slider=True)
+    col.prop(s, "open_opacity", slider=True)
+    _rule(col)
+    # the lines on them
     if s.cap_style == 'HATCH':
         col.prop(s, "hatch_space")
         if s.hatch_space == 'SCREEN':
@@ -127,6 +140,8 @@ def _draw_cut_faces(layout, context):
         col.prop(s, "hatch_width")
         col.prop(s, "hatch_vary")
     _outline_row(col, s)
+    _rule(col)
+    # where they overlap
     col.prop(s, "overlap_style", expand=True)
     if s.overlap_style == 'STRIPES':
         if s.cap_style != 'HATCH':
@@ -141,7 +156,6 @@ def _draw_cut_faces(layout, context):
         if s.interference_style != 'SOLID':
             col.prop(s, "interference_line_color")
         col.prop(s, "interference_opacity", slider=True)
-    col.prop(s, "open_opacity", slider=True)
 
 
 def _outline_row(col, s):

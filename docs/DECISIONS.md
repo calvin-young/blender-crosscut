@@ -11,6 +11,7 @@ this list is an assumption, tracked in the table at the end.
 | ID | Requirement | Status in 0.1.0 |
 | --- | --- | --- |
 | R-021 | After 0.12.0 (2026-11-03): Measure in light blue at the cursor and a complementary color for the max, legible text, a toggle for the max; Clip Tint doesn't work (revert unless easy); "Fill Targets"; slices red on the back. Then: lit X/Y/Z/View turns off; weight painting doesn't work with clipping on; a way to adjust fill colors (grayer, redder, darker, transparent); Measure on single parts, thickness at the cursor, max optional and off, maybe an Ignore Overlaps toggle | 0.13.0, see below |
+| R-022 | After 0.13.0 (2026-11-04): Brightness default 50 %; group the Cut Faces settings; a project-share pie on the status page; Measure: click anchors the end nearest the cursor, moving slides the other end along the contour, a second click pins it, repeatable, Esc clears. Asked for guidance on whether Measure should be a separate branch, release or add-on, and on dimensioned drawings | 0.14.0, see below |
 | R-020 | After 0.11.0 (2026-11-03): no outlines through interiors in Print Preview; Slice looks the same as Section there; Slice Thickness into Section/Slice Plane; cursor, center, selection as small buttons between the arrows; even out the gaps around Measure Overlap, closer to Settings; settings for Measure Overlap (color, text size) and a local width at the mouse, on by default; is "Caps" too unintuitive; Clip Tint doesn't come back after off/on or after Section; left-align the three settings; back on its own tab, as a single panel | 0.12.0, see below |
 | R-019 | After 0.10.0 (2026-11-03): outlines stay black on problem parts; a 0.5 button in the scrub row; Targets inside Caps as "Cap: Visible Objects..."; Interference becomes a third Overlaps option, Highlight, its settings right below; Plane renamed Section/Slice Plane with the scrub settings at its top; Clip remembers the last box; the release plan accepted, with no full release until the maintainer signals | 0.11.0, see below |
 | R-018 | After 0.9.4 (2026-11-03): in development rather than test-only; a steering tally on the status page; guidance on releases; overlays off hide the plane; orange outlines stuck on; hatch scales with part size; caps match Random shading; move to the View tab with Settings folded in; annotations stay over caps; inside-out warning and a Face Orientation toggle; no "Alt+B" wording; drop the faint box, at least once scrubbing; two sliders or a toggle for the clip walls; an easy way to measure an overlap; a translucent cap seen from behind should read red like from outside | 0.10.0, see below |
@@ -33,6 +34,31 @@ this list is an assumption, tracked in the table at the end.
 | R-001 | Main use: while modelling parts. Secondary: finding interferences when packing buckets | Drives defaults |
 
 ## Decisions
+
+### Changes after the maintainer's notes on 0.13.0 (0.14.0, 2026-11-04)
+
+- **Cut Faces groups** (*assumed* order): which parts; their color (source, adjustments, opacities); the lines on
+  them (hatching, outline); overlaps. Rules between them, no sub-panels.
+- **Anchored lines** (D-037).
+- **Measure stays in Crosscut for now** (D-038).
+
+### D-038: Measure stays in Crosscut, no branch or second add-on (2026-11-04)
+
+- **Context:** The maintainer wondered about a full release without it, with Measure on a branch or as its own add-on.
+- **Decision (recommended, awaiting his call):** Keep it on `main`, labelled experimental when a full release comes. It's
+  off until clicked, so it can't get in anyone's way, and it reads Crosscut's cut contours, so apart from them it has
+  nothing to stand on. Blender extensions have no dependency mechanism, so a second add-on would need to find Crosscut at
+  run time and break when it changes. A long-lived branch means merging everything twice. `section_math` keeps the
+  geometry separate, so splitting later stays possible.
+- **Revisit if:** dimensions become drawings ([issue](https://github.com/calvin-young/blender-crosscut/issues/10)): those would need no cut at all, and could be their own add-on.
+
+### D-037: A pinned line's free end moves by the mouse's movement, then snaps to a contour (2026-11-04)
+
+- **Decision:** The click needn't be on the free end, so the free end moves as far as the mouse has since the click,
+  then snaps to the nearest contour, leaving out segments passing within a quarter of the line's length of the anchor, so it
+  can't fall onto the anchor's own wall. Over an overlap it keeps to the contour it started on. It clicks in place of
+  selecting only when a line is showing, or one is being placed; other clicks pass through (*assumed*).
+- **Limits:** pinned lines are temporary and in world space: not saved, and they don't follow a moved part or plane.
 
 ### Changes after the maintainer's notes on 0.12.0 (0.13.0, 2026-11-03)
 
@@ -694,6 +720,8 @@ What `tests/blender/run_viewport_tests.py` and the screenshots showed in 0.1.0, 
 | Q-064 | "Caps" renamed Cut Faces, Cap to Fill | assumption | 0.12.0 | confirmed by the maintainer |
 | Q-065 | Slice in Print Preview means one layer of powder, or a band | assumption | 0.12.0 | open |
 | Q-066 | Our Clip Tint follows a scrub rather than disappearing | assumption | 0.12.0 | confirmed by the maintainer |
-| Q-067 | Fill Saturation and Brightness default to 0.75 | assumption | 0.13.0 | open |
+| Q-067 | Fill Saturation default 0.75 | assumption | 0.13.0 | open; Brightness set to 0.5 by the maintainer |
 | Q-068 | One Measure button for parts and overlaps | assumption | 0.13.0 | open |
 | Q-069 | The pie's Section from View still re-captures on a second click | assumption | 0.13.0 | open |
+| Q-070 | Measure stays in Crosscut, no branch or second add-on (D-038) | unasked question | 0.14.0 | open |
+| Q-071 | A click on a showing Measure line doesn't select; Esc while placing drops only that line | assumption | 0.14.0 | open |
