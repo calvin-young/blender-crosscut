@@ -171,7 +171,7 @@ any pinned lines.
   hover over its deepest part.
 
 To get the exact line you want, click a showing line: the end nearer the mouse stays put, and moving the mouse
-slides the other end along the contour. Click again to pin it, and carry on to measure and pin more. Esc while
+swings the line around that end, with the other end following the section's edges. Click again to pin it, and carry on to measure and pin more. Esc while
 placing a line drops just that one. Pinned lines stay where they are if you move a part or the plane.
 
 In Settings > Measure:

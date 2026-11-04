@@ -42,15 +42,24 @@ this list is an assumption, tracked in the table at the end.
 - **Anchored lines** (D-037).
 - **Measure stays in Crosscut for now** (D-038).
 
+### D-039: An anchored line aims like a beam (2026-11-04)
+
+- **Context:** D-037's nearest-point snap only reached an adjacent edge if the mouse went round the outside: with a
+  line anchored mid-edge on a square, the free end stopped at the corner of the opposite edge.
+- **Decision:** The free end's target still moves with the mouse, but the line aims from the anchor through it and
+  stops at the first contour it meets. If it meets none, because it's aimed out of the part, it falls back
+  on D-037's nearest point. This replaces D-037's rule while the line points into the part.
+
 ### D-038: Measure stays in Crosscut, no branch or second add-on (2026-11-04)
 
 - **Context:** The maintainer wondered about a full release without it, with Measure on a branch or as its own add-on.
-- **Decision (recommended, awaiting the maintainer's call):** Keep it on `main`, labelled experimental when a full release comes. It's
+- **Decision (agreed by the maintainer):** Keep it on `main`, labelled experimental when a full release comes. It's
   off until clicked, so it can't get in anyone's way, and it reads Crosscut's cut contours, so apart from them it has
   nothing to stand on. Blender extensions have no dependency mechanism, so a second add-on would need to find Crosscut at
   run time and break when it changes. A long-lived branch means merging everything twice. `section_math` keeps the
   geometry separate, so splitting later stays possible.
-- **Revisit if:** dimensions become drawings ([issue](https://github.com/calvin-young/blender-crosscut/issues/10)): those would need no cut at all, and could be their own add-on.
+- **Dimensioned drawings** are out of scope here (issue #10 closed): a possible add-on of its own some day,
+  noted in the ai-context inbox and on the status page.
 
 ### D-037: A pinned line's free end moves by the mouse's movement, then snaps to a contour (2026-11-04)
 
@@ -723,5 +732,5 @@ What `tests/blender/run_viewport_tests.py` and the screenshots showed in 0.1.0, 
 | Q-067 | Fill Saturation default 0.75 | assumption | 0.13.0 | open; Brightness set to 0.5 by the maintainer |
 | Q-068 | One Measure button for parts and overlaps | assumption | 0.13.0 | open |
 | Q-069 | The pie's Section from View still re-captures on a second click | assumption | 0.13.0 | open |
-| Q-070 | Measure stays in Crosscut, no branch or second add-on (D-038) | unasked question | 0.14.0 | open |
+| Q-070 | Measure stays in Crosscut, no branch or second add-on (D-038) | unasked question | 0.14.0 | agreed by the maintainer |
 | Q-071 | A click on a showing Measure line doesn't select; Esc while placing drops only that line | assumption | 0.14.0 | open |

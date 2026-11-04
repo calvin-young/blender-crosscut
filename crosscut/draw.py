@@ -1498,8 +1498,8 @@ def _anchor_update(context, x, y):
     p = _on_cut(found[1], x, y, cut)
     if p is None:
         return
-    # moves as far as the mouse has since the click, then back onto the contour
-    q = sm.snap_to_contour(pin["contour"], pin["free"] + p - pin["start"], pin["fixed"], pin["radius"])
+    # the free end moves as far as the mouse has since the click; the line aims at that
+    q = sm.aim_at_contour(pin["contour"], pin["fixed"], pin["free"] + p - pin["start"], pin["radius"])
     pin["b"] = q[0] * cut["basis"][0] + q[1] * cut["basis"][1] + cut["lift"]
     found[0].tag_redraw()
 

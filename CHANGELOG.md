@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.14.1 (2026-11-04)
+
+- **Measure**: an anchored line now sweeps like a beam around the section, so the free end follows onto adjacent
+  edges and round corners, instead of stopping at the end of the opposite edge.
+
 ## 0.14.0 (2026-11-04)
 
 - **Measure**: click a line to anchor its nearer end; moving the mouse slides the other end along the contour.

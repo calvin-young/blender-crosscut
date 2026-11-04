@@ -327,6 +327,19 @@ def test_snap_to_contour():
         np.allclose(sm.snap_to_contour(a, (5, 1), avoid=np.array([5.0, 0.0]), radius=2.0), (0, 1))
 
 
+def test_aim_at_contour():
+    # anchored mid-way along the bottom of a square, the line follows round the other edges
+    a = _rect(0, 0, 10, 10)
+    anchor = np.array([5.0, 0.0])
+    assert np.allclose(sm.aim_at_contour(a, anchor, (5, 10), 2.5), (5, 10))    # opposite edge
+    assert np.allclose(sm.aim_at_contour(a, anchor, (8, 10), 2.5), (8, 10))    # along it
+    assert np.allclose(sm.aim_at_contour(a, anchor, (20, 10), 2.5), (10, 10 / 3))  # round onto the next edge
+    assert np.allclose(sm.aim_at_contour(a, anchor, (-20, 10), 2.5), (0, 2.0))     # and the other way
+    # aimed out of the part: the nearest place, away from where it's anchored
+    q = sm.aim_at_contour(a, anchor, (5, -6), 2.5)
+    assert np.linalg.norm(q - anchor) >= 2.5, q
+
+
 def test_section_measures():
     a = _rect(0, 0, 30, 10)
     best, near = sm.section_measures(a, (5, 5), False, half=1.0)

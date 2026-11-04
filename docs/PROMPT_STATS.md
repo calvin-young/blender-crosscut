@@ -23,7 +23,7 @@ line below carries a category.
 
 | Bugs found | UI tweaks | New features | Direction | Total |
 |---|---|---|---|---|
-| 26 | 56 | 26 | 11 | 119 |
+| 27 | 56 | 26 | 12 | 121 |
 
 ## Sessions
 
@@ -33,7 +33,7 @@ steering lines matters more than the count of prompts.
 
 | Date | Tool and model | Prompts | Steering lines | Notes |
 |---|---|---|---|---|
-| 2026-11-02 | Claude Code (workstation), Opus 5.5 | 9 | 59 | 0.9.2 to 0.14.0 from the maintainer's notes after several days of real use |
+| 2026-11-02 | Claude Code (workstation), Opus 5.5 | 10 | 61 | 0.9.2 to 0.14.1 from the maintainer's notes after several days of real use |
 | 2026-10-30 | Claude Code (workstation), Opus 5.5 | 3 | 3 | `mjf-preview` branch: Print Preview, for the demo reel in the demo-reels repo |
 | 2026-10-29 | Claude Code (workstation), Opus 5.5 | 5 | 17 | First in-Blender test pass: viewport test suite, 0.2.0 fixes, zip; then 0.3.0, 0.4.0, the 0.9.0 release candidate and 0.9.1 from the maintainer's tests |
 | 2026-10-26 | Claude (cloud session), Opus 5.5 | 1 | 3 | Repo created; first user test; handoff to Claude Code |
@@ -45,6 +45,8 @@ One line for each thing the human contributed that the AI would not have done on
 newest first, tagged with its kind (decide, correct, domain, tested, scope) and, from 2026-11-03, its
 category (bug, ui, feature, direction).
 
+- 2026-11-04 [decide][direction]: Measure stays in Crosscut; dimensioned drawings out of scope here, a possible add-on some day.
+- 2026-11-04 [tested][bug]: an anchored line stops at the opposite edge and doesn't follow onto adjacent ones.
 - 2026-11-04 [decide][ui]: Brightness default 50 %.
 - 2026-11-04 [decide][ui]: group the Cut Faces settings.
 - 2026-11-04 [domain][feature]: Measure: anchor one end by clicking, slide the other along the contour, pin it, repeat.

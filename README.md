@@ -101,7 +101,7 @@ whole section.
 
 ## Status
 
-**In development (0.14.0).** It's used on real work and still getting bug fixes and new features. 0.1.0 was written without access to Blender; since 0.2.0
+**In development (0.14.1).** It's used on real work and still getting bug fixes and new features. 0.1.0 was written without access to Blender; since 0.2.0
 every build is run and tested in Blender with an automated in-viewport test suite
 ([`tests/blender/`](tests/blender/run_viewport_tests.py)), and 0.3.0 to 0.9.0 followed the
 maintainer's tests on real parts. Tested on Blender 4.2.23 LTS and 5.2.3 LTS (Linux, OpenGL;
