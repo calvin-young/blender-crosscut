@@ -421,6 +421,20 @@ class CrosscutSettings(bpy.types.PropertyGroup):
                     "the plane and the cut through each part is the fused, inked layer. For Section and "
                     "Slice; the bed is the Scrub Range object, or the targets' bounds",
     )
+    print_profile: EnumProperty(
+        name="Printer", default='MJF_5600', update=tag_redraw,
+        description="What a fused layer looks like",
+        items=[
+            ('MJF_5600', "MJF 5600", "A plain fused cross-section"),
+            ('MJF_580', "MJF 580", "A fused cross-section whose edge carries the part's surface color"),
+            ('FDM', "FDM", "Not built yet: draws as the MJF 5600 for now"),
+        ],
+    )
+    color_depth: FloatProperty(
+        name="Color Depth", subtype='DISTANCE', unit='LENGTH', min=0.0, default=0.1, update=tag_redraw,
+        description="How far the surface color reaches in from the part's edge. Never drawn thinner than "
+                    "2 pixels, so it still shows zoomed out",
+    )
     powder_color: FloatVectorProperty(
         name="Powder", subtype='COLOR_GAMMA', size=3, min=0.0, max=1.0, default=(0.93, 0.92, 0.89),
         description="Colour of the unfused powder", update=tag_redraw,

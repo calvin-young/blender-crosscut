@@ -355,10 +355,14 @@ _meshes = {}        # mesh_key -> dict(v, t, bbmin, bbmax, ver), or False for "n
 _sections = {}      # (target key, cap index) -> (signature, result)
 _version = [0]
 _hatch_ids = {}     # target key -> hatch variation index, stable while parts are shown and hidden
+_crossings = {}     # (target key, cap index) -> (serial, what section_math.crossing_values needs)
+_surfaces = {}      # (mesh name, object name if it has modifiers) -> what surface_corners returns
 
 
 def invalidate_object(name):
     for mk in [mk for mk in _meshes if mk[0] == name]:
+        for ck in [ck for ck in _surfaces if ck[0] == mk[1]]:
+            del _surfaces[ck]
         del _meshes[mk]
 
 
@@ -366,6 +370,8 @@ def invalidate_all():
     _meshes.clear()
     _sections.clear()
     _hatch_ids.clear()
+    _crossings.clear()
+    _surfaces.clear()
 
 
 def hatch_index(context, target):
@@ -433,11 +439,12 @@ def _cap_misses(e, m, plane, bounds):
     return len(poly) == 0 or len(sm.clip_convex_polygon(poly, bounds)) == 0
 
 
-def section(target, cap_index, plane, depsgraph, bounds=()):
+def section(target, cap_index, plane, depsgraph, bounds=(), crossings=False):
     """(segments (K,2,3) world space, open-endpoint count, serial) for one
     target, or None. `serial` changes whenever the segments change. Targets
     whose cut lies wholly outside the other active planes (`bounds`) are
-    skipped: with Alt+B's six planes most of them are."""
+    skipped: with Alt+B's six planes most of them are. With `crossings`, also
+    keeps what section_crossings returns, at little extra cost."""
     e = _mesh(target, depsgraph)
     if e is None:
         return None
@@ -446,21 +453,68 @@ def section(target, cap_index, plane, depsgraph, bounds=()):
            np.asarray(bounds, dtype=np.float64).tobytes())
     ck = (target.key, cap_index)
     hit = _sections.get(ck)
-    if hit is not None and hit[0] == sig:
+    if hit is not None and hit[0] == sig and (
+            not crossings or hit[1] is None or _crossings.get(ck, (None,))[0] == hit[1][2]):
         return hit[1]
     local = sm.plane_to_local(plane, m)
     if not sm.bbox_crosses_plane(e["bbmin"], e["bbmax"], local) or _cap_misses(e, m, plane, bounds):
         res = None
     else:
-        seg = sm.section_segments(e["v"], e["t"], local, e["cols"])
+        seg = sm.section_segments(e["v"], e["t"], local, e["cols"], crossings=crossings)
+        info = None
+        if crossings:
+            seg, info = seg
         if len(seg) == 0:
             res = None
         else:
             seg_w = sm.transform_points(seg.reshape(-1, 3), m).reshape(-1, 2, 3)
             _version[0] += 1
             res = (seg_w, sm.open_endpoint_count(seg), _version[0])
+            if crossings:
+                _crossings[ck] = (_version[0], info)
     _sections[ck] = (sig, res)
     return res
+
+
+def section_crossings(target, cap_index, serial):
+    """What section(crossings=True) kept for this serial, or None."""
+    hit = _crossings.get((target.key, cap_index))
+    return hit[1] if hit is not None and hit[0] == serial else None
+
+
+def surface_corners(target, depsgraph):
+    """{"material": per-triangle slot index, "uv": {layer: (M, 3, 2) per-corner UV}, "active": layer name}
+    for a target, or None. In the same triangle order as _mesh. Read once per mesh, not per object,
+    since a build repeats a few meshes many times."""
+    ob = target.eval_ob
+    key = (ob.data.name_full if ob.data is not None else "", target.orig.name_full if target.orig.modifiers else "")
+    if key in _surfaces:
+        return _surfaces[key]
+    out = None
+    try:
+        me = ob.to_mesh(preserve_all_data_layers=True, depsgraph=depsgraph)
+    except (RuntimeError, TypeError):
+        me = None
+    if me is not None:
+        me.calc_loop_triangles()
+        nt = len(me.loop_triangles)
+        material = np.empty(nt, dtype=np.int32)
+        loops = np.empty(nt * 3, dtype=np.int32)
+        if nt:
+            me.loop_triangles.foreach_get("material_index", material)
+            me.loop_triangles.foreach_get("loops", loops)
+        uv = {}
+        for layer in me.uv_layers:
+            flat = np.empty(len(me.loops) * 2, dtype=np.float32)
+            layer.uv.foreach_get("vector", flat)
+            uv[layer.name] = flat.reshape(-1, 2)[loops].reshape(-1, 3, 2)
+        out = {"material": material, "uv": uv, "active": me.uv_layers.active.name if me.uv_layers.active else None}
+        try:
+            ob.to_mesh_clear()
+        except RuntimeError:
+            pass
+    _surfaces[key] = out
+    return out
 
 
 def _mesh_facts(target, depsgraph):

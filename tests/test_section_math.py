@@ -376,6 +376,75 @@ def test_random_shading_color_is_what_blender_draws():
     assert abs(srgb(r) - 231) <= 1 and abs(srgb(g) - 188) <= 2 and abs(srgb(b) - 169) <= 1
 
 
+def _square(size=10.0):
+    h = size / 2
+    return np.array([[[-h, -h], [h, -h]], [[h, -h], [h, h]], [[h, h], [-h, h]], [[-h, h], [-h, -h]]], dtype=np.float64)
+
+
+def test_anchor_normals_one_on_an_edge_two_at_a_corner():
+    seg = _square()
+    mid = sm.anchor_normals([seg], np.array([0.0, -5.0]))
+    assert len(mid) == 1 and abs(abs(mid[0][1]) - 1.0) < 1e-9
+    corner = sm.anchor_normals([seg], np.array([5.0, -5.0]))
+    assert len(corner) == 2
+
+
+def test_snap_normal_goes_straight_across():
+    seg = _square()
+    anchor = np.array([1.0, -5.0])
+    normals = sm.anchor_normals([seg], anchor)
+    end, m = sm.snap_normal(seg, anchor, normals, np.array([1.3, 0.0]), True, 0.5)
+    assert np.allclose(end, (1.0, 5.0)) and abs(m[1] - 1.0) < 1e-9
+    # too far off the normal, and too near the anchor to tell
+    assert sm.snap_normal(seg, anchor, normals, np.array([4.0, 0.0]), True, 0.5) is None
+    assert sm.snap_normal(seg, anchor, normals, np.array([1.0, -4.5]), True, 0.5) is None
+    # beyond the far wall it stays on that wall
+    end, _m = sm.snap_normal(seg, anchor, normals, np.array([1.2, 9.0]), True, 0.5)
+    assert np.allclose(end, (1.0, 5.0))
+
+
+def test_snap_normal_stops_past_the_cursor_not_at_the_first_wall():
+    # a hole between the anchor and the cursor: the end goes past the cursor, as an unsnapped line would
+    hole = _square(2.0)[:, ::-1]
+    seg = np.concatenate([_square(), hole])
+    anchor = np.array([0.0, -5.0])
+    normals = sm.anchor_normals([seg], anchor)
+    end, _m = sm.snap_normal(seg, anchor, normals, np.array([0.1, 3.0]), True, 0.5)
+    assert np.allclose(end, (0.0, 5.0))
+
+
+def test_crossing_values_carry_a_corner_value_along_the_segments():
+    # value = height + 2x, so the answer at any crossing can be worked out from the point itself
+    v, t = uv_sphere(10.0)
+    plane = np.array([0.0, 0.0, 1.0, -2.5])
+    seg, info = sm.section_segments(v, t, plane, crossings=True)
+    assert np.array_equal(seg, sm.section_segments(v, t, plane))
+    corners = (v[t][..., 2] + 2.0 * v[t][..., 0])[..., None]
+    got = sm.crossing_values(info, corners)
+    assert got.shape == (len(seg), 2, 1)
+    assert np.allclose(got[..., 0], seg[..., 2] + 2.0 * seg[..., 0], atol=1e-9)
+
+
+def test_shell_points_inward_and_has_no_cracks():
+    # segments around a circle, counter-clockwise from +z: inward is toward the centre
+    a = np.linspace(0.0, 2.0 * np.pi, 33)[:-1]
+    ring = np.stack([np.cos(a), np.sin(a), np.zeros_like(a)], axis=1) * 10.0
+    seg = np.stack([ring, np.roll(ring, -1, axis=0)], axis=1)
+    normal = (0.0, 0.0, 1.0)
+    inward = sm.shell_inward(seg, normal)
+    pos, into, side = sm.shell_quads(seg, inward)
+    assert len(pos) == 32 * 6 and side.min() == 0.0 and side.max() == 1.0
+    assert (np.einsum("ij,ij->i", pos, into) < 0.0).all()
+    assert (np.einsum("ij,ij->i", pos, sm.shell_quads(seg, sm.shell_inward(seg, normal, flip=True))[1]) > 0.0).all()
+    assert sm.shell_quads(seg, inward, centered=True)[2].min() == -0.5
+    # the end of one segment and the start of the next go the same way, so no gap opens between their quads
+    assert np.allclose(inward[:, 1], np.roll(inward[:, 0], -1, axis=0))
+    assert np.allclose(np.linalg.norm(inward, axis=2), 1.0)
+    # a spike, doubling straight back: never a zero direction
+    spike = np.array([[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]], [[1.0, 0.0, 0.0], [0.0, 0.0, 0.0]]])
+    assert np.allclose(np.linalg.norm(sm.shell_inward(spike, normal), axis=2), 1.0)
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

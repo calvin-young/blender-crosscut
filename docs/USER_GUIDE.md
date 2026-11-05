@@ -159,6 +159,13 @@ Range. **Scrub by Distance** shows where the box's middle is, as a distance.
 **Clip Tint** in Settings shows the region's volume as a faint tint on the background. Blender's own tint
 is always removed, since it can't follow the box; Crosscut's follows it.
 
+### Printer
+
+**Printer** picks what a fused layer looks like. **MJF 5600** is a plain fused cross-section. **MJF 580** (a first try)
+also draws each part's surface color along the inside of its edge, from the material's Base Color image or flat color,
+**Color Depth** deep and never thinner than 2 pixels. A layered material shows its bottom layer. **FDM** isn't built yet: it
+draws like the 5600, and its button opens the issue, for anyone who'd like to take it on.
+
 ## Measure
 
 Click **Measure**, then hover over a cut. It runs until you click it again or press Esc.
@@ -171,7 +178,7 @@ Click **Measure**, then hover over a cut. It runs until you click it again or pr
 
 To get the exact line you want, click a showing line: the end nearer the mouse stays put, and the other end
 follows the mouse. Inside the section the line runs through the mouse to the edge beyond it; outside it, the end
-goes to the nearest point on the edge. Click again to pin it, and carry on to measure and pin more. Esc while placing
+goes to the nearest point on the edge. Near the direction straight across from the anchor's edge it snaps there, and a small square-corner mark shows at the anchor; hold Ctrl to turn that off. Click again to pin it, and carry on to measure and pin more. Esc while placing
 a line drops just that one. Pinned lines stay where they are if you move a part or the plane.
 
 Pinned lines outlast Measure. Esc stops measuring and leaves them; press Esc again to clear them, or use the **X**

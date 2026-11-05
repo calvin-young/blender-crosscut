@@ -108,7 +108,8 @@ class CROSSCUT_OT_clip(bpy.types.Operator):
 
 class CROSSCUT_OT_measure(bpy.types.Operator):
     """Measure on a cut: hover over a part to see its thickness at the mouse, or over an overlap to see
-    how wide it is. Click a line to adjust and pin it. Click this again, or press Esc, to stop"""
+    how wide it is. Click a line to adjust and pin it: it snaps straight across from the edge, unless you
+    hold Ctrl. Click this again, or press Esc, to stop"""
     bl_idname = "crosscut.measure"
     bl_label = "Measure"
     swallow = False
@@ -142,8 +143,9 @@ class CROSSCUT_OT_measure(bpy.types.Operator):
                 return {'RUNNING_MODAL'} if self.swallow else {'PASS_THROUGH'}
             if self.swallow:  # the rest of a click we used, so it can't select anything
                 return {'RUNNING_MODAL'}
-        if event.type == 'MOUSEMOVE':
-            draw.measure_update(context, event.mouse_x, event.mouse_y)
+        if event.type in {'MOUSEMOVE', 'LEFT_CTRL', 'RIGHT_CTRL'}:
+            # pressing or letting go of Ctrl has to show without moving the mouse
+            draw.measure_update(context, event.mouse_x, event.mouse_y, snap=not event.ctrl)
         return {'PASS_THROUGH'}
 
 

@@ -168,6 +168,22 @@ void main() {
 """
 
 
+_SHELL_VS = """
+void main() {
+    vec3 p = pos + lift.xyz;
+    vec4 c = viewProj * vec4(p, 1.0);
+    gl_Position = viewProj * vec4(p + inward * side * max(band.x, band.y * c.w), 1.0);
+    gl_Position.z -= band.z * gl_Position.w;
+    vUV = uv;
+}
+"""
+_SHELL_FS = """
+void main() {
+    fragColor = vec4(tint.rgb * texture(surface, vUV - floor(vUV)).rgb, 1.0);
+}
+"""
+
+
 # Coverage count per pixel, accumulated additively in an 8-bit texture: each
 # cap adds COUNT_UNITS/255, so up to 15 overlapping objects are counted exactly.
 COUNT_UNITS = 16.0
@@ -224,6 +240,11 @@ def _shader(kind):
                           [('VEC3', "pos"), ('VEC2', "uv")],
                           [('MAT4', "viewProj"), ('VEC4', "fillColor"), ('FLOAT', "grain"), ('FLOAT', "depthBias")],
                           varyings=[('VEC2', "vUV")])
+    elif kind == "shell":
+        sh = _make_shader("crosscut_shell", _SHELL_VS, _SHELL_FS,
+                          [('VEC3', "pos"), ('VEC3', "inward"), ('FLOAT', "side"), ('VEC2', "uv")],
+                          [('MAT4', "viewProj"), ('VEC4', "lift"), ('VEC4', "band"), ('VEC4', "tint")],
+                          samplers=["surface"], varyings=[('VEC2', "vUV")])
     elif kind == "line":
         sh = gpu.shader.from_builtin('POLYLINE_UNIFORM_COLOR')
     _shaders[kind] = sh
@@ -851,6 +872,7 @@ def backface_color():
 
 CLIP_TINT_COLOR = (1.0, 1.0, 1.0, 0.012)
 MEASURE_DEAD_PIXELS = 4
+MEASURE_SNAP_REACH = 1.25  # of the anchor's 8-pixel radius: 10 pixels
 MEASURE_TEXT_MIN, MEASURE_TEXT_MAX = 7.0, 200.0  # px
 SELECT_WIDTH = 2.0  # px, about the width of Blender's selection outline
 WARNING_RED = (1.0, 0.25, 0.2, 1.0)  # sRGB, for the readout
@@ -912,10 +934,123 @@ def _write_cap_depth(sh, vp, batch, threshold, tex):
     gpu.state.color_mask_set(True, True, True, True)
 
 
-def _draw_caps(context, s, rv3d, caps, show_fill, style, fill_override=None, outlines=True):
+SHELL_MIN_PIXELS = 2.0
+_white = []
+
+
+def _white_texture():
+    """1x1 white, sampled by a material with a flat color."""
+    if not _white:
+        data = gpu.types.Buffer('FLOAT', 4, [1.0, 1.0, 1.0, 1.0])
+        _white.append(gpu.types.GPUTexture((1, 1), format='RGBA16F', data=data))
+    return _white[0]
+
+
+def _base_color_source(socket):
+    """Follow a Base Color link to what's at the bottom of it: (image, UV map name or None), or
+    (None, None). The first input of a Mix is the bottom layer of the 3MF importer's layers."""
+    seen = 0
+    while socket is not None and socket.is_linked and seen < 32:
+        seen += 1
+        node = socket.links[0].from_node
+        if node.type == 'TEX_IMAGE':
+            uv = None
+            vector = node.inputs.get("Vector")
+            if vector is not None and vector.is_linked and vector.links[0].from_node.type == 'UVMAP':
+                uv = vector.links[0].from_node.uv_map
+            return node.image, uv
+        linked = [i for i in node.inputs if i.type == 'RGBA']
+        socket = next((i for i in linked if i.is_linked), None)
+    return None, None
+
+
+def _surface_of(material):
+    """(image or None, UV map name or None, flat scene-linear color) of a material's surface."""
+    flat = (0.8, 0.8, 0.8)
+    if material is None:
+        return None, None, flat
+    flat = tuple(material.diffuse_color[:3])
+    for node in material.node_tree.nodes if material.node_tree is not None else ():
+        if node.type == 'BSDF_PRINCIPLED':
+            socket = node.inputs.get("Base Color")
+            if socket is None:
+                break
+            if not socket.is_linked:
+                return None, None, tuple(socket.default_value[:3])
+            image, uv = _base_color_source(socket)
+            return image, uv, flat
+    return None, None, flat
+
+
+def _shell_batches(t, ci, segs, serial, plane, depsgraph):
+    """[(image or None, flat color, batch)]: a band along this part's contour for each material on it."""
+    def build():
+        info = engine.section_crossings(t, ci, serial)
+        corners = engine.surface_corners(t, depsgraph)
+        if info is None or corners is None or len(corners["material"]) == 0:
+            return []
+        slot = corners["material"][info["tri"]]
+        slots = t.orig.material_slots
+        flip = (np.linalg.det(t.matrix[:3, :3]) < 0.0) != engine.is_inside_out(t, depsgraph)
+        centered = not engine.is_oriented(t, depsgraph)
+        inward = sm.shell_inward(segs, sm.normalize(plane[:3]), flip)
+        out = []
+        for i in np.unique(slot):
+            keep = slot == i
+            image, uv_name, flat = _surface_of(slots[i].material if i < len(slots) else None)
+            pos, into, side = sm.shell_quads(segs[keep], inward[keep], centered)
+            layer = corners["uv"].get(uv_name) if uv_name else None
+            if layer is None:
+                layer = corners["uv"].get(corners["active"])
+            if image is None or layer is None:
+                image, uv = None, np.zeros((len(pos), 2), dtype=np.float32)
+            else:
+                part = {k: v[keep] for k, v in info.items()}
+                uv = sm.repeat_for_shell(sm.crossing_values(part, layer))
+            batch = _vbatch('TRIS', {"pos": (pos, 3), "inward": (into, 3),
+                                     "side": (side.reshape(-1, 1), 1), "uv": (uv, 2)})
+            out.append((image, flat, batch))
+        return out
+    return _cached((t.key, ci, "shell"), serial, build)
+
+
+def _draw_shell(s, rv3d, vp, region, t, ci, segs, serial, plane, depsgraph, toward, eps, depth_test):
+    """Print Preview, 580: the part's surface color along the inside of its contour. The GPU samples
+    the textures, so scrubbing never reads their pixels in Python (D-042)."""
+    batches = _shell_batches(t, ci, segs, serial, plane, depsgraph)
+    if not batches:
+        return
+    sh = _shader("shell")
+    gpu.state.depth_test_set(depth_test)
+    gpu.state.depth_mask_set(False)
+    gpu.state.blend_set('NONE')
+    sh.bind()
+    sign = 1.0 if float(np.dot(plane[:3], toward)) >= 0 else -1.0
+    lift = sm.normalize(plane[:3]) * sign * eps
+    # width of a pixel per unit of clip w: the same in perspective and orthographic
+    per_pixel = 2.0 / (max(region.height, 1) * abs(rv3d.window_matrix[1][1]))
+    ui = bpy.context.preferences.system.ui_scale
+    sh.uniform_float("viewProj", vp)
+    sh.uniform_float("lift", (lift[0], lift[1], lift[2], 0.0))
+    # ahead of the cap, which is itself pulled forward by CAP_DEPTH_BIAS
+    sh.uniform_float("band", (s.color_depth, SHELL_MIN_PIXELS * ui * per_pixel, CAP_DEPTH_BIAS * 2.0, 0.0))
+    for image, flat, batch in batches:
+        tex = None
+        if image is not None:
+            try:
+                tex = gpu.texture.from_image(image)
+            except (RuntimeError, SystemError, ValueError):
+                tex = None
+        sh.uniform_float("tint", (1.0, 1.0, 1.0, 1.0) if tex is not None else tuple(flat) + (1.0,))
+        sh.uniform_sampler("surface", tex if tex is not None else _white_texture())
+        batch.draw(sh)
+
+
+def _draw_caps(context, s, rv3d, caps, show_fill, style, fill_override=None, outlines=True, shell=False):
     """Draw caps and outlines. fill_override: one fill colour for every target
     (no interference highlight), used for the Backfaces slice outline. Without
-    outlines, only selected parts' contours are drawn."""
+    outlines, only selected parts' contours are drawn. shell: Print Preview for
+    the 580, the surface color along each contour."""
     region = context.region
     w, h = region.width, region.height
     if w < 2 or h < 2:
@@ -964,7 +1099,7 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style, fill_override=None, out
         oriented = {}
         for t in targets:
             live.add(t.key)
-            res = engine.section(t, ci, plane, depsgraph, bounds)
+            res = engine.section(t, ci, plane, depsgraph, bounds, crossings=shell)
             if res is None:
                 # a selected part with a face on the plane has no cut, but its
                 # outline runs right there: don't let a neighbour's contour hide it
@@ -1069,6 +1204,8 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style, fill_override=None, out
 
         for _idx, t, segs, n_open, serial, _mo in hits:
             lines.append((t, ci, segs, serial, plane, bounds, n_open))
+            if shell:
+                _draw_shell(s, rv3d, vp, region, t, ci, segs, serial, plane, depsgraph, toward, eps, depth_test)
 
     # outlines last, on top of every cap. Selected parts get the selection
     # colour: it continues Blender's own outline along the cut, and in a
@@ -1500,12 +1637,12 @@ def measure_click(context, x, y):
     _measure.update(region=None, a=None, b=None, text="", la=None, lb=None, ltext="")
     _measure["anchor"] = {"region": region.as_pointer(), "a": a, "b": b, "fixed": fixed, "click": (x, y), "moved": False,
                           "contour": cut["contours"][which], "oriented": cut["oriented"][which], "radius": radius,
-                          "cut": cut}
+                          "cut": cut, "normals": sm.anchor_normals(cut["contours"], fixed), "square": None}
     area.tag_redraw()
     return True
 
 
-def _anchor_update(context, x, y):
+def _anchor_update(context, x, y, snap=True):
     pin = _measure["anchor"]
     found = _view_under_mouse(context, x, y)
     if found is None or found[1].as_pointer() != pin["region"]:
@@ -1520,7 +1657,10 @@ def _anchor_update(context, x, y):
         if max(abs(x - pin["click"][0]), abs(y - pin["click"][1])) < MEASURE_DEAD_PIXELS:
             return
         pin["moved"] = True
-    q = sm.follow_cursor(pin["contour"], pin["fixed"], p, pin["oriented"], pin["radius"])
+    hit = sm.snap_normal(pin["contour"], pin["fixed"], pin["normals"], p, pin["oriented"],
+                         pin["radius"] * MEASURE_SNAP_REACH) if snap else None
+    pin["square"] = None if hit is None else hit[1]
+    q = sm.follow_cursor(pin["contour"], pin["fixed"], p, pin["oriented"], pin["radius"]) if hit is None else hit[0]
     pin["b"] = q[0] * cut["basis"][0] + q[1] * cut["basis"][1] + cut["lift"]
     found[0].tag_redraw()
 
@@ -1532,10 +1672,10 @@ def measure_cancel_anchor():
     return had
 
 
-def measure_update(context, x, y):
-    """Called on every mouse move while measuring."""
+def measure_update(context, x, y, snap=True):
+    """Called on every mouse move while measuring. `snap`: a line being placed may snap (D-041)."""
     if _measure["anchor"] is not None:
-        _anchor_update(context, x, y)
+        _anchor_update(context, x, y, snap)
         return
     found = _view_under_mouse(context, x, y)
     res = None
@@ -1624,6 +1764,20 @@ def _draw_measure(context):
             sh.uniform_float("lineWidth", width * ui)
             sh.uniform_float("color", c)
             batch.draw(sh)
+    pin = _measure["anchor"]
+    if pin is not None and pin["square"] is not None and pin["region"] == region.as_pointer():
+        # a square-corner mark at the anchor, in the plane of the cut
+        m = pin["square"]
+        basis = pin["cut"]["basis"]
+        out = (m[0] * basis[0] + m[1] * basis[1]) * pin["radius"] * MEASURE_SNAP_REACH
+        along = (-m[1] * basis[0] + m[0] * basis[1]) * pin["radius"] * MEASURE_SNAP_REACH
+        corner = pin["a"] + out + along
+        batch = batch_for_shader(sh, 'LINES', {"pos": [tuple(pin["a"] + along), tuple(corner),
+                                                       tuple(corner), tuple(pin["a"] + out)]})
+        for width, c in ((4.0, (0.0, 0.0, 0.0, 0.9)), (1.5, tuple(context.scene.crosscut.measure_color) + (1.0,))):
+            sh.uniform_float("lineWidth", width * ui)
+            sh.uniform_float("color", c)
+            batch.draw(sh)
 
 
 def draw_view():
@@ -1683,7 +1837,8 @@ def draw_view():
             _draw_powder(context, s, rv3d)
             fused = _lin(tuple(s.fused_color) + (1.0,))
             # one fused colour with no outlines: a part's inner shells shouldn't show
-            info.update(_draw_caps(context, s, rv3d, caps, True, 'SOLID', fill_override=fused, outlines=False))
+            info.update(_draw_caps(context, s, rv3d, caps, True, 'SOLID', fill_override=fused, outlines=False,
+                                   shell=s.print_profile == 'MJF_580'))
         elif caps and solid and style != 'BACKFACES':
             info.update(_draw_caps(context, s, rv3d, caps, True, style))
         elif caps and solid and ours and s.mode == 'SLICE' and s.thickness <= 1e-9:
@@ -1825,7 +1980,7 @@ def draw_readout():
         return
     lines, warn, severe = readout_lines(scene, s, _last_info.get(context.region.as_pointer()))
     if _measure["on"]:
-        lines = lines + ["Measure: click to place the line, Esc to drop it" if _measure["anchor"] is not None
+        lines = lines + ["Measure: click to place the line, Ctrl to stop it snapping, Esc to drop it" if _measure["anchor"] is not None
                          else "Measure: hover over a cut, click a line to adjust and pin it, Esc to stop"]
     elif _measure["dims"] and not s.measure_keep:
         lines = lines + ["Pinned measurements: Esc to clear"]

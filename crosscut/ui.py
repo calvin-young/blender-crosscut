@@ -221,6 +221,12 @@ def _draw_print_preview(layout, context):
     col.active = s.print_preview
     if s.mode == 'OFF':
         col.label(text="Needs Section or Slice", icon='INFO')
+    col.prop(s, "print_profile")
+    if s.print_profile == 'MJF_580':
+        col.prop(s, "color_depth")
+    elif s.print_profile == 'FDM':
+        col.operator("wm.url_open", text="FDM: Not Built Yet", icon='URL').url = (
+            "https://github.com/calvin-young/blender-crosscut/issues/13")
     col.prop(s, "powder_color")
     col.prop(s, "fused_color")
     col.prop(s, "powder_grain", slider=True)

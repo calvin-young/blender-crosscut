@@ -89,7 +89,7 @@ def _lex_less(a, b):
     )
 
 
-def section_segments(verts, tris, plane, cols=None):
+def section_segments(verts, tris, plane, cols=None, crossings=False):
     """Intersect a triangle mesh with a plane.
 
     verts: (N, 3) float, tris: (M, 3) int, plane: 4-vector in the same space.
@@ -106,11 +106,14 @@ def section_segments(verts, tris, plane, cols=None):
 
     cols: optional (tris[:, 0], tris[:, 1], tris[:, 2]) as contiguous arrays,
     cached by the caller; makes the crossing test about 4x faster.
+    crossings: also return what crossing_values needs to carry a per-corner
+    value (a UV, say) along each segment: (segments, crossings).
     """
     verts = np.asarray(verts, dtype=np.float64)
     tris = np.asarray(tris, dtype=np.int64)
+    none = np.zeros((0, 2, 3))
     if len(tris) == 0:
-        return np.zeros((0, 2, 3))
+        return (none, None) if crossings else none
     s = verts @ np.asarray(plane[:3], dtype=np.float64) + float(plane[3])
     pos = s >= 0.0
     if cols is None:
@@ -118,7 +121,7 @@ def section_segments(verts, tris, plane, cols=None):
     p0, p1, p2 = pos[cols[0]], pos[cols[1]], pos[cols[2]]
     keep = (p0 != p1) | (p1 != p2)
     if not keep.any():
-        return np.zeros((0, 2, 3))
+        return (none, None) if crossings else none
     tm = tris[keep]
     tpm = np.stack([p0[keep], p1[keep], p2[keep]], axis=1)
     ia = tm
@@ -145,7 +148,60 @@ def section_segments(verts, tris, plane, cols=None):
     tangents = np.cross(np.asarray(plane[:3], dtype=np.float64), normals)
     backwards = np.einsum("ij,ij->i", seg[:, 1] - seg[:, 0], tangents) < 0.0
     seg[backwards] = seg[backwards][:, ::-1]
+    if crossings:
+        info = {"tri": np.flatnonzero(keep), "corner": np.nonzero(cross)[1].reshape(-1, 2),
+                "t": t.reshape(-1, 2), "swap": swap.reshape(-1, 2), "backwards": backwards}
+        return seg, info
     return seg
+
+
+def crossing_values(info, corners):
+    """A per-corner value at both ends of each segment from section_segments(crossings=True).
+    corners: (M, 3, D), one value per triangle corner. Returns (K, 2, D)."""
+    c = np.asarray(corners)[info["tri"]]
+    row = np.arange(len(c))[:, None]
+    a = c[row, info["corner"]]
+    b = c[row, (info["corner"] + 1) % 3]
+    swap = info["swap"][..., None]
+    a, b = np.where(swap, b, a), np.where(swap, a, b)
+    out = a + info["t"][..., None] * (b - a)
+    out[info["backwards"]] = out[info["backwards"]][:, ::-1]
+    return out
+
+
+def shell_inward(seg, normal, flip=False):
+    """Which way is inward at both ends of each segment (K, 2, 3). Segments run counter-clockwise
+    around the material seen from `normal`, so inward is on their left (`flip` for a mirrored or
+    inside-out part). Segments meeting at a point share one direction, weighted by length, so a
+    band along a finely faceted contour has no cracks."""
+    d = seg[:, 1] - seg[:, 0]
+    per_seg = np.cross(np.asarray(normal, dtype=np.float64), d)  # its length is the segment's
+    if flip:
+        per_seg = -per_seg
+    _pts, ids = np.unique(seg.reshape(-1, 3), axis=0, return_inverse=True)
+    ids = ids.reshape(-1)
+    summed = np.zeros((int(ids.max()) + 1, 3)) if len(ids) else np.zeros((0, 3))
+    np.add.at(summed, ids, np.repeat(per_seg, 2, axis=0))
+    out = summed[ids].reshape(-1, 2, 3)
+    # a contour doubling back on itself cancels out: fall back on the segment's own
+    size = np.linalg.norm(out, axis=2, keepdims=True)
+    own = per_seg[:, None, :] / np.maximum(np.linalg.norm(per_seg, axis=1), 1e-300)[:, None, None]
+    return np.where(size > 1e-12, out / np.maximum(size, 1e-300), own)
+
+
+def shell_quads(seg, inward, centered=False):
+    """Two triangles per segment for a band along a contour: (pos, inward, side), per vertex, where
+    a vertex belongs at pos + inward * side * width. inward: from shell_inward. `centered`
+    straddles the contour, for a part whose inside isn't known."""
+    side = np.array([0.0, 0.0, 1.0, 0.0, 1.0, 1.0])
+    if centered:
+        side = side - 0.5
+    return repeat_for_shell(seg), repeat_for_shell(inward), np.tile(side, len(seg))
+
+
+def repeat_for_shell(values):
+    """Per-end values (K, 2, D) laid out as shell_quads' vertices."""
+    return values[:, np.array([0, 1, 1, 0, 1, 0])].reshape(-1, values.shape[2])
 
 
 def open_endpoint_count(segments):
@@ -661,6 +717,65 @@ def follow_cursor(seg, anchor, cursor, oriented=False, radius=0.0):
         if ahead.any():
             return anchor + d * float(t[ahead].min())
     return snap_to_contour(seg, cursor, anchor, radius)
+
+
+def anchor_normals(contours, anchor):
+    """The unit normals of the contour segments an anchor sits on: one mid-segment, two at a corner."""
+    anchor = np.asarray(anchor, dtype=np.float64)
+    best, found = float("inf"), []
+    for seg in contours:
+        if not len(seg):
+            continue
+        d = seg[:, 1] - seg[:, 0]
+        len2 = np.maximum(np.einsum("ij,ij->i", d, d), 1e-300)
+        t = np.clip(np.einsum("ij,ij->i", anchor - seg[:, 0], d) / len2, 0.0, 1.0)
+        dist = np.linalg.norm(seg[:, 0] + d * t[:, None] - anchor, axis=1)
+        low = float(dist.min())
+        tie = np.flatnonzero(dist <= low + 1e-6 * max(low, float(np.sqrt(len2.max())), 1e-9))
+        if low < best - 1e-9:
+            best, found = low, []
+        if low <= best + 1e-9:
+            found.extend(np.stack([-d[tie, 1], d[tie, 0]], axis=1) / np.sqrt(len2[tie])[:, None])
+    out = []
+    for n in found:
+        if not any(abs(float(n @ m)) > 1.0 - 1e-9 for m in out):
+            out.append(n)
+    return out
+
+
+def snap_normal(seg, anchor, normals, cursor, oriented, tol):
+    """Where the free end goes if the line snaps straight out from the anchor's contour, or None
+    if the cursor isn't within `tol` of one of those lines. Returns (end, direction). Past the
+    cursor inside the section, as follow_cursor; otherwise the crossing nearest the cursor."""
+    cursor = np.asarray(cursor, dtype=np.float64)
+    d = cursor - anchor
+    if float(np.hypot(d[0], d[1])) <= 2.0 * tol:  # this close, any direction is within reach of a normal
+        return None
+    best = None
+    for n in normals:
+        along = float(d @ n)
+        m, along = (n, along) if along >= 0.0 else (-n, -along)
+        off = float(np.linalg.norm(d - m * along))
+        if off <= tol and (best is None or off < best[0]):
+            best = (off, m, along)
+    if best is None:
+        return None
+    _off, m, along = best
+    a = seg[:, 0] - anchor
+    e = seg[:, 1] - seg[:, 0]
+    with np.errstate(divide='ignore', invalid='ignore'):
+        denom = m[0] * e[:, 1] - m[1] * e[:, 0]
+        t = (a[:, 0] * e[:, 1] - a[:, 1] * e[:, 0]) / denom
+        u = (a[:, 0] * m[1] - a[:, 1] * m[0]) / denom
+    t = t[np.isfinite(t) & (u >= 0.0) & (u <= 1.0) & (t > 1e-6 * max(along, 1e-3))]
+    if not len(t):
+        return None
+    foot = anchor + m * along
+    if _inside_rows(seg, oriented, np.array([foot[0]]), np.array([foot[1]]))[0, 0]:
+        beyond = t[t >= along]
+        if len(beyond):
+            return anchor + m * float(beyond.min()), m
+    return anchor + m * float(t[np.argmin(np.abs(t - along))]), m
 
 
 def section_measures(seg, point, oriented=True, half=1.0, cells=160, local=True, greatest=False):

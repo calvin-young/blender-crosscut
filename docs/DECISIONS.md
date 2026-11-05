@@ -12,6 +12,7 @@ this list is an assumption, tracked in the table at the end.
 | --- | --- | --- |
 | R-021 | After 0.12.0 (2026-11-03): Measure in light blue at the cursor and a complementary color for the max, legible text, a toggle for the max; Clip Tint doesn't work (revert unless easy); "Fill Targets"; slices red on the back. Then: lit X/Y/Z/View turns off; weight painting doesn't work with clipping on; a way to adjust fill colors (grayer, redder, darker, transparent); Measure on single parts, thickness at the cursor, max optional and off, maybe an Ignore Overlaps toggle | 0.13.0, see below |
 | R-022 | After 0.13.0 (2026-11-04): Brightness default 50 %; group the Cut Faces settings; a project-share pie on the status page; Measure: click anchors the end nearest the cursor, moving slides the other end along the contour, a second click pins it, repeatable, Esc clears. Asked for guidance on whether Measure should be a separate branch, release or add-on, and on dimensioned drawings | 0.14.0, see below |
+| R-024 | After 0.15.1 (2026-11-04): first snap target for the free end, straight across from the anchor's edge; try 580 color on a real bucket and judge the lag by use; FDM as a placeholder for someone else to build; saved lines should follow a moved part unless pinned (being designed) | 0.16.0: snap (D-041), 580 color (D-042), FDM placeholder. Saved lines not started |
 | R-023 | After 0.14.1 (2026-11-04): the free end must follow the cursor wherever it lands, or find the closest point on a curve, without overshooting; Esc shouldn't clear pinned lines at the first press; a Clear button and a way to keep them through Esc. Asked whether capturing Esc inhibits other Blender functionality | 0.15.0, see below |
 | R-020 | After 0.11.0 (2026-11-03): no outlines through interiors in Print Preview; Slice looks the same as Section there; Slice Thickness into Section/Slice Plane; cursor, center, selection as small buttons between the arrows; even out the gaps around Measure Overlap, closer to Settings; settings for Measure Overlap (color, text size) and a local width at the mouse, on by default; is "Caps" too unintuitive; Clip Tint doesn't come back after off/on or after Section; left-align the three settings; back on its own tab, as a single panel | 0.12.0, see below |
 | R-019 | After 0.10.0 (2026-11-03): outlines stay black on problem parts; a 0.5 button in the scrub row; Targets inside Caps as "Cap: Visible Objects..."; Interference becomes a third Overlaps option, Highlight, its settings right below; Plane renamed Section/Slice Plane with the scrub settings at its top; Clip remembers the last box; the release plan accepted, with no full release until the maintainer signals | 0.11.0, see below |
@@ -35,6 +36,31 @@ this list is an assumption, tracked in the table at the end.
 | R-001 | Main use: while modelling parts. Secondary: finding interferences when packing buckets | Drives defaults |
 
 ## Decisions
+
+### D-042: 580 color: the GPU samples the textures, Python only carries the UVs (2026-11-04)
+
+- **Context:** The issue suggested caching each image's pixels in numpy. On a real textured bucket that's 4.4 GB as
+  Blender hands them over (float RGBA), 1.1 GB as bytes, before a single layer is drawn.
+- **Decision:** `section_segments` reports which triangle corners each crossing came from (`crossings=True`), `crossing_values`
+  turns that into UVs, and a band of quads along the contour is drawn with a shader that samples Blender's own GPU copy
+  of the image (`gpu.texture.from_image`). Python never reads a pixel. The band sits inside the contour, using the
+  segments' winding; a part with mixed normals gets it centered. Width: Color Depth, never below 2 pixels.
+- **Measured** on a real 59M-triangle bucket with 252 parts and 40 textures, workstation, per scrub step once warm: 297 ms median
+  without color, 386 ms with. First pass through: at worst 2.1 s while a texture uploads, against 21 s for the mesh read Print
+  Preview already does. RAM up about 0.3 GB. Most of the time is the cut itself (issue #4), not color.
+- **Cracks:** a quad per segment, each with its own direction, left thin cracks on dense meshes, so segments meeting at a point
+  share one direction (`shell_inward`). It costs the extra 50 ms or so of the 89.
+- **Limits:** only the bottom layer of a layered material; no color attributes; textures are read by the graphics card, so
+  a weak one may struggle with a bucket's full set. Color Depth's 0.1 default is a guess (*assumed*).
+
+### D-041: The free end snaps to straight across from the anchor's edge (2026-11-04)
+
+- **Decision:** The normals come from the segment under the anchor, on either contour of an overlap, and both segments at a
+  corner. It snaps with the mouse within 10 pixels of that line and more than 20 from the anchor (nearer than that, any direction
+  would count). Inside the section the end goes to the first edge beyond the cursor, as `follow_cursor` does; outside, the
+  crossing nearest the cursor. Ctrl turns it off, as Blender's snapping does; the key alone updates the line.
+- **Limits:** on a faceted curve the normal is the facet's, not the true curve's. Other targets (vertices, midpoints, parallel to a
+  pinned line) aren't built.
 
 ### Changes after the maintainer's notes on 0.14.1 (0.15.0, 2026-11-04)
 
@@ -756,4 +782,7 @@ What `tests/blender/run_viewport_tests.py` and the screenshots showed in 0.1.0, 
 | Q-070 | Measure stays in Crosscut, no branch or second add-on (D-038) | unasked question | 0.14.0 | agreed by the maintainer |
 | Q-071 | A click on a showing Measure line doesn't select; Esc while placing drops only that line | assumption | 0.14.0 | open |
 | Q-072 | With the cursor beyond a wall, the free end goes past that wall to the edge beyond the cursor | assumption | 0.15.0 | feels great, per the maintainer |
-| Q-073 | Pinned lines aren't saved with the file | assumption | 0.15.0 | open |
+| Q-073 | Pinned lines aren't saved with the file | assumption | 0.15.0 | being designed with the maintainer |
+| Q-074 | Snap reach of 10 pixels; a marker at the anchor rather than a text label | assumption | 0.16.0 | open |
+| Q-075 | Color Depth default 0.1 mm; never thinner than 2 pixels | assumption | 0.16.0 | open |
+| Q-076 | A layered material shows its bottom layer only | assumption | 0.16.0 | open |

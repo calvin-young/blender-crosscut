@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.16.0 (2026-11-04)
+
+- **Measure**: while placing a line, the free end snaps straight across from the edge the anchor sits on, within
+  about 10 pixels of that direction, with a small square-corner mark at the anchor. Hold **Ctrl** to turn it off.
+- **Print Preview** has a **Printer** choice. **MJF 580** (a first try) draws each part's surface color along the
+  inside edge of its fused layer, from its image texture or flat material color, **Color Depth** deep and never thinner
+  than 2 pixels. **FDM** is only a placeholder for now: it draws like the 5600 and links to its issue.
+
 ## 0.15.1 (2026-11-04)
 
 - Fixed: Measure's lines stayed on screen with overlays off (Alt+Shift+Z), though their lengths hid.

@@ -23,7 +23,7 @@ line below carries a category.
 
 | Bugs found | UI tweaks | New features | Direction | Total |
 |---|---|---|---|---|
-| 29 | 60 | 30 | 12 | 131 |
+| 29 | 60 | 33 | 14 | 136 |
 
 ## Sessions
 
@@ -33,6 +33,7 @@ steering lines matters more than the count of prompts.
 
 | Date | Tool and model | Prompts | Steering lines | Notes |
 |---|---|---|---|---|
+| 2026-11-04 | Claude Code (workstation), Opus 5.5 | 1 | 5 | 0.16.0: snap, 580 color first try, FDM placeholder; design for saved lines |
 | 2026-11-02 | Claude Code (workstation), Opus 5.5 | 12 | 70 | 0.9.2 to 0.15.1 from the maintainer's notes after several days of real use |
 | 2026-10-30 | Claude Code (workstation), Opus 5.5 | 3 | 3 | `mjf-preview` branch: Print Preview, for the demo reel in the demo-reels repo |
 | 2026-10-29 | Claude Code (workstation), Opus 5.5 | 5 | 17 | First in-Blender test pass: viewport test suite, 0.2.0 fixes, zip; then 0.3.0, 0.4.0, the 0.9.0 release candidate and 0.9.1 from the maintainer's tests |
@@ -45,6 +46,11 @@ One line for each thing the human contributed that the AI would not have done on
 newest first, tagged with its kind (decide, correct, domain, tested, scope) and, from 2026-11-03, its
 category (bug, ui, feature, direction).
 
+- 2026-11-04 [decide][direction]: leave FDM as a placeholder and the issue open for someone else, rather than spend time on a curiosity.
+- 2026-11-04 [decide][direction]: try 580 color on a real bucket and judge the lag by use, rather than decide on paper.
+- 2026-11-04 [scope][feature]: saved Measure lines should update as a part moves, unless the pin is on.
+- 2026-11-04 [scope][feature]: 580 color in Print Preview, scrubbing a full bucket.
+- 2026-11-04 [scope][feature]: start the snap for the free end.
 - 2026-11-04 [tested][bug]: Measure's lines stay on screen with overlays off.
 - 2026-11-04 [decide][feature]: snap the free end to natural targets, such as orthogonal.
 - 2026-11-04 [decide][feature]: save pinned lines with the file.

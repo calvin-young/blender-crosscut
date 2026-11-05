@@ -2484,6 +2484,138 @@ def ui_panels(view):
 
 
 @test
+def measure_snap(view):
+    T = "measure_snap"
+    dr = cc("draw")
+    scene = new_scene("cc-measure-snap")
+    box("part-001", (60, 40, 20))
+    s = scene.crosscut
+    view.look((0, 0, 0), 120, (0, 0, 0), ortho=True)
+    settings(s, mode='SECTION', orientation='Z', offset=0.0)
+    yield from settle()
+    r = view.region
+    win = view.window
+    with view.override():
+        bpy.ops.crosscut.measure('INVOKE_DEFAULT')
+    yield 0.2
+    x, y = view.px((5, -19, 0))
+    win.event_simulate('MOUSEMOVE', 'NOTHING', x=r.x + x, y=r.y + y)
+    yield 0.2
+    win.event_simulate('LEFTMOUSE', 'PRESS', x=r.x + x, y=r.y + y)
+    win.event_simulate('LEFTMOUSE', 'RELEASE', x=r.x + x, y=r.y + y)
+    yield 0.2
+    pin = dr._measure["anchor"]
+    check(T, "anchored on the bottom edge", pin is not None and abs(pin["a"][1] + 20.0) < 0.01, str(pin and pin["a"]))
+    if pin is None:
+        return
+    ax = float(pin["a"][0])
+    # close to straight across, not quite on it
+    x, y = view.px((ax + 0.3, 5, 0))
+    win.event_simulate('MOUSEMOVE', 'NOTHING', x=r.x + x, y=r.y + y)
+    yield 0.2
+    yield from settle()
+    Shot(view, "measure_snapped")
+    check(T, "snaps straight across", pin["square"] is not None and abs(float(pin["b"][0]) - ax) < 1e-3
+          and abs(float(pin["b"][1]) - 20.0) < 1e-3, str(pin["b"]))
+    # Ctrl turns it off, without moving the mouse
+    win.event_simulate('LEFT_CTRL', 'PRESS', x=r.x + x, y=r.y + y, ctrl=True)
+    yield 0.2
+    check(T, "Ctrl turns it off", pin["square"] is None and abs(float(pin["b"][0]) - ax) > 1e-3, str(pin["b"]))
+    win.event_simulate('LEFT_CTRL', 'RELEASE', x=r.x + x, y=r.y + y)
+    yield 0.2
+    check(T, "and letting go turns it on", pin["square"] is not None)
+    # well off the normal it doesn't snap
+    x, y = view.px((ax + 15, 5, 0))
+    win.event_simulate('MOUSEMOVE', 'NOTHING', x=r.x + x, y=r.y + y)
+    yield 0.2
+    check(T, "away from the normal it follows the cursor", pin["square"] is None)
+    win.event_simulate('ESC', 'PRESS', x=r.x + x, y=r.y + y)
+    win.event_simulate('ESC', 'RELEASE', x=r.x + x, y=r.y + y)
+    yield 0.2
+    win.event_simulate('ESC', 'PRESS', x=r.x + x, y=r.y + y)
+    win.event_simulate('ESC', 'RELEASE', x=r.x + x, y=r.y + y)
+    yield 0.2
+    check(T, "stops", not dr.measure_running())
+
+
+@test
+def print_preview_580(view):
+    T = "print_preview_580"
+    scene = new_scene("cc-print-580")
+    s = scene.crosscut
+    # left half a red image, right half green: the texture has to come through the GPU sampler
+    bpy.ops.mesh.primitive_cube_add(size=40, location=(0, 0, 0))
+    ob = bpy.context.object
+    ob.name = "part-001"
+    img = bpy.data.images.new("part-001-color", 4, 4)
+    img.pixels = [c for y in range(4) for x in range(4) for c in ((1, 0, 0, 1) if x < 2 else (0, 1, 0, 1))]
+    img.pack()
+    mat = bpy.data.materials.new("part-001-mat")
+    mat.use_nodes = True
+    node = mat.node_tree.nodes.new("ShaderNodeTexImage")
+    node.image = img
+    bsdf = next(n for n in mat.node_tree.nodes if n.type == 'BSDF_PRINCIPLED')
+    mat.node_tree.links.new(node.outputs["Color"], bsdf.inputs["Base Color"])
+    ob.data.materials.append(mat)
+    me = ob.data
+    uv = me.uv_layers.active  # the cube comes with one
+    for loop in me.loops:
+        x = me.vertices[loop.vertex_index].co.x
+        uv.uv[loop.index].vector = (0.125 if x < 0 else 0.875, 0.5)
+    me.update()
+    # a part with a flat color, and a mirrored one: the band still has to be on the inside
+    flat = box("part-002", (20, 20, 20), (50, 0, 0))
+    fm = bpy.data.materials.new("part-002-mat")
+    fm.use_nodes = True
+    next(n for n in fm.node_tree.nodes if n.type == 'BSDF_PRINCIPLED').inputs["Base Color"].default_value = (0, 0, 1, 1)
+    flat.data.materials.append(fm)
+    mirrored = box("part-003", (20, 20, 20), (-50, 0, 0))
+    mirrored.scale.x = -1.0
+    mirrored.data.materials.append(fm)
+    view.look((0, 0, 0), 150, (0, 0, 0), ortho=True)
+    settings(s, mode='SECTION', orientation='Z', offset=0.0)
+    s.print_preview = True
+    s.print_profile = 'MJF_5600'
+    yield from settle()
+    plain = Shot(view, "print_preview_5600_for_580_test")
+    edge_left = plain.at(view.px((-19.5, 0, 0)), r=1)
+    check(T, "5600: the edge is the fused color", edge_left[0] < 60 and edge_left[1] < 60)
+    s.print_profile = 'MJF_580'
+    s.color_depth = 2.0
+    yield from settle()
+    shot = Shot(view, "print_preview_580")
+    left, right = shot.at(view.px((-19.0, 0, 0)), r=1), shot.at(view.px((19.0, 0, 0)), r=1)
+    check(T, "580: the texture's red on the left edge", left[0] > 128 and left[1] < 80, str(left))
+    check(T, "580: the texture's green on the right edge", right[1] > 128 and right[0] < 80, str(right))
+    middle = shot.at(view.px((0, 0, 0)), r=1)
+    check(T, "580: the core stays fused", middle[0] < 60 and middle[1] < 60, str(middle))
+    outside = shot.at(view.px((-21.5, 0, 0)), r=1)
+    check(T, "580: the band stays inside the part", outside[0] > 128 and outside[1] > 128 and outside[2] > 128, str(outside))
+    blue = shot.at(view.px((41.0, 0, 0)), r=1)
+    check(T, "580: a flat material's color", blue[2] > 128 and blue[0] < 80, str(blue))
+    blue = shot.at(view.px((-41.0, 0, 0)), r=1)
+    check(T, "580: a mirrored part's band is inside too", blue[2] > 128 and blue[0] < 80, str(blue))
+    outside = shot.at(view.px((-38.5, 0, 0)), r=1)
+    check(T, "580: and not outside it", outside[0] > 128 and outside[1] > 128, str(outside))
+    # zoomed far out, a thin band is still there
+    s.color_depth = 0.01
+    view.look((0, 0, 0), 1500, (0, 0, 0), ortho=True)
+    yield from settle()
+    far = Shot(view, "print_preview_580_far")
+    px = view.px((-19.9, 0, 0))
+    seen = max(far.at((px[0] + d, px[1]), r=0)[0] for d in range(0, 3))
+    check(T, "580: never thinner than two pixels", seen > 100, str(seen))
+    s.print_profile = 'FDM'
+    yield from settle()
+    fdm = Shot(view, "print_preview_fdm_placeholder")
+    check(T, "FDM placeholder draws without error", not errors(), str(errors()))
+    del fdm
+    s.print_profile = 'MJF_5600'
+    s.color_depth = 0.1
+    s.print_preview = False
+
+
+@test
 def print_preview(view):
     T = "print_preview"
     scene = new_scene("cc-print")
