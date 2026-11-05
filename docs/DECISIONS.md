@@ -37,6 +37,14 @@ this list is an assumption, tracked in the table at the end.
 
 ## Decisions
 
+### D-043: The demo reel's staging (2026-11-05)
+
+- **Message:** CROSSCUT is a real part among the others, with a ramped underside (linear in x, so faces stay
+  flat and the mesh closed), so a rising plane uncovers it left to right. The script picks the height in the build's
+  lower half with the fewest parts in its footprint and takes those out (20 of 394).
+- **Pointer:** screenshots have no mouse, so the reel draws one and calls Measure's own hover and click functions.
+- **Overlap Max is off in the overlap shot:** on a plain rectangle it reads shorter than the width ([#15](https://github.com/calvin-young/blender-crosscut/issues/15)).
+
 ### D-042: 580 color: the GPU samples the textures, Python only carries the UVs (2026-11-04)
 
 - **Context:** The issue suggested caching each image's pixels in numpy. On a real textured bucket that's 4.4 GB as

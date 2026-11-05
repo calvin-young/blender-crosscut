@@ -49,6 +49,7 @@ tests/                    plain-Python tests; bpy/gpu are stubbed in test_addon_
 tests/blender/            in-Blender viewport tests (pixel checks + screenshots)
 tools/showcase.py         builds a demo scene in Blender and screenshots every mode
 tools/concept_render.py   numpy ray caster used for the README concept figures
+demo/                     the demo reel: scripted Blender capture and edit (demo/README.md); films a tag, not this tree
 docs/                     DECISIONS.md, PROMPT_STATS.md, images (concepts + maintainer's reference mock-ups)
 ```
 
@@ -121,6 +122,7 @@ this file, the reasons behind decisions and the approaches that were dropped go 
 - Next: [save lines with the file and follow moved parts](https://github.com/calvin-young/blender-crosscut/issues/12): a design is with the maintainer, don't build until it's agreed.
   [580 color](https://github.com/calvin-young/blender-crosscut/issues/14) stays open until the maintainer has judged the lag. [FDM](https://github.com/calvin-young/blender-crosscut/issues/13) is left for someone else.
   Open questions Q-030 to Q-076 in DECISIONS.md.
+- The demo reel is in `demo/`, for the maintainer's presentation (94 s, on v0.16.0). 580 color stays out of it (maintainer's call). Shared how-to: `topics/demo-reels.md` in ai-context.
 - Not tested yet: macOS/Windows, HiDPI scaling above 1, Metal, very large multi-object scenes.
 
 ## Before you change things

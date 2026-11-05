@@ -23,7 +23,7 @@ line below carries a category.
 
 | Bugs found | UI tweaks | New features | Direction | Total |
 |---|---|---|---|---|
-| 29 | 60 | 33 | 15 | 137 |
+| 29 | 73 | 35 | 24 | 161 |
 
 ## Sessions
 
@@ -33,6 +33,7 @@ steering lines matters more than the count of prompts.
 
 | Date | Tool and model | Prompts | Steering lines | Notes |
 |---|---|---|---|---|
+| 2026-11-04/05 | Claude Code (workstation), Opus 5.5 | 2 | 11 | The presentation demo reel, moved here from a separate demo-reels repo |
 | 2026-11-04 | Claude Code (workstation), Opus 5.5 | 1 | 6 | 0.16.0: snap, 580 color first try, FDM placeholder; design for saved lines |
 | 2026-11-02 | Claude Code (workstation), Opus 5.5 | 12 | 70 | 0.9.2 to 0.15.1 from the maintainer's notes after several days of real use |
 | 2026-10-30 | Claude Code (workstation), Opus 5.5 | 3 | 3 | `mjf-preview` branch: Print Preview, for the demo reel in the demo-reels repo |
@@ -46,6 +47,17 @@ One line for each thing the human contributed that the AI would not have done on
 newest first, tagged with its kind (decide, correct, domain, tested, scope) and, from 2026-11-03, its
 category (bug, ui, feature, direction).
 
+- 2026-11-05 [decide][direction]: demo reels belong in each project's repo, not a separate one.
+- 2026-11-05 [decide][direction]: leave 580 color out of the presentation.
+- 2026-11-05 [correct][ui]: reel: shorten Print Preview, and mix the CROSSCUT letters in with the parts so they start sooner.
+- 2026-11-05 [correct][ui]: reel: show Measure on the housings rather than the sphere and gear.
+- 2026-11-05 [correct][ui]: reel: Model hatch space throughout.
+- 2026-11-05 [correct][ui]: reel: cut the clipping-region scrub, which looked very wrong.
+- 2026-11-04 [correct][ui]: reel: the thumbnail is a section close-up, not the print preview.
+- 2026-11-04 [domain][ui]: reel: PowerPoint seems to show an embedded video's last frame, so the last frame matches the first.
+- 2026-11-04 [scope][direction]: reel: the last layers spell out a message.
+- 2026-11-04 [decide][ui]: reel: dwell on the top-down view as layers change (later shortened).
+- 2026-11-04 [scope][direction]: a new pass at the demo reel for a presentation, about twice as long, with the new features.
 - 2026-11-04 [decide][direction]: Print Preview is no longer experimental.
 - 2026-11-04 [decide][direction]: leave FDM as a placeholder and the issue open for someone else, rather than spend time on a curiosity.
 - 2026-11-04 [decide][direction]: try 580 color on a real bucket and judge the lag by use, rather than decide on paper.
@@ -153,3 +165,21 @@ category (bug, ui, feature, direction).
 - 2026-10-22 [domain]: uses Alt+B constantly while modelling; fakes sections today with booleans and hand-drawn hatching.
 
 The requested-vs-assumed tally is in [DECISIONS.md](DECISIONS.md).
+
+### From the separate demo-reels repo
+
+The first reels, moved here with their steering on 2026-11-05: 6 UI tweaks, 2 features and 5 direction, counted in the tally above. Some are about Bucket Builder's reels too.
+
+- 2026-10-30 [correct]: Crosscut reel: replace the layer scrub before Print Preview with one slice on the YZ plane.
+- 2026-10-30 [scope]: a slide deck for the team meeting: Claude Code's capabilities, how we work together, the three reels, and the 3MF work.
+- 2026-10-30 [scope]: two more reels of about 60 s each for Bucket Builder: the build check (out of bounds, interference, clearance) and the packing algorithms; content left to the AI's judgment.
+- 2026-10-30 [decide]: the maintainer has about 2 hours to review before the meeting: reels must be finished overnight.
+- 2026-10-30 [decide]: tooling goes in a central place, not inside Crosscut; every project will get a reel.
+- 2026-10-30 [decide]: shot list with timings: title, still sphere, Alt+B box, orbit with red backfaces, close-up inside the walls, caps on, section planes, interference, parts falling into a bucket, slice, print preview ending top-down and orthographic.
+- 2026-10-30 [decide]: gears and bolts rather than odd shapes for the bucket; a half-height bucket is enough.
+- 2026-10-30 [scope]: up to 60 s and about 60 MB allowed; the print preview may be a fork rather than part of Crosscut.
+- 2026-10-29 [correct]: drop the on-screen Alt+B key badge; linger longer on the whole sphere.
+- 2026-10-29 [domain]: MJF look: the powder bed is white, the fused cross-sections are black.
+- 2026-10-29 [decide]: title card: name, Calvin, description, "made with Claude", date.
+- 2026-10-29 [decide]: keep the file size small enough for PowerPoint.
+- 2026-10-29 [scope]: start with a few keyframes and a 3 s clip before the full video.
