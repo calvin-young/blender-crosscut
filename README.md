@@ -36,7 +36,7 @@ the maintainer's hand-made mock-ups in [docs/images/reference/](docs/images/refe
 - **Scrub a clipping region**: slide it through the parts along either axis, without changing its size.
 - **Measure**: hover over a cut to see a part's thickness right there, or how wide an overlap is. Click to
   adjust a line along the contour, snapping straight across from the edge, and pin it, as many as you like.
-- **Print Preview** (experimental): powder up to the plane and the fused layer on top, as inside a
+- **Print Preview**: powder up to the plane and the fused layer on top, as inside a
   powder-bed printer. For the MJF 580, the layer's edge carries the part's surface color.
 - **Selectable in a zero-thickness slice**: click a section to select its part.
 - Colours follow the Solid shading colour (Object or Material); white or grey parts get the Cap

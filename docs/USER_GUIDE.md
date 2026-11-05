@@ -134,7 +134,7 @@ contours.
 - **Opacity** sets the tint (default 3 %; the slider goes to 10 %, type a value for more).
   Looking through both planes of a slab doesn't double the tint.
 
-## Print Preview (experimental)
+## Print Preview
 
 Tick **Print Preview** in **Settings** while Section or Slice is on, with the Z plane and a build volume as the Scrub Range object. The bed fills with
 powder up to the plane, the parts below are buried in it, and each part's cut is drawn as the

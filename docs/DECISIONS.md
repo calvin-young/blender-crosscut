@@ -100,7 +100,7 @@ this list is an assumption, tracked in the table at the end.
 ### D-038: Measure stays in Crosscut, no branch or second add-on (2026-11-04)
 
 - **Context:** The maintainer wondered about a full release without it, with Measure on a branch or as its own add-on.
-- **Decision (agreed by the maintainer):** Keep it on `main`, labelled experimental when a full release comes. It's
+- **Decision (agreed by the maintainer):** Keep it on `main`, labelled experimental when a full release comes (the label was dropped on 2026-11-04: "it looks great", per the maintainer). It's
   off until clicked, so it can't get in anyone's way, and it reads Crosscut's cut contours, so apart from them it has
   nothing to stand on. Blender extensions have no dependency mechanism, so a second add-on would need to find Crosscut at
   run time and break when it changes. A long-lived branch means merging everything twice. `section_math` keeps the
@@ -765,7 +765,7 @@ What `tests/blender/run_viewport_tests.py` and the screenshots showed in 0.1.0, 
 | Q-053 | Whether the black-over-orange case seen was the flush-face one (D-024) | unasked question | 0.9.2 | orange has won so far; the maintainer reports if not |
 | Q-054 | The readout keeps "Alt+B clipping" while the button says Clip | assumption | 0.9.3 | answered: Clipping Region (R-018) |
 | Q-055 | Alt+B scrub: slider reads the current axis, range to just clear of the Scrub Range, positive toward the viewer (D-027) | assumption | 0.9.4 | open |
-| Q-056 | Print Preview is last in Settings, marked experimental | assumption | 0.9.4 | open |
+| Q-056 | Print Preview is last in Settings, marked experimental | assumption | 0.9.4 | no longer experimental, per the maintainer (2026-11-04); its place in Settings is still open |
 | Q-057 | Overlays off hide plane and readout but not caps or dark contours | assumption | 0.10.0 | open |
 | Q-058 | The stuck orange outline was the open contour | assumption | 0.10.0 | moot: contours stay dark (R-019) |
 | Q-059 | A cap seen from behind with Face Orientation on draws in the backface colour | assumption | 0.10.0 | confirmed by the maintainer |
