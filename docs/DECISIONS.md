@@ -100,7 +100,7 @@ this list is an assumption, tracked in the table at the end.
 ### D-038: Measure stays in Crosscut, no branch or second add-on (2026-11-04)
 
 - **Context:** The maintainer wondered about a full release without it, with Measure on a branch or as its own add-on.
-- **Decision (agreed by the maintainer):** Keep it on `main`, labelled experimental when a full release comes (the label was dropped on 2026-11-04: "it looks great", per the maintainer). It's
+- **Decision (agreed by the maintainer):** Keep it on `main`, labelled experimental when a full release comes. It's
   off until clicked, so it can't get in anyone's way, and it reads Crosscut's cut contours, so apart from them it has
   nothing to stand on. Blender extensions have no dependency mechanism, so a second add-on would need to find Crosscut at
   run time and break when it changes. A long-lived branch means merging everything twice. `section_math` keeps the
