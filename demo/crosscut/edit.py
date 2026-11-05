@@ -29,7 +29,7 @@ def card():
     # the viewport without Blender's top bars and status bar, 16:9
     return hero_card(im.crop((0, 100, 1692, 1052)), "Crosscut",
                      ["Section views, slices, measuring and", "print preview, live in Blender"],
-                     "Calvin Young", [f"Made with Claude  ·  {DATE}", "github.com/calvin-young/blender-crosscut"])
+                     "Calvin Young", [f"Made with Claude  ·  {DATE}"])
 
 
 EDIT = Edit(
