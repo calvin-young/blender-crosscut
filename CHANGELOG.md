@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.16.1 (2026-11-09)
+
+- Fixed: Blender crashed when Crosscut was turned on in Edit Mode under Material Preview. Clipping now waits until the
+  view is in Solid or Wireframe, the only shadings Blender clips in.
+- In Blender 5, the header button sits between X-ray and the shading buttons. In 4.2 it stays at the right end.
+- Print Preview is no longer called experimental.
+
 ## 0.16.0 (2026-11-04)
 
 - **Measure**: while placing a line, the free end snaps straight across from the edge the anchor sits on, within

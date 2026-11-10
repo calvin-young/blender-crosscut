@@ -318,13 +318,48 @@ class CROSSCUT_MT_pie(bpy.types.Menu):
         pie.operator("crosscut.from_view", text="Section from View", icon='VIEW_CAMERA')
 
 
-def _header_button(self, context):
+def _draw_header_button(layout, context):
     if context.scene is None or not hasattr(context.scene, "crosscut"):
         return
     s = context.scene.crosscut
-    row = self.layout.row(align=True)
+    # beside X-ray it greys out with it outside Solid and Wireframe, where Crosscut can't clip either
+    row = layout.row(align=True)
     row.operator("crosscut.toggle", text="", icon='MOD_BOOLEAN', depress=s.mode != 'OFF')
     row.popover(panel="CROSSCUT_PT_popover", text="")
+
+
+def _header_button(self, context):
+    """Blender 4.2: appended at the right end of the header."""
+    _draw_header_button(self.layout, context)
+
+
+# Blender 5 draws the header's X-ray button with a helper function, so wrapping it puts our button
+# between X-ray and the shading buttons (D-044). Where there's no such helper, the button is appended.
+_xray_original = []
+
+
+def _xray_then_crosscut(layout, context, text=None):
+    _xray_original[0](layout, context, text=text)
+    region = context.region
+    if region is not None and region.type == 'HEADER':  # not the X-ray item in the shading pie
+        _draw_header_button(layout, context)
+
+
+def _wrap_xray_button():
+    import bl_ui.space_view3d as sv3d
+    original = getattr(sv3d, "_toggle_xray_operator", None)
+    if original is None:
+        return False
+    _xray_original[:] = [original]
+    sv3d._toggle_xray_operator = _xray_then_crosscut
+    return True
+
+
+def _unwrap_xray_button():
+    import bl_ui.space_view3d as sv3d
+    if _xray_original and getattr(sv3d, "_toggle_xray_operator", None) is _xray_then_crosscut:
+        sv3d._toggle_xray_operator = _xray_original[0]
+    _xray_original.clear()
 
 
 classes = (
@@ -375,7 +410,8 @@ def _add_keymaps():
 def register():
     for c in classes:
         bpy.utils.register_class(c)
-    bpy.types.VIEW3D_HT_header.append(_header_button)
+    if not _wrap_xray_button():
+        bpy.types.VIEW3D_HT_header.append(_header_button)
     _add_keymaps()
 
 
@@ -386,6 +422,9 @@ def unregister():
         except (ReferenceError, RuntimeError):
             pass
     _keymaps.clear()
-    bpy.types.VIEW3D_HT_header.remove(_header_button)
+    if _xray_original:
+        _unwrap_xray_button()
+    else:
+        bpy.types.VIEW3D_HT_header.remove(_header_button)
     for c in reversed(classes):
         bpy.utils.unregister_class(c)

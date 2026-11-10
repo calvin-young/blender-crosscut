@@ -23,7 +23,7 @@ line below carries a category.
 
 | Bugs found | UI tweaks | New features | Direction | Total |
 |---|---|---|---|---|
-| 29 | 73 | 35 | 24 | 161 |
+| 30 | 75 | 36 | 24 | 165 |
 
 ## Sessions
 
@@ -34,7 +34,7 @@ steering lines matters more than the count of prompts.
 | Date | Tool and model | Prompts | Steering lines | Notes |
 |---|---|---|---|---|
 | 2026-11-04/05 | Claude Code (workstation), Opus 5.5 | 2 | 11 | The presentation demo reel, moved here from a separate demo-reels repo |
-| 2026-11-04 | Claude Code (workstation), Opus 5.5 | 1 | 6 | 0.16.0: snap, 580 color first try, FDM placeholder; design for saved lines |
+| 2026-11-04/09 | Claude Code (workstation), Opus 5.5 | 2 | 10 | 0.16.0: snap, 580 color first try, FDM placeholder; design for saved lines |
 | 2026-11-02 | Claude Code (workstation), Opus 5.5 | 12 | 70 | 0.9.2 to 0.15.1 from the maintainer's notes after several days of real use |
 | 2026-10-30 | Claude Code (workstation), Opus 5.5 | 3 | 3 | `mjf-preview` branch: Print Preview, for the demo reel in the demo-reels repo |
 | 2026-10-29 | Claude Code (workstation), Opus 5.5 | 5 | 17 | First in-Blender test pass: viewport test suite, 0.2.0 fixes, zip; then 0.3.0, 0.4.0, the 0.9.0 release candidate and 0.9.1 from the maintainer's tests |
@@ -47,6 +47,10 @@ One line for each thing the human contributed that the AI would not have done on
 newest first, tagged with its kind (decide, correct, domain, tested, scope) and, from 2026-11-03, its
 category (bug, ui, feature, direction).
 
+- 2026-11-09 [decide][ui]: leaning towards "clip" over "cut" in the wording; asked for a tally of both.
+- 2026-11-09 [scope][feature]: a Clip targets setting above Fill targets, for Section and Slice only, to clip some parts and not others.
+- 2026-11-09 [decide][ui]: the header button between X-ray and the shading buttons.
+- 2026-11-09 [tested][bug]: Blender crashed on clicking the header button in a running session (Edit Mode, Material Preview).
 - 2026-11-05 [decide][direction]: demo reels belong in each project's repo, not a separate one.
 - 2026-11-05 [decide][direction]: leave 580 color out of the presentation.
 - 2026-11-05 [correct][ui]: reel: shorten Print Preview, and mix the CROSSCUT letters in with the parts so they start sooner.

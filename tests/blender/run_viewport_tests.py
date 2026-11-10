@@ -2484,6 +2484,33 @@ def ui_panels(view):
 
 
 @test
+def edit_mode_material_preview(view):
+    # Blender 5.2 crashed here: Edit Mode under Material Preview, Crosscut turned on. Alt+B can't make a
+    # clipping box in that shading, and Edit Mode's drawing reads the box whenever clipping is on (D-043).
+    T = "edit_mode_material_preview"
+    scene = new_scene("cc-edit-material")
+    ob = box("part-001", (20, 20, 20))
+    bpy.context.view_layer.objects.active = ob
+    ob.select_set(True)
+    view.space.shading.type = 'MATERIAL'
+    with view.override():
+        bpy.ops.object.mode_set(mode='EDIT')
+        bpy.ops.crosscut.toggle()
+    yield from settle()
+    check(T, "on, and Blender is still here", scene.crosscut.mode != 'OFF')
+    check(T, "no clipping without a box", not view.rv3d.use_clip_planes)
+    view.space.shading.type = 'SOLID'
+    yield from settle()
+    yield from settle()
+    check(T, "back in Solid, it clips", view.rv3d.use_clip_planes)
+    Shot(view, "edit_mode_back_in_solid")
+    with view.override():
+        bpy.ops.object.mode_set(mode='OBJECT')
+    scene.crosscut.mode = 'OFF'
+    yield from settle()
+
+
+@test
 def measure_snap(view):
     T = "measure_snap"
     dr = cc("draw")

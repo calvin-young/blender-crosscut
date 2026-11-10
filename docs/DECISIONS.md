@@ -37,6 +37,24 @@ this list is an assumption, tracked in the table at the end.
 
 ## Decisions
 
+### D-044: The header button goes beside X-ray by wrapping Blender's own helper (2026-11-09)
+
+- **Context:** The maintainer asked for it between X-ray and the shading buttons. Add-ons can only add to a header's ends.
+- **Decision:** Blender 5 draws X-ray with a module function, `bl_ui.space_view3d._toggle_xray_operator`. Crosscut wraps it
+  (header region only, not the shading pie that also calls it) and puts it back when disabled. Blender 4.2 inlines that
+  button, so there the button is appended at the right end as before.
+- **Risk:** a private Blender function. If it's renamed, the button falls back to the right end; if its arguments change,
+  the header could fail to draw. Another add-on wrapping the same function would stack, which is harmless.
+- **Look:** it greys out with X-ray outside Solid and Wireframe (it still works), which fits: Crosscut can't clip there either.
+
+### D-043: No clipping until the view has a clipping box (2026-11-09)
+
+- **Crash:** with Edit Mode under Material Preview, Crosscut turned on: Blender 5.2 crashed in `ED_view3d_clipping_local`,
+  reading `rv3d->clipbb`, which was null. `sync_clip` switched clipping on at once and left the box to `_prime` (D-008);
+  `view3d.clip_border` refuses to run outside Solid and Wireframe, so the box never came, and Edit Mode's drawing reads it.
+- **Decision:** a view without clipping waits, unclipped, until `_prime` has made the box, and `_prime` waits for Solid
+  or Wireframe. Nothing is lost: Blender doesn't clip in Material Preview or Rendered.
+
 ### D-043: The demo reel's staging (2026-11-05)
 
 - **Message:** CROSSCUT is a real part among the others, with a ramped underside (linear in x, so faces stay
@@ -794,3 +812,4 @@ What `tests/blender/run_viewport_tests.py` and the screenshots showed in 0.1.0, 
 | Q-074 | Snap reach of 10 pixels; a marker at the anchor rather than a text label | assumption | 0.16.0 | open |
 | Q-075 | Color Depth default 0.1 mm; never thinner than 2 pixels | assumption | 0.16.0 | open |
 | Q-076 | A layered material shows its bottom layer only | assumption | 0.16.0 | open |
+| Q-077 | The header button greys out with X-ray in Material Preview and Rendered | assumption | 0.16.1 | open |

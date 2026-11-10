@@ -154,11 +154,45 @@ def test_take_over_and_release_leaves_no_clipping():
     assert not r.use_clip_planes
 
 
+def _primed(r):
+    """What _prime does once Blender lets it make the view a clipping box."""
+    st = draw._clip_state[r.as_pointer()]
+    r.clip_planes = st["ours"].reshape(6, 4).tolist()
+    r.use_clip_planes = True
+    st["ours"] = draw._flat(r.clip_planes)
+    st.pop("unboxed", None)
+
+
+def test_no_clipping_before_the_box():
+    draw._clip_state.clear()  # a fake view can reuse an earlier one's id
+    # Edit Mode reads the box whenever clipping is on, and Blender crashed without one (D-043)
+    r = FakeRV3D()
+    want = [np.array([0, 0, -1.0, 3.0])]
+    assert draw.sync_clip(r, want) is True
+    assert r.use_clip_planes is False
+    assert draw.sync_clip(r, want) is True and r.use_clip_planes is False  # still waiting
+    _primed(r)
+    assert draw.sync_clip(r, want) is True and r.use_clip_planes
+
+
+def test_alt_b_while_waiting_for_the_box_hands_over():
+    draw._clip_state.clear()  # a fake view can reuse an earlier one's id
+    import bpy
+    r = FakeRV3D()
+    want = [np.array([0, 0, -1.0, 3.0])]
+    draw.sync_clip(r, want)
+    r.use_clip_planes = True  # the user's own Alt+B box
+    n_timers = len(bpy._timers)
+    assert draw.sync_clip(r, want) is False
+    assert len(bpy._timers) == n_timers + 1
+
+
 def test_user_alt_b_turns_crosscut_off():
     import bpy
     r = FakeRV3D()
     want = [np.array([0, 0, -1.0, 3.0])]
     draw.sync_clip(r, want)
+    _primed(r)
     r.use_clip_planes = False  # Alt+B with clipping active toggles it off
     n_timers = len(bpy._timers)
     assert draw.sync_clip(r, want) is False
@@ -167,8 +201,10 @@ def test_user_alt_b_turns_crosscut_off():
 
 
 def test_moving_plane_updates_without_triggering_hand_off():
+    draw._clip_state.clear()
     r = FakeRV3D()
     draw.sync_clip(r, [np.array([0, 0, -1.0, 3.0])])
+    _primed(r)
     assert draw.sync_clip(r, [np.array([0, 0, -1.0, 3.5])]) is True
     assert np.isclose(_planes_of(r)[0][3], 3.5)
 

@@ -351,6 +351,8 @@ def _prime(win, area, region, rv3d):
     st = _clip_state.get(key)
     if st is None or st.get("ours") is None:
         return
+    if area.spaces.active.shading.type not in {'SOLID', 'WIREFRAME'}:
+        return  # Alt+B can't run here; sync_clip asks again once the shading allows it
     planes = st["ours"].reshape(6, 4).tolist()
     try:
         with bpy.context.temp_override(window=win, area=area, region=region):
@@ -361,6 +363,7 @@ def _prime(win, area, region, rv3d):
     rv3d.clip_planes = planes
     rv3d.use_clip_planes = True
     st["ours"] = _flat(rv3d.clip_planes)
+    st.pop("unboxed", None)
     area.tag_redraw()
 
 
@@ -547,6 +550,17 @@ def sync_clip(rv3d, desired, area=None):
             _to_prime.discard(key)
         return False
 
+    if st is not None and st.get("unboxed"):
+        if cur_on:
+            # Alt+B while waiting for _prime: the user's box, so hand control back
+            del _clip_state[key]
+            _to_prime.discard(key)
+            _request_mode_off()
+            return False
+        # still waiting for _prime: clipping stays off until the view has a box (D-043)
+        st["ours"] = _flat(_pad6(desired))
+        _request_prime(key)
+        return True
     if st is not None and st.get("ours") is not None:
         if not cur_on or not np.allclose(cur, st["ours"], atol=1e-5, rtol=1e-6):
             # The user pressed Alt+B (toggles clipping off, or draws a new box):
@@ -564,6 +578,12 @@ def sync_clip(rv3d, desired, area=None):
         # Blender would keep shading the area outside the old box. An empty
         # box fixes both.
         _request_prime(key)
+        if not cur_on:
+            # No box yet: switching clipping on now would crash Blender wherever it reads the box
+            # (Edit Mode draws, under Material Preview where Alt+B can't make one). _prime does it.
+            st["ours"] = _flat(_pad6(desired))
+            st["unboxed"] = True
+            return True
 
     full = _pad6(desired)
     full_flat = _flat(full)

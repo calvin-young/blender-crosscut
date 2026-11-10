@@ -8,7 +8,7 @@ The human-facing overview is in [README.md](README.md).
 - **What it is:** a Blender add-on that adds filled (solid or hatched) caps to viewport
   clipping, plus section and slice views with a scrub slider. It drives the same
   `RegionView3D.clip_planes` that Alt+B uses and draws the caps with the `gpu` module.
-- **Status:** in development (0.16.0, 2026-11-04), used on real work, not close to 1.0; tested in Blender (4.2.23 and 5.2.3,
+- **Status:** in development (0.16.1, 2026-11-09), used on real work, not close to 1.0; tested in Blender (4.2.23 and 5.2.3,
   OpenGL; 5.2 on Vulkan too) with the in-viewport suite below. Waiting for the maintainer's
   test on real work. See "State and next steps".
 - **Runs in:** Blender 4.2+ as an extension (`crosscut/blender_manifest.toml`); Python 3.11
@@ -21,13 +21,14 @@ The human-facing overview is in [README.md](README.md).
   `ln -s "$PWD/crosscut" ~/.config/blender/<version>/extensions/user_default/crosscut`,
   then enable "Crosscut" in Preferences > Add-ons.
 - **Run tests (no Blender needed):** `python tests/test_section_math.py && python tests/test_addon_logic.py`
-- **Run the in-Blender viewport tests:** `blender --factory-startup --enable-event-simulate --python tests/blender/run_viewport_tests.py`
+- **Run the in-Blender viewport tests:** `blender --factory-startup --enable-event-simulate -p 0 0 1920 1080 --python tests/blender/run_viewport_tests.py`
   (`--enable-event-simulate` lets the selection test send clicks; without it that test is skipped)
   (add `-- --only <name>` for one test, `-- --keep` to leave Blender open; `--gpu-backend vulkan`
   before `--python` for Vulkan on 5.x). Needs a real display: draw handlers do not run in
   `--background`; on the workstation use `DISPLAY=:0`. It builds synthetic scenes, checks pixels
   at known spots, writes screenshots to `~/crosscut_tests/<version>/` and exits 1 on any failure.
-  Look at the screenshots too: the checks cannot judge looks. Takes about a minute.
+  Look at the screenshots too: the checks cannot judge looks. Takes about a minute. The pixel checks depend on the window size:
+  keep `-p 0 0 1920 1080` (a 4K desktop failed two tests on 2026-11-09).
 - **Showcase screenshots:** `blender --python tools/showcase.py` with Crosscut enabled. Writes
   PNGs to `~/crosscut_showcase/`; the README images in `docs/images/screenshots/` are crops of
   these (`convert X.png -gravity center -crop 1500x1300+0+0 +repage -resize 900x`), plus the
@@ -119,9 +120,11 @@ this file, the reasons behind decisions and the approaches that were dropped go 
   update CHANGELOG, DECISIONS, PROMPT_STATS (one tagged line per thing asked, and the tally), tag, pre-release, Workbench row.
   Simulated Esc only reaches the viewport's keymap with the mouse over it, and a redraw resets a test's context override.
 - 0.16.0: the free end snaps straight across (D-041); Print Preview's Printer choice with 580 color, a first try (D-042); FDM is a placeholder, left for a contributor.
+- 0.16.1: crash in Edit Mode under Material Preview fixed (D-043); header button beside X-ray in Blender 5 (D-044). Asked, waiting on the
+  maintainer's answers: Clip targets for Section/Slice ([issue](https://github.com/calvin-young/blender-crosscut/issues/16)) and "clip" over "cut" in the wording.
 - Next: [save lines with the file and follow moved parts](https://github.com/calvin-young/blender-crosscut/issues/12): a design is with the maintainer, don't build until it's agreed.
   [580 color](https://github.com/calvin-young/blender-crosscut/issues/14) stays open until the maintainer has judged the lag. [FDM](https://github.com/calvin-young/blender-crosscut/issues/13) is left for someone else.
-  Open questions Q-030 to Q-076 in DECISIONS.md.
+  Open questions Q-030 to Q-077 in DECISIONS.md.
 - The demo reel is in `demo/`, for the maintainer's presentation (94 s, on v0.16.0). 580 color stays out of it (maintainer's call). Shared how-to: `topics/demo-reels.md` in ai-context.
 - Not tested yet: macOS/Windows, HiDPI scaling above 1, Metal, very large multi-object scenes.
 
