@@ -2,9 +2,9 @@
 
 Live, non-destructive **section** and **slice** views for Blender's 3D viewport.
 
-Blender's clipping region shows you the backfaces of whatever it cuts. Crosscut
-uses the same viewport clip planes and adds **caps**: the cut is filled (and optionally
-hatched) wherever the plane passes through solid material, so a cut part reads as a solid
+Blender's clipping region shows you the backfaces of whatever it clips. Crosscut
+uses the same viewport clip planes and fills the **cut faces** (optionally hatched)
+wherever the plane passes through solid material, so a clipped part reads as a solid
 cross-section, the way section views work in CAD. One click switches back to the plain
 backface look.
 
@@ -20,27 +20,27 @@ the maintainer's hand-made mock-ups in [docs/images/reference/](docs/images/refe
 - **Section** (keep one side) or **Slice** (only the cross-section, or a slab of any thickness).
 - **Planes** along X, Y, Z, an object's local X, Y or Z (an Empty you move with G/R, or the part
   itself), or **View**: facing the view as it is when you click, and staying put when you orbit.
-- **Cap styles**: Backfaces (native look), Solid, Hatched. They apply to Section, Slice and
-  Blender's own clipping region alike; Backfaces turns capping off everywhere.
+- **Fill**: Backfaces (native look), Solid, Hatched. It applies to Section, Slice and
+  Blender's own clipping region alike; Backfaces turns filling off everywhere.
 - **Scrub** the plane across the parts, or across any object's bounds (for example a build
   volume), as a 0-1 slider or as a distance. Step buttons and **Shift+Alt+Wheel** move it by a
   fixed step (default 0.08, one MJF layer at 1 unit = 1 mm); add Ctrl for 10 steps.
 - **Several parts**: hatching alternates per part (ISO 128-50 style); where sections overlap,
-  overlapping caps blend their colours, share the area in stripes, or get an adjustable
+  overlapping cut faces blend their colours, share the area in stripes, or get an adjustable
   highlight (red cross-hatching by default).
 - **Plane display**: frame, tint or hatching, in colours you choose; a slab's two planes get
   different colours.
-- **Open meshes** are named in the viewport readout whenever a cut goes through one, and their
-  caps go translucent, since the fill may not be real material. Where the hole is on the plane,
+- **Open meshes** are named in the viewport readout whenever the plane goes through one, and their
+  cut faces go translucent, since the fill may not be real material. Where the hole is on the plane,
   the warning turns red; gaps are closed so the fill still makes sense.
 - **Scrub a clipping region**: slide it through the parts along either axis, without changing its size.
-- **Measure**: hover over a cut to see a part's thickness right there, or how wide an overlap is. Click to
+- **Measure**: hover over a cut face to see a part's thickness right there, or how wide an overlap is. Click to
   adjust a line along the contour, snapping straight across from the edge, and pin it, as many as you like.
 - **Print Preview**: powder up to the plane and the fused layer on top, as inside a
   powder-bed printer. For the MJF 580, the layer's edge carries the part's surface color.
 - **Selectable in a zero-thickness slice**: click a section to select its part.
-- Colours follow the Solid shading colour (Object or Material); white or grey parts get the Cap
-  Color (green by default) so the cut stands out.
+- Colours follow the Solid shading colour (Object or Material); white or grey parts get the Fill
+  Color (green by default) so the cut face stands out.
 - **Fast and non-destructive**: the mesh/plane intersection is cached and only recomputed when
   the plane or the mesh changes; nothing is added to or changed in your meshes.
 
@@ -65,14 +65,14 @@ walk-through is in the [user guide](docs/USER_GUIDE.md).
 
 | Where | What |
 |---|---|
-| Sidebar (N) > Crosscut | Clip / Section / Slice, cap style, plane, scrub, Measure; everything else in Settings (closed) |
-| **Shift+Alt+B** (3D View) | Pie: Section X / Y / Z, On/Off, Backfaces/Caps, Section/Slice, Flip, Section from View |
+| Sidebar (N) > Crosscut | Clip / Section / Slice, fill, plane, scrub, Measure; everything else in Settings (closed) |
+| **Shift+Alt+B** (3D View) | Pie: Section X / Y / Z, On/Off, Backfaces/Fill, Section/Slice, Flip, Section from View |
 | Header button (right) | Toggle on/off, popover with the main controls |
 | **Shift+Alt+Wheel** | Step the plane (Ctrl for x10) while Crosscut is on |
 
-Caps show in **Solid** shading; Wireframe is clipped but not capped, and Blender does not clip
+Cut faces are filled in **Solid** shading; Wireframe is clipped but not filled, and Blender does not clip
 Material Preview or Rendered views. Objects displayed as Wire or Bounds and the scrub range
-object are never capped (the readout lists them), so a build-volume box does not fill the
+object are never filled (the readout lists them), so a build-volume box does not fill the
 whole section.
 
 ## How it works

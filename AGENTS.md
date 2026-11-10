@@ -8,7 +8,7 @@ The human-facing overview is in [README.md](README.md).
 - **What it is:** a Blender add-on that adds filled (solid or hatched) caps to viewport
   clipping, plus section and slice views with a scrub slider. It drives the same
   `RegionView3D.clip_planes` that Alt+B uses and draws the caps with the `gpu` module.
-- **Status:** in development (0.16.1, 2026-11-09), used on real work, not close to 1.0; tested in Blender (4.2.23 and 5.2.3,
+- **Status:** in development (0.16.2, 2026-11-09), used on real work, not close to 1.0; tested in Blender (4.2.23 and 5.2.3,
   OpenGL; 5.2 on Vulkan too) with the in-viewport suite below. Waiting for the maintainer's
   test on real work. See "State and next steps".
 - **Runs in:** Blender 4.2+ as an extension (`crosscut/blender_manifest.toml`); Python 3.11
@@ -69,6 +69,8 @@ docs/                     DECISIONS.md, PROMPT_STATS.md, images (concepts + main
   shader is the exception: it takes sRGB (`draw._srgb()` converts linear colours).
 - `section_math.py` stays free of `bpy` so it can be tested anywhere.
 - SPDX `GPL-3.0-or-later` header on every source file.
+- Wording (D-045): "clip" for what's hidden, "cut face(s)" for the filled surface; not "cut" alone as a noun, not "cap".
+- Don't replace or wrap Blender's own UI functions (D-044, reversed): add-ons add to header ends, not the middle.
 - UI/UX matters more to the maintainer than code style: keep labels short, tooltips useful,
   and defaults sensible for modelling parts.
 
@@ -121,7 +123,7 @@ this file, the reasons behind decisions and the approaches that were dropped go 
   Simulated Esc only reaches the viewport's keymap with the mouse over it, and a redraw resets a test's context override.
 - 0.16.0: the free end snaps straight across (D-041); Print Preview's Printer choice with 580 color, a first try (D-042); FDM is a placeholder, left for a contributor.
 - 0.16.1: crash in Edit Mode under Material Preview fixed (D-043); header button beside X-ray in Blender 5 (D-044). Asked, waiting on the
-  maintainer's answers: Clip targets for Section/Slice ([issue](https://github.com/calvin-young/blender-crosscut/issues/16)) and "clip" over "cut" in the wording.
+  maintainer's answers. 0.16.2: header button back at the right end; clip / cut-face wording (D-045). Clip targets dropped (#16): a Blender core limit, noted in DECISIONS.
 - Next: [save lines with the file and follow moved parts](https://github.com/calvin-young/blender-crosscut/issues/12): a design is with the maintainer, don't build until it's agreed.
   [580 color](https://github.com/calvin-young/blender-crosscut/issues/14) stays open until the maintainer has judged the lag. [FDM](https://github.com/calvin-young/blender-crosscut/issues/13) is left for someone else.
   Open questions Q-030 to Q-077 in DECISIONS.md.

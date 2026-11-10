@@ -37,7 +37,25 @@ this list is an assumption, tracked in the table at the end.
 
 ## Decisions
 
-### D-044: The header button goes beside X-ray by wrapping Blender's own helper (2026-11-09)
+### D-045: Clip is what's hidden, a cut face is what's filled (2026-11-09)
+
+- **Context:** The maintainer found "cut" and "clip" jumbled, leaned towards "clip", and left the call to Claude.
+- **Decision:** "clip" for the action and anything hidden ("clip the view with a plane", "nothing is clipped until..."),
+  "cut face(s)" for the surface Crosscut fills, never "cut" alone as a noun. "Cap" leaves the interface: the style row
+  is Fill, the toggle Show Fill. "Clipped face" was ruled out, since it reads as a face that was clipped away. Code
+  names (`cap_style`, `ui_cut_faces`) stay, so saved files keep their settings.
+
+### Blender core: what would help, but Crosscut can't do itself
+
+- **Clipping some objects and not others** (asked by the maintainer 2026-11-09, [#16](https://github.com/calvin-young/blender-crosscut/issues/16),
+  dropped). Blender's viewport clipping applies to every object in a view; there's no per-object switch. Crosscut would
+  have to draw the unclipped parts itself, with its own shading, no matcaps or textures, and selection only where
+  Blender still draws them. A per-object "ignore viewport clipping" option in Blender would make this simple.
+
+### D-044: The header button goes beside X-ray by wrapping Blender's own helper (2026-11-09; reversed in 0.16.2)
+
+- **Reversed:** the maintainer found it "a little dirty": replacing a private Blender function isn't what add-ons are
+  expected to do. The button is back at the header's right end.
 
 - **Context:** The maintainer asked for it between X-ray and the shading buttons. Add-ons can only add to a header's ends.
 - **Decision:** Blender 5 draws X-ray with a module function, `bl_ui.space_view3d._toggle_xray_operator`. Crosscut wraps it
@@ -812,4 +830,4 @@ What `tests/blender/run_viewport_tests.py` and the screenshots showed in 0.1.0, 
 | Q-074 | Snap reach of 10 pixels; a marker at the anchor rather than a text label | assumption | 0.16.0 | open |
 | Q-075 | Color Depth default 0.1 mm; never thinner than 2 pixels | assumption | 0.16.0 | open |
 | Q-076 | A layered material shows its bottom layer only | assumption | 0.16.0 | open |
-| Q-077 | The header button greys out with X-ray in Material Preview and Rendered | assumption | 0.16.1 | open |
+| Q-077 | The header button greys out with X-ray in Material Preview and Rendered | assumption | 0.16.1 | fine, per the maintainer; moot since 0.16.2 |

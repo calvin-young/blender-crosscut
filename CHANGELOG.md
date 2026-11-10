@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.16.2 (2026-11-09)
+
+- The header button is back at the right end of the header, in every Blender version.
+- Wording: "clip" for whatever is hidden, "cut faces" for the filled surfaces, in every tooltip, label and the
+  readout. "Caps" is gone from the interface: the style row is **Fill**, and the toggle is **Show Fill**.
+
 ## 0.16.1 (2026-11-09)
 
 - Fixed: Blender crashed when Crosscut was turned on in Edit Mode under Material Preview. Clipping now waits until the

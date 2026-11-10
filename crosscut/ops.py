@@ -19,8 +19,8 @@ def _center_offset(_context, s):
 
 
 def _face_viewer(context, s):
-    """Flip the plane so the side towards the viewer is the one cut away: a new
-    section then shows its cut face instead of the uncut outside of the part."""
+    """Flip the plane so the side towards the viewer is the one clipped away: a new
+    section then shows its cut face instead of the unclipped outside of the part."""
     rv3d = context.region_data
     f = engine.plane_frame(s)
     if rv3d is None or f is None or not hasattr(rv3d, "view_rotation"):
@@ -33,7 +33,7 @@ def _face_viewer(context, s):
 
 def _switch_on(context, s, mode):
     """Turn Crosscut on from Off: the first time in the middle of the range,
-    afterwards where it was left; cutting away the side facing the viewer."""
+    afterwards where it was left; clipping away the side facing the viewer."""
     if engine.plane_frame(s) is None and s.orientation != 'OBJECT':  # Object waits to be given one
         s.orientation = 'Z'
     s.mode = mode
@@ -57,7 +57,7 @@ class CROSSCUT_OT_set_mode(bpy.types.Operator):
         if props.mode == 'SLICE':
             return ("Slice: show only the cross-section, or a slab of the given thickness. "
                     "Click again to turn it off")
-        return "Section: cut the view with a plane and keep one side. Click again to turn it off"
+        return "Section: clip the view with a plane and keep one side. Click again to turn it off"
 
     def execute(self, context):
         s = _s(context)
@@ -107,7 +107,7 @@ class CROSSCUT_OT_clip(bpy.types.Operator):
 
 
 class CROSSCUT_OT_measure(bpy.types.Operator):
-    """Measure on a cut: hover over a part to see its thickness at the mouse, or over an overlap to see
+    """Measure on cut faces: hover over a part to see its thickness at the mouse, or over an overlap to see
     how wide it is. Click a line to adjust and pin it: it snaps straight across from the edge, unless you
     hold Ctrl. Click this again, or press Esc, to stop"""
     bl_idname = "crosscut.measure"
@@ -351,9 +351,9 @@ class CROSSCUT_OT_toggle_slice(bpy.types.Operator):
 
 
 class CROSSCUT_OT_toggle_caps(bpy.types.Operator):
-    """Switch between seeing backfaces (native clipping look) and solid caps"""
+    """Switch between seeing backfaces (native clipping look) and filled cut faces"""
     bl_idname = "crosscut.toggle_caps"
-    bl_label = "Toggle Caps"
+    bl_label = "Toggle Fill"
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):

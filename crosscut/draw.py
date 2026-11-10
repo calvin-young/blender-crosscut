@@ -1944,13 +1944,13 @@ def readout_lines(scene, s, info):
     elif info.get("native"):
         lines.append(f"Clipping Region   {_enum_name(s, 'cap_style')}")
     if info.get("no_plane_object"):
-        warn.append("Object plane: pick an object (nothing is cut until then)")
+        warn.append("Object plane: pick an object (nothing is clipped until then)")
     if info.get("uncapped"):
         warn.append("Not capped (Wire/Bounds display): " + _names(info["uncapped"]))
     if info.get("shading_note"):
-        warn.append("Clipping works in Solid and Wireframe shading only; caps in Solid")
+        warn.append("Clipping works in Solid and Wireframe shading only; filled cut faces in Solid")
     if info.get("open_mesh"):
-        warn.append("Open mesh, its cap may not be real material: " + _names(info["open_mesh"]))
+        warn.append("Open mesh, its cut face may not be real material: " + _names(info["open_mesh"]))
     if info.get("mixed_normals"):
         warn.append("Flipped faces, overlaps may show as holes: " + _names(info["mixed_normals"]))
     if info.get("inside_out"):
@@ -2001,7 +2001,7 @@ def draw_readout():
     lines, warn, severe = readout_lines(scene, s, _last_info.get(context.region.as_pointer()))
     if _measure["on"]:
         lines = lines + ["Measure: click to place the line, Ctrl to stop it snapping, Esc to drop it" if _measure["anchor"] is not None
-                         else "Measure: hover over a cut, click a line to adjust and pin it, Esc to stop"]
+                         else "Measure: hover over a cut face, click a line to adjust and pin it, Esc to stop"]
     elif _measure["dims"] and not s.measure_keep:
         lines = lines + ["Pinned measurements: Esc to clear"]
     if not lines and not warn and not severe:

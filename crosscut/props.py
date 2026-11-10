@@ -129,8 +129,8 @@ def _clip_scrub_set(index):
 
 
 MODES = [
-    ('OFF', "Off", "No Crosscut plane (a clipping region still gets caps unless Backfaces is chosen)", 'X', 0),
-    ('SECTION', "Section", "Cut the view with a plane and keep one side (half section)", 'MOD_BOOLEAN', 1),
+    ('OFF', "Off", "No Crosscut plane (a clipping region still gets filled cut faces unless Backfaces is chosen)", 'X', 0),
+    ('SECTION', "Section", "Clip the view with a plane and keep one side (half section)", 'MOD_BOOLEAN', 1),
     ('SLICE', "Slice", "Show only a slice: the cross-section itself, or a slab of the given thickness", 'ALIGN_JUSTIFY', 2),
 ]
 
@@ -145,10 +145,10 @@ ORIENTATIONS = [
 ]
 
 CAP_STYLES = [
-    ('BACKFACES', "Backfaces", "No caps: see the inside of the part, like a plain clipping region "
+    ('BACKFACES', "Backfaces", "No fill: see the inside of the part, like a plain clipping region "
                                "(a zero-thickness slice still shows its outline)"),
-    ('SOLID', "Solid", "Fill the cut with a flat colour so solid material reads as solid"),
-    ('HATCH', "Hatched", "Fill the cut and add section hatching"),
+    ('SOLID', "Solid", "Fill the cut faces with a flat colour so solid material reads as solid"),
+    ('HATCH', "Hatched", "Fill the cut faces and add section hatching"),
 ]
 
 
@@ -163,7 +163,7 @@ class CrosscutSettings(bpy.types.PropertyGroup):
                          description="The plane has been positioned once (first use starts it in the middle)")
     plane_object: PointerProperty(
         name="Plane Object", type=bpy.types.Object, update=_plane_object_changed,
-        description="Object whose local axis defines the section plane (no cut until one is chosen)",
+        description="Object whose local axis defines the section plane (nothing is clipped until one is chosen)",
     )
     object_axis: EnumProperty(
         name="Local Axis", default='Z', update=_object_axis_changed,
@@ -267,16 +267,16 @@ class CrosscutSettings(bpy.types.PropertyGroup):
                     "(0.08 = one MJF layer when 1 unit = 1 mm)",
     )
 
-    cap_style: EnumProperty(name="Cap", items=CAP_STYLES, default='HATCH', update=tag_redraw)
+    cap_style: EnumProperty(name="Fill", items=CAP_STYLES, default='HATCH', update=tag_redraw)
     last_cap_style: StringProperty(default='HATCH', options={'HIDDEN'})
 
     targets: EnumProperty(
         name="Fill", default='VISIBLE', update=tag_redraw,
         description="Which objects' cut faces get filled",
         items=[
-            ('VISIBLE', "Visible Objects", "Cap every visible solid object"),
-            ('SELECTED', "Selected Objects", "Cap only selected objects (everything is still clipped)"),
-            ('COLLECTION', "Collection", "Cap only objects in a collection"),
+            ('VISIBLE', "Visible Objects", "Fill the cut faces of every visible solid object"),
+            ('SELECTED', "Selected Objects", "Fill only selected objects' cut faces (everything is still clipped)"),
+            ('COLLECTION', "Collection", "Fill only the cut faces of objects in a collection"),
         ],
     )
     target_collection: PointerProperty(name="Collection", type=bpy.types.Collection, update=tag_redraw)
@@ -285,11 +285,11 @@ class CrosscutSettings(bpy.types.PropertyGroup):
         name="Colors", default='AUTO', update=tag_redraw,
         items=[
             ('AUTO', "Auto", "Follow the Solid shading colour (Object, Material or Random); white or grey parts get "
-                             "the Fill Color so the cut stands out; other shading colours use a per-object palette"),
+                             "the Fill Color so the cut face stands out; other shading colours use a per-object palette"),
             ('OBJECT', "Object", "Object viewport display colour"),
             ('MATERIAL', "Material", "First material's viewport display colour"),
             ('PALETTE', "Palette", "Distinct colour per object"),
-            ('SINGLE', "Single", "One colour for every cap"),
+            ('SINGLE', "Single", "One colour for every cut face"),
         ],
     )
     single_color: FloatVectorProperty(
@@ -321,7 +321,7 @@ class CrosscutSettings(bpy.types.PropertyGroup):
     )
     fill_brightness: FloatProperty(
         name="Brightness", subtype='FACTOR', min=0.0, max=1.0, default=0.5, update=tag_redraw,
-        description="Darkens colors that come from the parts, so an unlit cap sits with the shaded surfaces around it",
+        description="Darkens colors that come from the parts, so an unlit cut face sits with the shaded surfaces around it",
     )
     fill_tint: FloatVectorProperty(
         name="Tint", subtype='COLOR_GAMMA', size=3, min=0.0, max=1.0, default=(1.0, 0.25, 0.2), update=tag_redraw,
@@ -341,18 +341,18 @@ class CrosscutSettings(bpy.types.PropertyGroup):
                     "so touching or overlapping sections stay distinguishable",
     )
     outline: BoolProperty(name="Outline", default=True, update=tag_redraw,
-                          description="Draw the cut contour")
+                          description="Draw the outline of each cut face")
     outline_width: FloatProperty(name="Width", min=0.5, max=6.0, default=1.5, update=tag_redraw)
     open_opacity: FloatProperty(
         name="Open Part Opacity", subtype='FACTOR', min=0.0, max=1.0, default=0.5, update=tag_redraw,
-        description="Cap opacity for parts with holes in their mesh: their cut may not show real "
-                    "material, so the cap shouldn't read as solid",
+        description="Fill opacity for parts with holes in their mesh: their cut faces may not show real "
+                    "material, so they shouldn't read as solid",
     )
     overlap_style: EnumProperty(
         name="Overlaps", default='HIGHLIGHT', update=tag_redraw,
         items=[
-            ('BLEND', "Blend", "Overlapping caps mix their colours equally"),
-            ('STRIPES', "Stripes", "Overlapping caps share the area in stripes, one per part"),
+            ('BLEND', "Blend", "Overlapping cut faces mix their colours equally"),
+            ('STRIPES', "Stripes", "Overlapping cut faces share the area in stripes, one per part"),
             ('HIGHLIGHT', "Highlight", "Mark where parts overlap, in the color and style below"),
         ],
     )
@@ -379,7 +379,7 @@ class CrosscutSettings(bpy.types.PropertyGroup):
     )
     interference_opacity: FloatProperty(
         name="Opacity", subtype='FACTOR', min=0.0, max=1.0, default=1.0, update=tag_redraw,
-        description="Fill opacity: below 1 the overlapping caps show through, blended",
+        description="Fill opacity: below 1 the overlapping cut faces show through, blended",
     )
     plane_display: EnumProperty(
         name="Plane", default='TINT', update=tag_redraw,
@@ -418,7 +418,7 @@ class CrosscutSettings(bpy.types.PropertyGroup):
     print_preview: BoolProperty(
         name="Print Preview", default=False, update=tag_redraw,
         description="Show the build as it looks inside a powder-bed printer: powder fills the bed up to "
-                    "the plane and the cut through each part is the fused, inked layer. For Section and "
+                    "the plane and each part's cut face is the fused, inked layer. For Section and "
                     "Slice; the bed is the Scrub Range object, or the targets' bounds",
     )
     print_profile: EnumProperty(
