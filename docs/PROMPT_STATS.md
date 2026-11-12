@@ -190,3 +190,5 @@ The first reels, moved here with their steering on 2026-11-05: 6 UI tweaks, 2 fe
 - 2026-10-29 [decide]: title card: name, Calvin, description, "made with Claude", date.
 - 2026-10-29 [decide]: keep the file size small enough for PowerPoint.
 - 2026-10-29 [scope]: start with a few keyframes and a 3 s clip before the full video.
+
+<!-- 2026-11-12: audit session (review only, docs/AUDIT.md). Steering: scope cut to review-only and one chunk at a time by the sprint queue (direction). Add to the table at the next build. -->

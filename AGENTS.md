@@ -124,6 +124,7 @@ this file, the reasons behind decisions and the approaches that were dropped go 
 - 0.16.0: the free end snaps straight across (D-041); Print Preview's Printer choice with 580 color, a first try (D-042); FDM is a placeholder, left for a contributor.
 - 0.16.1: crash in Edit Mode under Material Preview fixed (D-043); header button beside X-ray in Blender 5 (D-044). Asked, waiting on the
   maintainer's answers. 0.16.2: header button back at the right end; clip / cut-face wording (D-045). Clip targets dropped (#16): a Blender core limit, noted in DECISIONS.
+- **Audit (2026-11-12, review only): [docs/AUDIT.md](docs/AUDIT.md).** Ranked findings with file:line and fixes, the build order, and how to build #17 and #18. Nothing in it is implemented yet. Start there.
 - Next: [save lines with the file and follow moved parts](https://github.com/calvin-young/blender-crosscut/issues/12): a design is with the maintainer, don't build until it's agreed.
   [580 color](https://github.com/calvin-young/blender-crosscut/issues/14) stays open until the maintainer has judged the lag. [FDM](https://github.com/calvin-young/blender-crosscut/issues/13) is left for someone else.
   Open questions Q-030 to Q-077 in DECISIONS.md.
