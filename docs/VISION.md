@@ -3,6 +3,8 @@
 A proposal, written after the [audit](AUDIT.md). Nothing here is built. Items marked **Decided** are my
 recommendation with the reason; items marked **Your call** are real choices for the maintainer.
 
+> **Correction from Calvin (2026-11-12):** Crosscut is first and foremost a CAD-like tool for designing parts. He uses it several times a day for that. Inspecting builds is a secondary, though still important, use. He also often wants "drawing-like" screenshots that communicate dimensions quickly, a mock-up of an engineering drawing. Not in scope yet, but a direction to plan for (a later "drawing" milestone). His view: Crosscut's first measurements were already well beyond MeasureIt. He accepts the decisions below as proposed, will live with them, and will give feedback later.
+
 ## What Crosscut is
 
 **The inspection view for print builds: look inside, layer by layer, and answer "is this OK?" on the
