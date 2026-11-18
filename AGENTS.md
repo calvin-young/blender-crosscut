@@ -8,7 +8,7 @@ The human-facing overview is in [README.md](README.md).
 - **What it is:** a Blender add-on that adds filled (solid or hatched) caps to viewport
   clipping, plus section and slice views with a scrub slider. It drives the same
   `RegionView3D.clip_planes` that Alt+B uses and draws the caps with the `gpu` module.
-- **Status:** in development (0.16.2, 2026-11-09), used on real work, not close to 1.0; tested in Blender (4.2.23 and 5.2.3,
+- **Status:** in development (0.17.0, 2026-11-17), used on real work, not close to 1.0; tested in Blender (4.2.23 and 5.2.3,
   OpenGL; 5.2 on Vulkan too) with the in-viewport suite below. Waiting for the maintainer's
   test on real work. See "State and next steps".
 - **Runs in:** Blender 4.2+ as an extension (`crosscut/blender_manifest.toml`); Python 3.11
@@ -124,6 +124,7 @@ this file, the reasons behind decisions and the approaches that were dropped go 
 - 0.16.0: the free end snaps straight across (D-041); Print Preview's Printer choice with 580 color, a first try (D-042); FDM is a placeholder, left for a contributor.
 - 0.16.1: crash in Edit Mode under Material Preview fixed (D-043); header button beside X-ray in Blender 5 (D-044). Asked, waiting on the
   maintainer's answers. 0.16.2: header button back at the right end; clip / cut-face wording (D-045). Clip targets dropped (#16): a Blender core limit, noted in DECISIONS.
+- 0.17.0: the overlap highlight's lines use the cut faces' hatch spacing and width (D-046). Tested on 5.2 only (OpenGL, Vulkan), per the new rule.
 - **Audit (2026-11-12, review only): [docs/AUDIT.md](docs/AUDIT.md).** Ranked findings with file:line and fixes, the build order, and how to build #17 and #18. Nothing in it is implemented yet. Start there.
 - **Vision (2026-11-12, proposal): [docs/VISION.md](docs/VISION.md).** What a measurement is (two points attached to parts, plus its plane), Gap as a third kind, saving (#12), the link to Bucket Builder, and releases 0.17 to 1.0. Items marked "Your call" wait on the maintainer; build nothing from it that he hasn't agreed.
 - Next: [save lines with the file and follow moved parts](https://github.com/calvin-young/blender-crosscut/issues/12): a design is with the maintainer, don't build until it's agreed.

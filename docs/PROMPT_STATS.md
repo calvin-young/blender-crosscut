@@ -23,7 +23,7 @@ line below carries a category.
 
 | Bugs found | UI tweaks | New features | Direction | Total |
 |---|---|---|---|---|
-| 30 | 76 | 36 | 26 | 168 |
+| 30 | 77 | 36 | 27 | 170 |
 
 ## Sessions
 
@@ -33,6 +33,7 @@ steering lines matters more than the count of prompts.
 
 | Date | Tool and model | Prompts | Steering lines | Notes |
 |---|---|---|---|---|
+| 2026-11-12/17 | Claude Code (workstation), Fable 5.2 then Opus 5.5 | 3 | 2 | Audit and vision (review only); 0.17.0 overlap hatch matches the cut faces |
 | 2026-11-04/05 | Claude Code (workstation), Opus 5.5 | 2 | 11 | The presentation demo reel, moved here from a separate demo-reels repo |
 | 2026-11-04/09 | Claude Code (workstation), Opus 5.5 | 3 | 13 | 0.16.0: snap, 580 color first try, FDM placeholder; design for saved lines |
 | 2026-11-02 | Claude Code (workstation), Opus 5.5 | 12 | 70 | 0.9.2 to 0.15.1 from the maintainer's notes after several days of real use |
@@ -47,6 +48,8 @@ One line for each thing the human contributed that the AI would not have done on
 newest first, tagged with its kind (decide, correct, domain, tested, scope) and, from 2026-11-03, its
 category (bug, ui, feature, direction).
 
+- 2026-11-17 [tested][ui]: the overlap highlight's hatch and cross lines were much thinner than his tuned cut-face hatching; make them match.
+- 2026-11-12 [scope][direction]: the sprint cut to review-only chunks, one at a time (audit, vision).
 - 2026-11-09 [decide][direction]: clip vs cut wording left to Claude's judgment, without oversteering.
 - 2026-11-09 [decide][direction]: drop Clip targets; note it as something Blender's core would have to allow.
 - 2026-11-09 [correct][ui]: the header button back where add-ons normally go; wrapping Blender's function felt dirty.
@@ -191,4 +194,3 @@ The first reels, moved here with their steering on 2026-11-05: 6 UI tweaks, 2 fe
 - 2026-10-29 [decide]: keep the file size small enough for PowerPoint.
 - 2026-10-29 [scope]: start with a few keyframes and a 3 s clip before the full video.
 
-<!-- 2026-11-12: audit session (review only, docs/AUDIT.md). Steering: scope cut to review-only and one chunk at a time by the sprint queue (direction). Add to the table at the next build. -->

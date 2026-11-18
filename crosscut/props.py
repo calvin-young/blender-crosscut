@@ -306,10 +306,10 @@ class CrosscutSettings(bpy.types.PropertyGroup):
     hatch_pitch_px: FloatProperty(name="Spacing", min=3.0, max=96.0, default=10.0, precision=1,
                                   description="Hatch spacing in pixels", update=tag_redraw)
     hatch_pitch: FloatProperty(name="Spacing", subtype='DISTANCE', unit='LENGTH', min=1e-4, default=0.5,
-                               precision=3, description="Hatch spacing in scene units", update=tag_redraw)
+                               precision=3, description="Hatch spacing in scene units, for cut faces and the overlap highlight", update=tag_redraw)
     hatch_angle: FloatProperty(name="Angle", subtype='ANGLE', default=math.radians(45.0), update=tag_redraw)
     hatch_width: FloatProperty(name="Line Width", subtype='FACTOR', min=0.05, max=0.9, default=0.3,
-                               description="Hatch line width as a fraction of the spacing", update=tag_redraw)
+                               description="Hatch line width as a fraction of the spacing, for cut faces and the overlap highlight", update=tag_redraw)
     hatch_scale: FloatProperty(
         name="Scale with Part", subtype='FACTOR', min=0.0, max=1.0, default=0.5, update=tag_redraw,
         description="How much the spacing follows each part's size. The Spacing above is for a 50 unit part. "

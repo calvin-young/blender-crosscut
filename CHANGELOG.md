@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.17.0 (2026-11-17)
+
+- The overlap highlight's **Hatched** and **Cross** styles use the cut faces' own hatch **Spacing** and **Line Width**
+  (and Scale with Part, for the overlapping parts' average size), so their lines match the hatching around them. The
+  line width used to be fixed and much thinner. With Fill set to Solid, those settings now show under the highlight.
+
 ## 0.16.2 (2026-11-09)
 
 - The header button is back at the right end of the header, in every Blender version.

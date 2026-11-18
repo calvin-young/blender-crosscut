@@ -159,6 +159,14 @@ def _draw_cut_faces(layout, context):
         col.prop(s, "interference_color")
         if s.interference_style != 'SOLID':
             col.prop(s, "interference_line_color")
+            if s.cap_style != 'HATCH':
+                # the overlap's lines share the cut faces' hatch spacing and width, shown above only when Hatched
+                col.prop(s, "hatch_space")
+                if s.hatch_space == 'SCREEN':
+                    col.prop(s, "hatch_pitch_px", text="Spacing (px)")
+                else:
+                    col.prop(s, "hatch_pitch")
+                col.prop(s, "hatch_width")
         col.prop(s, "interference_opacity", slider=True)
 
 

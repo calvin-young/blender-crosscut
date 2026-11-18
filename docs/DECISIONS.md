@@ -37,6 +37,15 @@ this list is an assumption, tracked in the table at the end.
 
 ## Decisions
 
+### D-046: The overlap highlight shares the cut faces' hatch spacing and line width (2026-11-17)
+
+The maintainer tuned the cut faces' hatching, and the overlap's Hatched and Cross lines didn't follow: their width was
+fixed at 0.18 of the spacing, and their spacing ignored Scale with Part. They now use Spacing, Line Width and Scale with
+Part (for the overlapping parts' average size), so the overlap reads as the same drawing. Shared rather than separate
+settings: the Settings panel is already long (AUDIT.md, finding 22), and nobody has asked for them to differ. With Fill
+set to Solid, the shared settings show under Highlight, since the Hatching group is hidden then. Assumed, not asked:
+sharing over separate settings defaulting to the shared ones.
+
 ### D-045: Clip is what's hidden, a cut face is what's filled (2026-11-09)
 
 - **Context:** The maintainer found "cut" and "clip" jumbled, leaned towards "clip", and left the call to Claude.

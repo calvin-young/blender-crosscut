@@ -112,8 +112,9 @@ The faces Crosscut fills where the plane passes through a part.
   Outline is on.
 - **Overlaps**: where parts' sections overlap, **Blend** mixes their colours equally, **Stripes** gives
   each part an equal share of stripes (**Stripe Width** in the hatch space), and **Highlight** marks them,
-  in a **Style** (Solid, Hatched, Cross), **Color**, **Line Color** and **Opacity** you set. Below full
-  opacity, the blended overlap shows through.
+  in a **Style** (Solid, Hatched, Cross), **Color**, **Line Color** and **Opacity** you set. Hatched and Cross use the
+  hatching's Spacing and Line Width, so the lines match the cut faces around them. Below full opacity, the blended
+  overlap shows through.
 - **Open Part Opacity**: the fill's opacity on a part with holes in its mesh, since its cut face may not
   show real material (default 50 %). The readout warns in amber when the plane goes through such a
   part, and in red when the hole is on the plane itself, where the gaps get closed by guesswork.

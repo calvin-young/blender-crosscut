@@ -1206,12 +1206,15 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style, fill_override=None, out
                     gpu.state.depth_mask_set(False)
                     gpu.state.blend_set('ALPHA')
                     style_i = s.interference_style
-                    hv = list(_hatch_vec(s, 0, 'SOLID' if style_i == 'SOLID' else 'HATCH'))
+                    # the cut faces' own spacing and line width, so the overlap's lines match theirs;
+                    # spacing scaled for the overlapping parts' average size, as each part's is for its own
+                    size = sum(engine.part_size(hh[1], depsgraph) for hh in hits) / len(hits)
+                    hv = list(_hatch_vec(s, 0, 'SOLID' if style_i == 'SOLID' else 'HATCH', size=size))
                     if style_i == 'CROSS':
                         hv[3] = 2.0
                     fill_i = _lin(tuple(s.interference_color) + (s.interference_opacity * xray_alpha,))
                     line_i = _lin(tuple(s.interference_line_color) + (1.0,))
-                    _cap_uniforms(cap_sh, vp, fill_i, line_i, tuple(hv), 1.5 * COUNT_UNITS / 255.0, 0.18,
+                    _cap_uniforms(cap_sh, vp, fill_i, line_i, tuple(hv), 1.5 * COUNT_UNITS / 255.0, s.hatch_width,
                                   accum_off.texture_color)
                     capb.draw(cap_sh)
             if not xray:

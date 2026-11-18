@@ -477,6 +477,37 @@ def multibody(view):
 
 
 @test
+def overlap_hatch_matches(view):
+    """The overlap highlight's lines use the cut faces' own hatch spacing and line width."""
+    T = "overlap_hatch_matches"
+    scene = new_scene("cc-overlap-hatch")
+    box("part-001", (40, 30, 30), (-12, 0, 0), (0.3, 0.55, 0.85))
+    cylinder("part-002", 14, 50, (14, 0, 0), (0.9, 0.6, 0.2))
+    s = scene.crosscut
+    view.look((-4, 0, 0), 70, (0, 0, 0), ortho=True)
+    width = 0.4
+    settings(s, mode='SECTION', orientation='Z', offset=0.0, cap_style='HATCH', hatch_space='MODEL', hatch_pitch=2.0,
+             hatch_width=width, hatch_scale=0.0, hatch_vary=False, interference_style='CROSS',
+             interference_color=(0.86, 0.10, 0.08), interference_line_color=(0.0, 0.0, 0.0))
+    yield 0.1
+    yield from settle()
+    shot = Shot(view, "overlap_hatch_matches")
+
+    def dark(x0, x1, y0, y1):
+        pts = [view.px((x, y, 0.0)) for x in np.linspace(x0, x1, 50) for y in np.linspace(y0, y1, 50)]
+        return sum(max(shot.at(p, r=0)) < 70 for p in pts if p is not None) / len(pts)
+
+    single = dark(-25, -15, -5, 5)   # part-001 alone: single hatch
+    cross = dark(2, 7, -5, 5)        # the overlap: cross-hatching in the same spacing and width
+    check(T, "single hatch covers about its line width", abs(single - width) < 0.1, f"{single:.2f}")
+    expect = 1.0 - (1.0 - width) ** 2
+    check(T, "overlap cross-hatch matches the cut faces' width", abs(cross - expect) < 0.1,
+          f"{cross:.2f}, expected {expect:.2f}")
+    s.interference_line_color = (1.0, 0.85, 0.80)
+    s.hatch_width, s.hatch_pitch, s.hatch_scale = 0.3, 0.5, 0.5
+
+
+@test
 def coplanar_clash(view):
     # overlapping caps lie in one plane: they must not z-fight with each other or
     # with the interference fill, at any distance or angle
