@@ -1560,7 +1560,8 @@ def _measure_at(context, region, x, y):
             hits.append((t, ci, plane, bounds, p))
     depsgraph = context.evaluated_depsgraph_get()
     for _t, ci, plane, bounds, p in sorted(hits, key=lambda h: h[0]):
-        parts = engine.targets_at(context, s, p, plane, depsgraph, ci, bounds)
+        cut = engine.sections_on(context, s, plane, depsgraph, ci, bounds)
+        parts = engine.targets_at(context, s, p, plane, depsgraph, ci, bounds, cut=cut)
         if not parts:
             continue
         n = sm.normalize(plane[:3])
@@ -1569,29 +1570,37 @@ def _measure_at(context, region, x, y):
         # the search starts about 32 pixels across, whatever the zoom
         px = float(np.linalg.norm(np.array(view3d_utils.region_2d_to_location_3d(region, rv3d, (xy[0] + 16, xy[1]), p))
                                   - np.array(view3d_utils.region_2d_to_location_3d(region, rv3d, xy, p))))
+        half = max(px, 1e-6)
+        q = p @ basis.T
         ta, sa = parts[0]
-        if len(parts) >= 2 and not s.measure_ignore_overlaps:
+        overlap = len(parts) >= 2 and not s.measure_ignore_overlaps
+        if overlap:
             tb, sb = parts[1]
-            res, near = sm.overlap_measures(sa @ basis.T, sb @ basis.T, p @ basis.T,
-                                            (engine.is_oriented(ta, depsgraph), engine.is_oriented(tb, depsgraph)),
-                                            half=max(px, 1e-6), local=s.measure_local)
+            res, _near = sm.overlap_measures(sa @ basis.T, sb @ basis.T, q,
+                                             (engine.is_oriented(ta, depsgraph), engine.is_oriented(tb, depsgraph)),
+                                             half=half, local=False)
             if not s.measure_max:
                 res = None
         else:
-            res, near = sm.section_measures(sa @ basis.T, p @ basis.T, engine.is_oriented(ta, depsgraph),
-                                            half=max(px, 1e-6), local=s.measure_local,
-                                            greatest=s.measure_section_max)
+            res, _near = sm.section_measures(sa @ basis.T, q, engine.is_oriented(ta, depsgraph), half=half,
+                                             local=False, greatest=s.measure_section_max)
+        # the lines it can measure between: every part's edges on this plane (D-047), or with Ignore
+        # Overlaps the part's own; trimmed to the other planes, as drawn
+        shown = [(t, seg) for t, seg in cut] if not s.measure_ignore_overlaps else [(ta, sa)]
+        contours, oriented = [], []
+        for t, seg in shown:
+            seg = sm.clip_segments(seg, bounds) if len(bounds) else seg
+            if len(seg):
+                contours.append(seg @ basis.T)
+                oriented.append(engine.is_oriented(t, depsgraph))
+        near = sm.local_chord(np.concatenate(contours), q, half) if s.measure_local and contours else None
         lift = n * float(p @ n)
         world = [(m[1][0] * u + m[1][1] * v + lift, m[2][0] * u + m[2][1] * v + lift, m[0])
                  if m is not None else None for m in (res, near)]
         if not (world[0] or world[1]):
             return None
-        overlap = len(parts) >= 2 and not s.measure_ignore_overlaps
         return {"max": world[0], "local": world[1],
-                "cut": {"plane": plane, "basis": basis, "lift": lift,
-                        "contours": [sa @ basis.T, parts[1][1] @ basis.T] if overlap else [sa @ basis.T],
-                        "oriented": [engine.is_oriented(ta, depsgraph), engine.is_oriented(parts[1][0], depsgraph)]
-                        if overlap else [engine.is_oriented(ta, depsgraph)]}}
+                "cut": {"plane": plane, "basis": basis, "lift": lift, "contours": contours, "oriented": oriented}}
     return None
 
 
@@ -1647,10 +1656,7 @@ def measure_click(context, x, y):
     if _screen_distance(region, b, b, x, y) < _screen_distance(region, a, a, x, y):
         a, b = b, a
     cut = _measure["cut"]
-    fixed, free = a @ cut["basis"].T, b @ cut["basis"].T
-    # the free end keeps to the contour it's on (an overlap has two)
-    which = min(range(len(cut["contours"])),
-                key=lambda i: float(np.linalg.norm(sm.snap_to_contour(cut["contours"][i], free) - free)))
+    fixed = a @ cut["basis"].T
     # about 8 pixels: what counts as too close to the anchor to end on
     from bpy_extras import view3d_utils
     xy = (x - region.x, y - region.y)
@@ -1659,8 +1665,11 @@ def measure_click(context, x, y):
         - np.array(view3d_utils.region_2d_to_location_3d(region, region.data, xy, tuple(a)))))
     _measure.update(region=None, a=None, b=None, text="", la=None, lb=None, ltext="")
     _measure["anchor"] = {"region": region.as_pointer(), "a": a, "b": b, "fixed": fixed, "click": (x, y), "moved": False,
-                          "contour": cut["contours"][which], "oriented": cut["oriented"][which], "radius": radius,
-                          "cut": cut, "normals": sm.anchor_normals(cut["contours"], fixed), "square": None}
+                          # the free end may end on any edge in the section, of any part (D-047)
+                          "contour": np.concatenate(cut["contours"]),
+                          "parts": list(zip(cut["contours"], cut["oriented"], strict=True)), "radius": radius,
+                          "cut": cut, "normals": sm.anchor_normals(cut["contours"], fixed), "square": None,
+                          "square_end": None}
     area.tag_redraw()
     return True
 
@@ -1680,10 +1689,24 @@ def _anchor_update(context, x, y, snap=True):
         if max(abs(x - pin["click"][0]), abs(y - pin["click"][1])) < MEASURE_DEAD_PIXELS:
             return
         pin["moved"] = True
-    hit = sm.snap_normal(pin["contour"], pin["fixed"], pin["normals"], p, pin["oriented"],
-                         pin["radius"] * MEASURE_SNAP_REACH) if snap else None
+    reach = pin["radius"] * MEASURE_SNAP_REACH
+
+    def inside(pt):
+        return sm.inside_any(pin["parts"], pt)
+
+    hit = sm.snap_normal(pin["contour"], pin["fixed"], pin["normals"], p, False, reach, inside=inside) if snap else None
     pin["square"] = None if hit is None else hit[1]
-    q = sm.follow_cursor(pin["contour"], pin["fixed"], p, pin["oriented"], pin["radius"]) if hit is None else hit[0]
+    pin["square_end"] = None
+    if hit is None:
+        q = sm.follow_cursor(pin["contour"], pin["fixed"], p, radius=pin["radius"], inside=inside(p))
+        # ending on a curved edge: snap to the point on it nearest the anchor, square to the edge
+        close = sm.snap_closest(pin["contour"], pin["fixed"], q, reach) if snap else None
+        if close is not None:
+            q = close
+            away = pin["fixed"] - q
+            pin["square_end"] = away / max(float(np.hypot(away[0], away[1])), 1e-300)
+    else:
+        q = hit[0]
     pin["b"] = q[0] * cut["basis"][0] + q[1] * cut["basis"][1] + cut["lift"]
     found[0].tag_redraw()
 
@@ -1788,15 +1811,16 @@ def _draw_measure(context):
             sh.uniform_float("color", c)
             batch.draw(sh)
     pin = _measure["anchor"]
-    if pin is not None and pin["square"] is not None and pin["region"] == region.as_pointer():
-        # a square-corner mark at the anchor, in the plane of the cut
-        m = pin["square"]
+    marks = [] if pin is None or pin["region"] != region.as_pointer() else \
+        [(at, m) for at, m in ((pin["a"], pin["square"]), (pin["b"], pin.get("square_end"))) if m is not None]
+    for at, m in marks:
+        # a square-corner mark where the line meets an edge square on, in the plane of the cut
         basis = pin["cut"]["basis"]
         out = (m[0] * basis[0] + m[1] * basis[1]) * pin["radius"] * MEASURE_SNAP_REACH
         along = (-m[1] * basis[0] + m[0] * basis[1]) * pin["radius"] * MEASURE_SNAP_REACH
-        corner = pin["a"] + out + along
-        batch = batch_for_shader(sh, 'LINES', {"pos": [tuple(pin["a"] + along), tuple(corner),
-                                                       tuple(corner), tuple(pin["a"] + out)]})
+        corner = at + out + along
+        batch = batch_for_shader(sh, 'LINES', {"pos": [tuple(at + along), tuple(corner),
+                                                       tuple(corner), tuple(at + out)]})
         for width, c in ((4.0, (0.0, 0.0, 0.0, 0.9)), (1.5, tuple(context.scene.crosscut.measure_color) + (1.0,))):
             sh.uniform_float("lineWidth", width * ui)
             sh.uniform_float("color", c)

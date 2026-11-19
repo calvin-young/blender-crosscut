@@ -359,7 +359,7 @@ def _add_keymaps():
     kmi = km.keymap_items.new("crosscut.measure_clear", 'ESC', 'PRESS')
     kmi.properties.from_key = True
     _keymaps.append((km, kmi))
-    # click-select by section in a zero-thickness slice (the operator passes the
+    # click-select by the cut face under the mouse (the operator passes the
     # click on to Blender's own selection everywhere else)
     try:
         right = kc_active_select_mouse() == 'RIGHT'

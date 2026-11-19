@@ -1517,6 +1517,171 @@ def hatch_scale(view):
 
 
 @test
+def measure_any_edge(view):
+    """Measure runs between any edges in the section, whichever part they belong to (D-047)."""
+    T = "measure_any_edge"
+    dr = cc("draw")
+    scene = new_scene("cc-measure-any")
+    box("part-001", (40, 30, 20), (0, 15, 0), (0.55, 0.5, 0.75))   # x -20..20, y 0..30
+    box("part-002", (80, 10, 20), (0, 5, 0), (0.45, 0.3, 0.3))     # y 0..10: overlaps part-001's bottom
+    s = scene.crosscut
+    view.look((0, 15, 0), 110, (0, 0, 0), ortho=True)
+    settings(s, mode='SECTION', orientation='Z', offset=0.0, cap_style='HATCH', color_source='OBJECT')
+    yield 0.05
+    yield from settle()
+    r = view.region
+
+    def at(co):
+        x, y = view.px(co)
+        with view.override():
+            return dr._measure_at(bpy.context, r, r.x + x, r.y + y)
+
+    res = at((0, 20, 0))
+    check(T, "above the overlap: from its edge up, not the part's full height",
+          res is not None and res["local"] is not None and abs(res["local"][2] - 20.0) < 0.05, str(res and res["local"]))
+    res = at((0, 5, 0))
+    check(T, "in the overlap: its own height", res is not None and abs(res["local"][2] - 10.0) < 0.05,
+          str(res and res["local"]))
+    res = at((30, 5, 0))
+    check(T, "beside it: the other part's height", res is not None and abs(res["local"][2] - 10.0) < 0.05,
+          str(res and res["local"]))
+    s.measure_ignore_overlaps = True
+    res = at((0, 20, 0))
+    check(T, "Ignore Overlaps: the part's own full height", res is not None and abs(res["local"][2] - 30.0) < 0.05,
+          str(res and res["local"]))
+    s.measure_ignore_overlaps = False
+    if not bpy.app.use_event_simulate:
+        return
+    win = view.window
+    with view.override():
+        bpy.ops.crosscut.measure('INVOKE_DEFAULT')
+    yield 0.1
+
+    def move(co):
+        x, y = view.px(co)
+        win.event_simulate('MOUSEMOVE', 'NOTHING', x=r.x + x, y=r.y + y)
+
+    def click(co):
+        x, y = view.px(co)
+        win.event_simulate('LEFTMOUSE', 'PRESS', x=r.x + x, y=r.y + y)
+        win.event_simulate('LEFTMOUSE', 'RELEASE', x=r.x + x, y=r.y + y)
+
+    # start in the overlap, on its bottom edge
+    move((-8, 1.0, 0))
+    yield 0.2
+    click((-8, 0.5, 0))
+    yield 0.2
+    pin = dr._measure["anchor"]
+    check(T, "anchored on the bottom edge", pin is not None and abs(float(pin["a"][1])) < 0.05, str(pin and pin["a"]))
+    if pin is None:
+        return
+    ax = float(pin["a"][0])
+    move((ax + 0.01, 5, 0))
+    yield 0.2
+    check(T, "cursor in the overlap: ends on its top edge", abs(float(pin["b"][1]) - 10.0) < 0.05, str(pin["b"]))
+    move((ax + 0.01, 20, 0))
+    yield 0.2
+    yield from settle()
+    Shot(view, "measure_any_edge_through")
+    check(T, "cursor past it: on through to the part's top", abs(float(pin["b"][1]) - 30.0) < 0.05, str(pin["b"]))
+    click((ax + 0.01, 20, 0))
+    yield 0.2
+    # a curved edge, met square on: a cylinder above, anchored below it
+    for ob in list(scene.objects):
+        bpy.data.objects.remove(ob)
+    box("part-001", (60, 20, 20), (0, -10, 0), (0.55, 0.5, 0.75))    # y -20..0
+    cylinder("part-002", 15, 20, (0, 25, 0), (0.45, 0.3, 0.3), segs=512)  # bottom of the circle at y=10
+    with view.override():
+        bpy.ops.crosscut.measure_clear('INVOKE_DEFAULT')
+    yield 0.1
+    yield from settle()
+    move((-12, -18.5, 0))
+    yield 0.2
+    click((-12, -19.5, 0))
+    yield 0.2
+    pin = dr._measure["anchor"]
+    check(T, "anchored on the box's bottom", pin is not None and abs(float(pin["a"][1]) + 20.0) < 0.05,
+          str(pin and pin["a"]))
+    if pin is None:
+        return
+    anchor = np.asarray(pin["a"][:2], dtype=np.float64)
+    centre = np.array([0.0, 25.0])
+    closest = centre + 15.0 * (anchor - centre) / np.linalg.norm(anchor - centre)
+    # in the gap below the circle, a little to the side of its closest point: the end snaps there
+    off = 0.4 * pin["radius"]
+    move((closest[0] + off, closest[1] - 1.0, 0))
+    yield 0.2
+    yield from settle()
+    Shot(view, "measure_any_edge_closest")
+    b = np.asarray(pin["b"][:2], dtype=np.float64)
+    check(T, "snaps to the curve's closest point, square on", pin.get("square_end") is not None
+          and np.linalg.norm(b - closest) < 0.1, f"{b} vs {closest}, mark {pin.get('square_end')}")
+    x, y = view.px((closest[0] + off, closest[1] - 1.0, 0))
+    win.event_simulate('LEFT_CTRL', 'PRESS', x=r.x + x, y=r.y + y, ctrl=True)
+    yield 0.2
+    check(T, "Ctrl turns that off too", pin.get("square_end") is None)
+    win.event_simulate('LEFT_CTRL', 'RELEASE', x=r.x + x, y=r.y + y)
+    for _ in range(2):
+        x, y = view.px((0, 0, 0))
+        win.event_simulate('ESC', 'PRESS', x=r.x + x, y=r.y + y)
+        win.event_simulate('ESC', 'RELEASE', x=r.x + x, y=r.y + y)
+        yield 0.2
+    check(T, "stops", not dr.measure_running())
+    with view.override():
+        if dr.measure_has_lines():
+            bpy.ops.crosscut.measure_clear('INVOKE_DEFAULT')
+    check(T, "no draw errors", not errors(), str(errors()))
+
+
+@test
+def select_cut_face(view):
+    """Click-select follows the cut face under the mouse, not the clipped geometry behind it (D-048)."""
+    T = "select_cut_face"
+    if not bpy.app.use_event_simulate:
+        print("    skipped: run Blender with --enable-event-simulate")
+        return
+    scene = new_scene("cc-select-cut")
+    pin = box("part-002", (10, 10, 50), (0, 0, 0), (0.5, 0.75, 0.55))
+    block = box("part-001", (40, 40, 20), (0, 0, 0), (0.55, 0.2, 0.2))
+    mod = block.modifiers.new("cut", 'BOOLEAN')
+    mod.object = pin
+    mod.operation = 'DIFFERENCE'
+    s = scene.crosscut
+    view.look((0, 0, 0), 90, (90, 0, 0), ortho=True)  # front view, looking along +Y
+    settings(s, mode='SECTION', orientation='Y', offset=0.0, flip=True, cap_style='HATCH', color_source='OBJECT')
+    for o in scene.objects:
+        o.select_set(False)
+    yield 0.1
+    yield from settle()
+    win = view.window
+
+    def click(co):
+        x, y = view.px(co)
+        x += view.region.x
+        y += view.region.y
+        win.event_simulate(type='MOUSEMOVE', value='NOTHING', x=x, y=y)
+        win.event_simulate(type='LEFTMOUSE', value='PRESS', x=x, y=y)
+        win.event_simulate(type='LEFTMOUSE', value='RELEASE', x=x, y=y)
+
+    click((0, 0, 0))   # the pin, where it sits in the block's hole
+    yield 0.3
+    check(T, "the pin inside the block's hole selects the pin", pin.select_get() and not block.select_get(),
+          f"pin {pin.select_get()} block {block.select_get()}")
+    click((0, 0, 0))   # again: nothing else is there, so it stays
+    yield 0.3
+    check(T, "a second click keeps the pin", pin.select_get() and not block.select_get())
+    click((14, 0, 0))  # the block's cut face
+    yield 0.3
+    check(T, "the block's cut face selects the block", block.select_get() and not pin.select_get())
+    click((0, 0, 18))  # the pin above the block
+    yield 0.3
+    yield from settle()
+    Shot(view, "select_cut_face")
+    check(T, "the pin above the block selects the pin", pin.select_get() and not block.select_get())
+    check(T, "no draw errors", not errors(), str(errors()))
+
+
+@test
 def measure_overlap(view):
     T = "measure_overlap"
     scene = new_scene("cc-measure")

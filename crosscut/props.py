@@ -231,7 +231,7 @@ class CrosscutSettings(bpy.types.PropertyGroup):
     )
     measure_ignore_overlaps: BoolProperty(
         name="Ignore Overlaps", default=False, update=tag_redraw,
-        description="Always measure one part's thickness, even over an overlap",
+        description="Measure one part's own thickness, ignoring other parts' edges inside it",
     )
     measure_text_size: IntProperty(
         name="Text Size", min=8, max=48, default=14, update=tag_redraw,

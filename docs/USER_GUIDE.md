@@ -171,15 +171,19 @@ draws like the 5600, and its button opens the issue, for anyone who'd like to ta
 
 Click **Measure**, then hover over a cut face. It runs until you click it again or press Esc.
 
-- Over one part, a line shows the section's thickness at the mouse, straight across from the nearest wall.
-- Over an overlap, a line shows the overlap's width at the mouse, from one part's edge to the other's, and a
-  second line shows its greatest width anywhere (labelled "max"), which can be away from the mouse. Where more
-  than two parts overlap, it measures the first two. A very long, thin overlap can read as several short ones:
-  hover over its deepest part.
+- A line shows how wide the cut face is at the mouse, straight across from the nearest edge, between whatever edges
+  are around the mouse: a part's own edges, another part's edges inside it, or an overlap's. Above an overlap it
+  measures from the overlap's edge; inside the overlap, the overlap itself.
+- Over an overlap, a second line shows its greatest width anywhere (labelled "max"), which can be away from the
+  mouse. Where more than two parts overlap, it measures the first two. A very long, thin overlap can read as several
+  short ones: hover over its deepest part.
 
 To get the exact line you want, click a showing line: the end nearer the mouse stays put, and the other end
-follows the mouse. Inside the section the line runs through the mouse to the edge beyond it; outside it, the end
-goes to the nearest point on the edge. Near the direction straight across from the anchor's edge it snaps there, and a small square-corner mark shows at the anchor; hold Ctrl to turn that off. Click again to pin it, and carry on to measure and pin more. Esc while placing
+follows the mouse. It can end on any edge in the section, of any part. Inside the section the line runs through the
+mouse to the first edge beyond it, so to cross an edge, move the mouse past it; outside the section, the end goes to
+the nearest edge. Near the direction straight across from the anchor's edge it snaps there, with a small
+square-corner mark at the anchor. Near the point of an edge closest to the anchor (on a curve, where the line meets
+it square on) it snaps there, with the mark at that end. Hold Ctrl to turn both off. Click again to pin it, and carry on to measure and pin more. Esc while placing
 a line drops just that one. Pinned lines stay where they are if you move a part or the plane.
 
 Pinned lines outlast Measure. Esc stops measuring and leaves them; press Esc again to clear them, or use the **X**
@@ -191,17 +195,17 @@ In Settings > Measure:
 - **Local Width**: the line at the mouse, and its color.
 - **Overlap Max**: the "max" line over an overlap, and its color.
 - **Section Max**: over one part, a "max" line too, at the section's thickest place. Off by default.
-- **Ignore Overlaps**: always measure one part's thickness, even over an overlap. Off by default.
+- **Ignore Overlaps**: measure one part's own thickness, ignoring other parts' edges inside it. Off by default.
 - **Text Size** of the lengths. It follows **Hatch Space**: in Model space it's a height in scene units, so lengths
   scale with the view like the hatching (never below a readable size); in Screen space it's in pixels.
 
-## Selecting in a zero-thickness slice
+## Selecting by cut face
 
-Blender can't select clipped geometry, and a zero-thickness slice clips everything. Crosscut
-handles the click itself there: click a section to select its part, Shift+click to add or
-remove it, and click again where parts overlap to cycle through them. Clicks on empty space go
-to Blender as usual. Selected parts show their contour in the selection colour. Box select
-doesn't work in this mode.
+A click on a cut face selects the part the cut face belongs to, the one you see there. (Blender itself picks by the
+clipped geometry behind the cut face, which can be another part, say one with a hole where this part sits, and in a
+zero-thickness slice it can't pick anything at all.) Shift+click adds or removes the part, and clicking again where
+parts overlap cycles through them. Clicks anywhere else go to Blender as usual. Selected parts show their contour in
+the selection colour. Box select in a zero-thickness slice doesn't work.
 
 ## Pie menu (Shift+Alt+B)
 

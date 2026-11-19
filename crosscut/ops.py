@@ -107,9 +107,9 @@ class CROSSCUT_OT_clip(bpy.types.Operator):
 
 
 class CROSSCUT_OT_measure(bpy.types.Operator):
-    """Measure on cut faces: hover over a part to see its thickness at the mouse, or over an overlap to see
-    how wide it is. Click a line to adjust and pin it: it snaps straight across from the edge, unless you
-    hold Ctrl. Click this again, or press Esc, to stop"""
+    """Measure on cut faces: hover to see how wide a cut face is at the mouse, between any edges in the
+    section. Click a line to adjust and pin it: it ends on any edge and snaps square to the edges, unless
+    you hold Ctrl. Click this again, or press Esc, to stop"""
     bl_idname = "crosscut.measure"
     bl_label = "Measure"
     swallow = False
@@ -219,10 +219,11 @@ def _zero_slice(s):
 
 
 class CROSSCUT_OT_select_section(bpy.types.Operator):
-    """Click-select parts by their section in a zero-thickness slice (Blender
-    can't select them there: everything else is clipped away)"""
+    """Click-select the part whose cut face is under the mouse. Blender picks by the clipped
+    geometry behind the cut face, which can be another part (one with a hole there), and in a
+    zero-thickness slice it can't pick anything at all (D-048)"""
     bl_idname = "crosscut.select_section"
-    bl_label = "Select by Section"
+    bl_label = "Select by Cut Face"
     bl_options = {'REGISTER', 'UNDO'}
 
     extend: BoolProperty(name="Extend", description="Toggle the part's selection instead of replacing it")
@@ -230,29 +231,50 @@ class CROSSCUT_OT_select_section(bpy.types.Operator):
     @classmethod
     def poll(cls, context):
         sc = context.scene
-        return (sc is not None and _zero_slice(sc.crosscut) and context.mode == 'OBJECT'
-                and context.region_data is not None)
+        rv3d = context.region_data
+        if sc is None or context.mode != 'OBJECT' or rv3d is None:
+            return False
+        s = sc.crosscut
+        if s.cap_style == 'BACKFACES':
+            return _zero_slice(s)  # the only cut face Backfaces still fills
+        return s.mode != 'OFF' or bool(rv3d.use_clip_planes)
 
     def invoke(self, context, event):
         from bpy_extras import view3d_utils
+
+        from . import draw
         s = _s(context)
-        planes = engine.compute_planes(s)
-        if not planes:
-            return {'PASS_THROUGH'}
-        plane = np.asarray(planes[1][0][0], dtype=np.float64)
+        rv3d = context.region_data
+        if getattr(context.space_data, "shading", None) is None or context.space_data.shading.type != 'SOLID':
+            return {'PASS_THROUGH'}  # cut faces are only filled in Solid shading
         xy = (event.mouse_region_x, event.mouse_region_y)
-        o = np.array(view3d_utils.region_2d_to_origin_3d(context.region, context.region_data, xy))
-        d = np.array(view3d_utils.region_2d_to_vector_3d(context.region, context.region_data, xy))
-        denom = float(plane[:3] @ d)
-        if abs(denom) < 1e-12:
-            return {'PASS_THROUGH'}
-        p = o + d * (-(float(plane[:3] @ o) + float(plane[3])) / denom)
-        hits = engine.objects_at(context, s, p, plane, context.evaluated_depsgraph_get())
-        if not hits:
-            return {'PASS_THROUGH'}  # Blender's own click-select deselects as usual
+        o = np.array(view3d_utils.region_2d_to_origin_3d(context.region, rv3d, xy))
+        d = np.array(view3d_utils.region_2d_to_vector_3d(context.region, rv3d, xy))
+        hits = []
+        for ci, (plane, bounds) in enumerate(draw._caps_for(s, rv3d)):
+            plane = np.asarray(plane, dtype=np.float64)
+            facing = float(plane[:3] @ d)
+            # only a cut face seen from its clipped side is in front of everything there; one seen
+            # from behind lies beyond kept geometry (a slab's far plane). A zero slice clips both sides
+            if abs(facing) < 1e-12 or (facing < 0.0 and not _zero_slice(s)):
+                continue
+            t = -(float(plane[:3] @ o) + float(plane[3])) / facing
+            if rv3d.is_perspective and t < 0.0:
+                continue
+            p = o + d * t
+            if all(float(np.asarray(b)[:3] @ p) + float(np.asarray(b)[3]) >= -1e-6 for b in bounds):
+                hits.append((t, ci, plane, bounds, p))
+        depsgraph = context.evaluated_depsgraph_get()
+        found = []
+        for _t, ci, plane, bounds, p in sorted(hits, key=lambda h: h[0]):
+            found = engine.objects_at(context, s, p, plane, depsgraph, ci, bounds)
+            if found:
+                break
+        if not found:
+            return {'PASS_THROUGH'}  # Blender's own click-select, as usual
         active = context.view_layer.objects.active
         # clicking again where parts overlap cycles through them
-        ob = hits[(hits.index(active) + 1) % len(hits)] if active in hits and len(hits) > 1 else hits[0]
+        ob = found[(found.index(active) + 1) % len(found)] if active in found and len(found) > 1 else found[0]
         if self.extend:
             if ob.select_get() and ob == active:
                 ob.select_set(False)

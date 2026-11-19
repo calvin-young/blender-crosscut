@@ -37,6 +37,30 @@ this list is an assumption, tracked in the table at the end.
 
 ## Decisions
 
+### D-048: Click-select follows the cut face under the mouse (2026-11-18)
+
+Blender's click-select picks by the clipped geometry behind a cut face. Where a part sits in another part's hole
+(a boolean), the hole's walls and the part's own faces lie on top of each other there, and Blender picked either one,
+so the maintainer often needed two clicks. Crosscut now handles the click wherever a cut face is drawn, in Section,
+Slice and a clipping region, as it already did in a zero-thickness slice: it selects the part whose section contains
+the point, filled the same way the cut face is (so the part with the hole doesn't count). Only a cut face seen from
+its clipped side counts, since it's then in front of everything at that point; a slab's far plane is seen from inside
+and stays Blender's. Not in Wireframe or with Backfaces, where nothing is filled (except a zero slice's outline).
+
+### D-047: Measure between any edges in the section (2026-11-18)
+
+The maintainer couldn't measure from one part's edge to another part's edge inside it (from an overlap's top edge up
+to the part's top face), and a line started inside an overlap stayed inside it. Measure kept to one part's contour
+(or the overlap's two). Now the local line and a line being placed use every part's edges on the plane: hovering
+measures the region the mouse is in, and a placed line ends on any edge, running through the mouse to the first edge
+beyond it (so the mouse goes past an edge to cross it). The "max" lines are unchanged: they still mean one part's or
+one overlap's greatest width. Ignore Overlaps now means "this part's own edges only", the old single-part behaviour.
+Also asked: a snap for a line ending on a curve. The free end snaps to the point of an edge closest to the anchor when
+it's within the same reach as the anchor snap (about 10 pixels), looked for in twice that window so that a point which
+keeps getting closer past the window's edge isn't taken for a minimum, and only where neither edge meeting there leads closer (on a faceted curve, the last corner inside the window would otherwise pass for one). Easy and contained: no change to how sections
+are computed, only which edges the measuring code looks at. Assumed, not asked: the beam behaviour (through the mouse
+to the next edge) stays, rather than the free end jumping to the farthest edge.
+
 ### D-046: The overlap highlight shares the cut faces' hatch spacing and line width (2026-11-17)
 
 The maintainer tuned the cut faces' hatching, and the overlap's Hatched and Cross lines didn't follow: their width was

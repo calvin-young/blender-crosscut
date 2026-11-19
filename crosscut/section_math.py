@@ -697,12 +697,14 @@ def snap_to_contour(seg, target, avoid=None, radius=0.0):
     return _farthest(np.asarray(target, dtype=np.float64)[None, :], seg)[2]
 
 
-def follow_cursor(seg, anchor, cursor, oriented=False, radius=0.0):
+def follow_cursor(seg, anchor, cursor, oriented=False, radius=0.0, inside=None):
     """Where the free end of a line anchored at `anchor` goes, for the mouse at `cursor`.
     Inside the section: the line runs through the cursor to the first contour beyond it,
-    so the cursor is always on the line. Outside: the nearest point on the contours."""
+    so the cursor is always on the line. Outside: the nearest point on the contours.
+    `inside`: whether the cursor is inside, if the caller knows better (several parts' contours)."""
     cursor = np.asarray(cursor, dtype=np.float64)
-    inside = _inside_rows(seg, oriented, np.array([cursor[0]]), np.array([cursor[1]]))[0, 0]
+    if inside is None:
+        inside = _inside_rows(seg, oriented, np.array([cursor[0]]), np.array([cursor[1]]))[0, 0]
     d = cursor - anchor
     length = float(np.hypot(d[0], d[1]))
     if inside and length > 1e-12:
@@ -743,10 +745,11 @@ def anchor_normals(contours, anchor):
     return out
 
 
-def snap_normal(seg, anchor, normals, cursor, oriented, tol):
+def snap_normal(seg, anchor, normals, cursor, oriented, tol, inside=None):
     """Where the free end goes if the line snaps straight out from the anchor's contour, or None
     if the cursor isn't within `tol` of one of those lines. Returns (end, direction). Past the
-    cursor inside the section, as follow_cursor; otherwise the crossing nearest the cursor."""
+    cursor inside the section, as follow_cursor; otherwise the crossing nearest the cursor.
+    `inside`: a function telling whether a point is inside, if the caller knows better."""
     cursor = np.asarray(cursor, dtype=np.float64)
     d = cursor - anchor
     if float(np.hypot(d[0], d[1])) <= 2.0 * tol:  # this close, any direction is within reach of a normal
@@ -771,11 +774,82 @@ def snap_normal(seg, anchor, normals, cursor, oriented, tol):
     if not len(t):
         return None
     foot = anchor + m * along
-    if _inside_rows(seg, oriented, np.array([foot[0]]), np.array([foot[1]]))[0, 0]:
+    if (inside(foot) if inside is not None else
+            _inside_rows(seg, oriented, np.array([foot[0]]), np.array([foot[1]]))[0, 0]):
         beyond = t[t >= along]
         if len(beyond):
             return anchor + m * float(beyond.min()), m
     return anchor + m * float(t[np.argmin(np.abs(t - along))]), m
+
+
+def inside_any(parts, point):
+    """True if `point` is inside any of the parts' sections: parts is [(segments (K,2,2), oriented)]."""
+    x, y = np.array([float(point[0])]), np.array([float(point[1])])
+    return any(len(seg) and _inside_rows(seg, oriented, x, y)[0, 0] for seg, oriented in parts)
+
+
+def snap_closest(seg, anchor, end, tol):
+    """The point on the contours within `tol` of `end` that's closest to `anchor`: where a line
+    from the anchor meets a curved edge square on, the shortest distance to it. None if it's
+    no closer than `end` itself, or the contours don't come within `tol` of `end`."""
+    a = seg[:, 0]
+    d = seg[:, 1] - a
+    dd = np.maximum(np.einsum("ij,ij->i", d, d), 1e-30)
+    t = np.clip(np.einsum("ij,ij->i", end - a, d) / dd, 0.0, 1.0)
+    # look twice as far as the reach: a closest point at the edge of that window isn't a real
+    # minimum (the edge just keeps getting closer), so it lands beyond the reach and is refused
+    near = np.linalg.norm(a + t[:, None] * d - end, axis=1) <= 2.0 * tol
+    if not near.any():
+        return None
+    a, d, dd = a[near], d[near], dd[near]
+    t = np.clip(np.einsum("ij,ij->i", anchor - a, d) / dd, 0.0, 1.0)
+    p = a + t[:, None] * d
+    ok = np.linalg.norm(p - end, axis=1) <= 2.0 * tol
+    if not ok.any():
+        return None
+    p = p[ok]
+    best = p[np.linalg.norm(p - anchor, axis=1).argmin()]
+    if np.linalg.norm(best - end) > tol or (
+            np.linalg.norm(best - anchor) >= np.linalg.norm(np.asarray(end) - anchor) - 1e-9 * max(tol, 1e-9)):
+        return None
+    # a real minimum: along the edges meeting there, either way leads no closer to the anchor
+    # (on a faceted curve, the last corner inside the window would otherwise pass for one)
+    a, d = seg[:, 0], seg[:, 1] - seg[:, 0]
+    dd = np.maximum(np.einsum("ij,ij->i", d, d), 1e-30)
+    t = np.clip(np.einsum("ij,ij->i", best - a, d) / dd, 0.0, 1.0)
+    touch = np.linalg.norm(a + t[:, None] * d - best, axis=1) <= 1e-9 * max(tol, 1.0)
+    away = best - anchor
+    for e in np.concatenate([seg[touch, 0], seg[touch, 1]]):
+        step = e - best
+        if float(step @ step) > 1e-24 and float(step @ away) < -1e-9 * float(np.linalg.norm(step)) * float(np.linalg.norm(away)):
+            return None
+    return best
+
+
+def local_chord(seg, point, half=1.0):
+    """The shortest line through `point` between any two of the contours (K,2,2), within 15 degrees
+    of straight across from the nearest one: (length, end, end), or None. With every part's
+    contours together, it measures whatever region of the section the point is in."""
+    if not len(seg):
+        return None
+    p = np.asarray(point, dtype=np.float64)
+    most = float(np.abs(seg.reshape(-1, 2) - p).max()) * 1.01 + 1e-9
+    lo, hi = seg.min(axis=1), seg.max(axis=1)
+    h = min(half, most)
+    while True:
+        keep = (hi[:, 0] >= p[0] - h) & (lo[:, 0] <= p[0] + h) & (hi[:, 1] >= p[1] - h) & (lo[:, 1] <= p[1] + h)
+        r = None
+        if keep.any():
+            # straight across from the nearest wall: a line left free to be shortest cuts corners
+            d, _c, q = _farthest(p[None, :], seg[keep])
+            if d <= h or h >= most:
+                away = p - q
+                around = float(np.arctan2(away[1], away[0])) if d > 1e-12 else 0.0
+                r = _chord(seg[keep], np.zeros((0, 2, 2)), p, around=around)
+        # only trust a line that ended inside the segments looked at
+        if h >= most or (r is not None and max(np.abs(r[1] - p).max(), np.abs(r[2] - p).max()) <= h):
+            return r
+        h = min(h * 2.0, most)
 
 
 def section_measures(seg, point, oriented=True, half=1.0, cells=160, local=True, greatest=False):
@@ -786,26 +860,10 @@ def section_measures(seg, point, oriented=True, half=1.0, cells=160, local=True,
     if not len(seg):
         return None, None
     p = np.array(point, dtype=np.float64)
-    pts = seg.reshape(-1, 2)
-    most = float(np.abs(pts - p).max()) * 1.01 + 1e-9
-    lo, hi = seg.min(axis=1), seg.max(axis=1)
+    most = float(np.abs(seg.reshape(-1, 2) - p).max()) * 1.01 + 1e-9
 
     def chord_at(c):
-        h = min(half, most)
-        while True:
-            keep = (hi[:, 0] >= c[0] - h) & (lo[:, 0] <= c[0] + h) & (hi[:, 1] >= c[1] - h) & (lo[:, 1] <= c[1] + h)
-            r = None
-            if keep.any():
-                # straight across from the nearest wall: a line left free to be shortest cuts corners
-                d, _c, q = _farthest(c[None, :], seg[keep])
-                if d <= h or h >= most:
-                    away = c - q
-                    around = float(np.arctan2(away[1], away[0])) if d > 1e-12 else 0.0
-                    r = _chord(seg[keep], np.zeros((0, 2, 2)), c, around=around)
-            # only trust a line that ended inside the segments looked at
-            if h >= most or (r is not None and max(np.abs(r[1] - c).max(), np.abs(r[2] - c).max()) <= h):
-                return r
-            h = min(h * 2.0, most)
+        return local_chord(seg, c, half)
 
     near = chord_at(p) if local else None
     if not greatest:

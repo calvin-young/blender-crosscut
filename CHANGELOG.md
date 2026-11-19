@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.18.0 (2026-11-18)
+
+- **Measure** works between any edges in the section, of any part. Hovering measures the region the mouse is in:
+  above an overlap, from the overlap's edge up; inside it, the overlap. A line being placed can end on any edge, and
+  runs through the mouse to the first edge past it, so a line started inside an overlap can reach right through it.
+  **Ignore Overlaps** keeps the old behaviour: one part's own thickness.
+- **Measure** snaps the free end to the point of an edge closest to the anchor, where the line meets a curve square
+  on, with a square-corner mark there. Ctrl turns it off, as it does the snap at the anchor.
+- **Selecting**: a click on a cut face selects the part it belongs to, in Section and Slice and in a clipping region.
+  Blender picked by the clipped geometry behind the cut face, so a part sitting in a hole of another part could take
+  two clicks to select.
+
 ## 0.17.0 (2026-11-17)
 
 - The overlap highlight's **Hatched** and **Cross** styles use the cut faces' own hatch **Spacing** and **Line Width**

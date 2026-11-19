@@ -445,6 +445,53 @@ def test_shell_points_inward_and_has_no_cracks():
     assert np.allclose(np.linalg.norm(sm.shell_inward(spike, normal), axis=2), 1.0)
 
 
+
+def _rect(x0, y0, x1, y1):
+    """A counter-clockwise rectangle as 2D segments (K,2,2)."""
+    c = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
+    return np.array([[c[i], c[(i + 1) % 4]] for i in range(4)], dtype=np.float64)
+
+
+def test_local_chord_measures_between_any_edges():
+    # a tall part (0..30 high) with a band (0..10) overlapping its lower third
+    tall, band = _rect(-20, 0, 20, 30), _rect(-40, 0, 40, 10)
+    both = np.concatenate([tall, band])
+    # above the band: from the band's top edge to the part's top, not the part's own full height
+    r = sm.local_chord(both, np.array([0.0, 20.0]), half=1.0)
+    assert r is not None and abs(r[0] - 20.0) < 1e-6
+    # in the overlap: the overlap's own height
+    r = sm.local_chord(both, np.array([0.0, 5.0]), half=1.0)
+    assert r is not None and abs(r[0] - 10.0) < 1e-6
+    # with the part's own edges only: its full height
+    r = sm.local_chord(tall, np.array([0.0, 20.0]), half=1.0)
+    assert r is not None and abs(r[0] - 30.0) < 1e-6
+
+
+def test_follow_cursor_crosses_other_parts_edges():
+    tall, band = _rect(-20, 0, 20, 30), _rect(-40, 0, 40, 10)
+    both = np.concatenate([tall, band])
+    parts = [(tall, True), (band, True)]
+    anchor = np.array([0.0, 0.0])  # on the bottom edge, inside the overlap
+    # cursor inside the overlap: the line stops at the band's top edge
+    q = sm.follow_cursor(both, anchor, np.array([0.0, 5.0]), inside=sm.inside_any(parts, (0.0, 5.0)))
+    assert np.allclose(q, (0.0, 10.0))
+    # cursor past it: on through to the part's top
+    q = sm.follow_cursor(both, anchor, np.array([0.0, 20.0]), inside=sm.inside_any(parts, (0.0, 20.0)))
+    assert np.allclose(q, (0.0, 30.0))
+    assert sm.inside_any(parts, (30.0, 5.0)) and not sm.inside_any(parts, (30.0, 20.0))
+
+
+def test_snap_closest_meets_a_curve_square_on():
+    # a circle of radius 10 about the origin, anchor below it
+    th = np.linspace(0.0, 2.0 * np.pi, 361)
+    pts = np.stack([10.0 * np.cos(th), 10.0 * np.sin(th)], axis=1)
+    circle = np.stack([pts[:-1], pts[1:]], axis=1)
+    anchor = np.array([0.0, -30.0])
+    end = np.array([2.0, -9.8])  # on the circle, a little off the closest point
+    q = sm.snap_closest(circle, anchor, end, tol=3.0)
+    assert q is not None and abs(q[0]) < 0.05 and abs(q[1] + 10.0) < 0.01
+    assert sm.snap_closest(circle, anchor, np.array([8.0, -6.0]), tol=1.0) is None  # out of reach
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

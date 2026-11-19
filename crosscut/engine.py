@@ -574,18 +574,24 @@ def flush_section(target, cap_index, plane, depsgraph, bounds=()):
     return None
 
 
-def targets_at(context, s, point, plane, depsgraph, cap_index=0, bounds=()):
-    """(target, segments) of the targets whose section on `plane` contains the
-    world point, in target order. Fills the way the cap does: by winding number if
-    the mesh allows it, else even-odd."""
-    u, v = sm.plane_basis(sm.normalize(plane[:3]))
-    px, py = float(point @ u), float(point @ v)
+def sections_on(context, s, plane, depsgraph, cap_index=0, bounds=()):
+    """(target, segments) of every target cut by `plane`, in target order."""
     out = []
     for t in collect_targets(context, s, depsgraph):
         res = section(t, cap_index, plane, depsgraph, bounds)
-        if res is None:
-            continue
-        seg = res[0]
+        if res is not None:
+            out.append((t, res[0]))
+    return out
+
+
+def targets_at(context, s, point, plane, depsgraph, cap_index=0, bounds=(), cut=None):
+    """(target, segments) of the targets whose section on `plane` contains the
+    world point, in target order. Fills the way the cap does: by winding number if
+    the mesh allows it, else even-odd. `cut`: sections_on's result, if already known."""
+    u, v = sm.plane_basis(sm.normalize(plane[:3]))
+    px, py = float(point @ u), float(point @ v)
+    out = []
+    for t, seg in (cut if cut is not None else sections_on(context, s, plane, depsgraph, cap_index, bounds)):
         ax, ay = seg[:, 0] @ u, seg[:, 0] @ v
         bx, by = seg[:, 1] @ u, seg[:, 1] @ v
         crosses = (ay > py) != (by > py)
@@ -601,11 +607,10 @@ def targets_at(context, s, point, plane, depsgraph, cap_index=0, bounds=()):
     return out
 
 
-def objects_at(context, s, point, plane, depsgraph):
-    """Owners of the targets whose section on `plane` (cap index 0, as drawn)
-    contains the world point, in target order."""
+def objects_at(context, s, point, plane, depsgraph, cap_index=0, bounds=()):
+    """Owners of the targets whose section on `plane` contains the world point, in target order."""
     out = []
-    for t, _seg in targets_at(context, s, point, plane, depsgraph):
+    for t, _seg in targets_at(context, s, point, plane, depsgraph, cap_index, bounds):
         if t.owner not in out:
             out.append(t.owner)
     return out

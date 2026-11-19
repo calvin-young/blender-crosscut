@@ -34,11 +34,11 @@ the maintainer's hand-made mock-ups in [docs/images/reference/](docs/images/refe
   cut faces go translucent, since the fill may not be real material. Where the hole is on the plane,
   the warning turns red; gaps are closed so the fill still makes sense.
 - **Scrub a clipping region**: slide it through the parts along either axis, without changing its size.
-- **Measure**: hover over a cut face to see a part's thickness right there, or how wide an overlap is. Click to
-  adjust a line along the contour, snapping straight across from the edge, and pin it, as many as you like.
+- **Measure**: hover over a cut face to see how wide it is right there, between any edges in the section. Click to
+  adjust a line, ending on any edge, snapping square to the edges, and pin it, as many as you like.
 - **Print Preview**: powder up to the plane and the fused layer on top, as inside a
   powder-bed printer. For the MJF 580, the layer's edge carries the part's surface color.
-- **Selectable in a zero-thickness slice**: click a section to select its part.
+- **Select by cut face**: click a cut face to select its part, even in a zero-thickness slice.
 - Colours follow the Solid shading colour (Object or Material); white or grey parts get the Fill
   Color (green by default) so the cut face stands out.
 - **Fast and non-destructive**: the mesh/plane intersection is cached and only recomputed when
@@ -101,7 +101,7 @@ whole section.
 
 ## Status
 
-**In development (0.17.0).** It's used on real work and still getting bug fixes and new features. 0.1.0 was written without access to Blender; since 0.2.0
+**In development (0.18.0).** It's used on real work and still getting bug fixes and new features. 0.1.0 was written without access to Blender; since 0.2.0
 every build is run and tested in Blender with an automated in-viewport test suite
 ([`tests/blender/`](tests/blender/run_viewport_tests.py)), and 0.3.0 to 0.9.0 followed the
 maintainer's tests on real parts. Tested on Blender 4.2.23 LTS and 5.2.3 LTS (Linux, OpenGL;

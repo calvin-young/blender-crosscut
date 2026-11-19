@@ -23,7 +23,7 @@ line below carries a category.
 
 | Bugs found | UI tweaks | New features | Direction | Total |
 |---|---|---|---|---|
-| 30 | 77 | 36 | 27 | 170 |
+| 31 | 77 | 38 | 27 | 173 |
 
 ## Sessions
 
@@ -33,7 +33,7 @@ steering lines matters more than the count of prompts.
 
 | Date | Tool and model | Prompts | Steering lines | Notes |
 |---|---|---|---|---|
-| 2026-11-12/17 | Claude Code (workstation), Fable 5.2 then Opus 5.5 | 3 | 2 | Audit and vision (review only); 0.17.0 overlap hatch matches the cut faces |
+| 2026-11-12/18 | Claude Code (workstation), Fable 5.2 then Opus 5.5 | 4 | 5 | Audit and vision (review only); 0.17.0 overlap hatch; 0.18.0 measure any edge, select by cut face |
 | 2026-11-04/05 | Claude Code (workstation), Opus 5.5 | 2 | 11 | The presentation demo reel, moved here from a separate demo-reels repo |
 | 2026-11-04/09 | Claude Code (workstation), Opus 5.5 | 3 | 13 | 0.16.0: snap, 580 color first try, FDM placeholder; design for saved lines |
 | 2026-11-02 | Claude Code (workstation), Opus 5.5 | 12 | 70 | 0.9.2 to 0.15.1 from the maintainer's notes after several days of real use |
@@ -48,6 +48,9 @@ One line for each thing the human contributed that the AI would not have done on
 newest first, tagged with its kind (decide, correct, domain, tested, scope) and, from 2026-11-03, its
 category (bug, ui, feature, direction).
 
+- 2026-11-18 [tested][bug]: selecting a part that sits in another part's hole picked the other part first; selection should follow the cut face.
+- 2026-11-18 [scope][feature]: a snap for a measuring line that ends on a curved edge (closest distance).
+- 2026-11-18 [tested][feature]: measure between any lines in the section (other parts' edges, overlap edges), from wherever the first click is.
 - 2026-11-17 [tested][ui]: the overlap highlight's hatch and cross lines were much thinner than his tuned cut-face hatching; make them match.
 - 2026-11-12 [scope][direction]: the sprint cut to review-only chunks, one at a time (audit, vision).
 - 2026-11-09 [decide][direction]: clip vs cut wording left to Claude's judgment, without oversteering.
