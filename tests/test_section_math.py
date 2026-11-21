@@ -492,6 +492,15 @@ def test_snap_closest_meets_a_curve_square_on():
     assert q is not None and abs(q[0]) < 0.05 and abs(q[1] + 10.0) < 0.01
     assert sm.snap_closest(circle, anchor, np.array([8.0, -6.0]), tol=1.0) is None  # out of reach
 
+
+def test_palette_is_never_red():
+    import colorsys
+    for i in range(500):
+        r, g, b = sm.palette_color(f"part-{i:03}")
+        h = colorsys.rgb_to_hls(r, g, b)[0]
+        assert 0.05 < h < 0.95, (i, h)
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

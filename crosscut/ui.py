@@ -96,22 +96,10 @@ def _split(layout):
     return layout.column()
 
 
-def _rule(col):
-    try:
-        col.separator(factor=1.5, type='LINE')
-    except TypeError:  # older Blender
-        col.separator()
 
-
-def _draw_cut_faces(layout, context):
+def _draw_parts(layout, context):
     s = context.scene.crosscut
     col = _split(layout)
-    if s.cap_style == 'BACKFACES':
-        col.label(text="Backfaces: cut faces aren't filled", icon='INFO')
-        if s.mode == 'SLICE':
-            _outline_row(col, s)  # a zero-thickness slice still shows its outline
-        return
-    # which parts
     col.prop(s, "targets")
     if s.targets == 'COLLECTION':
         col.prop(s, "target_collection")
@@ -119,20 +107,24 @@ def _draw_cut_faces(layout, context):
     if names:
         more = f" (+{len(names) - 2})" if len(names) > 2 else ""
         col.label(text="Not filled (Wire/Bounds display): " + ", ".join(names[:2]) + more, icon='INFO')
-    _rule(col)
-    # their color
+
+
+def _draw_color(layout, context):
+    s = context.scene.crosscut
+    col = _split(layout)
     col.prop(s, "color_source")
     if s.color_source == 'SINGLE' or (s.color_source == 'AUTO' and draw.auto_uses_cap_color(context, s)):
         col.prop(s, "single_color")
     if s.color_source != 'SINGLE':
         col.prop(s, "fill_saturation", slider=True)
         col.prop(s, "fill_brightness", slider=True)
-        col.prop(s, "fill_tint")
-        col.prop(s, "fill_tint_amount", slider=True)
     col.prop(s, "fill_opacity", slider=True)
     col.prop(s, "open_opacity", slider=True)
-    _rule(col)
-    # the lines on them
+
+
+def _draw_lines(layout, context):
+    s = context.scene.crosscut
+    col = _split(layout)
     if s.cap_style == 'HATCH':
         col.prop(s, "hatch_space")
         if s.hatch_space == 'SCREEN':
@@ -144,8 +136,11 @@ def _draw_cut_faces(layout, context):
         col.prop(s, "hatch_width")
         col.prop(s, "hatch_vary")
     _outline_row(col, s)
-    _rule(col)
-    # where they overlap
+
+
+def _draw_overlaps(layout, context):
+    s = context.scene.crosscut
+    col = _split(layout)
     col.prop(s, "overlap_style", expand=True)
     if s.overlap_style == 'STRIPES':
         if s.cap_style != 'HATCH':
@@ -160,7 +155,7 @@ def _draw_cut_faces(layout, context):
         if s.interference_style != 'SOLID':
             col.prop(s, "interference_line_color")
             if s.cap_style != 'HATCH':
-                # the overlap's lines share the cut faces' hatch spacing and width, shown above only when Hatched
+                # the overlap's lines share the cut faces' hatch spacing and width, shown in Lines only when Hatched
                 col.prop(s, "hatch_space")
                 if s.hatch_space == 'SCREEN':
                     col.prop(s, "hatch_pitch_px", text="Spacing (px)")
@@ -168,6 +163,27 @@ def _draw_cut_faces(layout, context):
                     col.prop(s, "hatch_pitch")
                 col.prop(s, "hatch_width")
         col.prop(s, "interference_opacity", slider=True)
+
+
+def _draw_appearance(layout, context):
+    """How cut faces look, in sections that open and close. Print Preview replaces the rest, so with it
+    on they grey out."""
+    s = context.scene.crosscut
+    if s.cap_style == 'BACKFACES':
+        layout.label(text="Backfaces: cut faces aren't filled", icon='INFO')
+    for prop, label, fn in (("ui_parts", "Parts", _draw_parts), ("ui_color", "Color", _draw_color),
+                            ("ui_hatching", "Lines", _draw_lines), ("ui_overlaps", "Overlaps", _draw_overlaps)):
+        header, body = layout.panel_prop(s, prop)
+        header.active = not s.print_preview and (s.cap_style != 'BACKFACES' or prop == "ui_hatching")
+        header.label(text=label)
+        if body is not None:
+            body.active = header.active
+            fn(body, context)
+    header, body = layout.panel_prop(s, "ui_print_preview")
+    header.prop(s, "print_preview", text="")
+    header.label(text="Print Preview")
+    if body is not None:
+        _draw_print_preview(body, context)
 
 
 def _outline_row(col, s):
@@ -242,32 +258,17 @@ def _draw_print_preview(layout, context):
         col.prop(s, "bed_margin")
 
 
-def _draw_settings(layout, context):
-    """Every option beyond the main controls. Layout panels rather than sub-panels:
-    they sit closer to the controls above, and their open state can be set."""
+def _draw_sections(layout, context):
+    """Everything beyond the main controls, in sections that start closed. Layout panels rather than
+    sub-panels: they sit closer to the controls above, and their open state can be set."""
     s = context.scene.crosscut
-    header, body = layout.panel_prop(s, "ui_settings")
-    header.label(text="Settings")
-    if body is None:
-        return
-    col = body.column()
-    col.prop(s, "show_readout")
-    overlay = getattr(context.space_data, "overlay", None)
-    if overlay is not None:
-        col.prop(overlay, "show_face_orientation", text="Face Orientation")
-    col.prop(s, "clip_tint")
-    for prop, label, fn in (("ui_cut_faces", "Cut Faces", _draw_cut_faces),
-                            ("ui_plane", "Section/Slice Plane", _draw_plane),
+    for prop, label, fn in (("ui_cut_faces", "Appearance", _draw_appearance),
+                            ("ui_plane", "Clipping Plane", _draw_plane),
                             ("ui_measure", "Measure", _draw_measure)):
-        header, sub = body.panel_prop(s, prop)
+        header, body = layout.panel_prop(s, prop)
         header.label(text=label)
-        if sub is not None:
-            fn(sub, context)
-    header, sub = body.panel_prop(s, "ui_print_preview")
-    header.prop(s, "print_preview", text="")
-    header.label(text="Print Preview")
-    if sub is not None:
-        _draw_print_preview(sub, context)
+        if body is not None:
+            fn(body, context)
 
 
 class CROSSCUT_PT_main(bpy.types.Panel):
@@ -278,7 +279,7 @@ class CROSSCUT_PT_main(bpy.types.Panel):
 
     def draw(self, context):
         _draw_main(self.layout, context)
-        _draw_settings(self.layout, context)
+        _draw_sections(self.layout, context)
         info = draw.last_info(_window_region(context))
         if info:
             col = self.layout.column(align=True)

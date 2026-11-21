@@ -22,7 +22,7 @@ Units below assume 1 Blender unit = 1 mm, but Crosscut works in any unit.
 ### Section and Slice
 
 - **Section** keeps one side of the plane: a half section.
-- **Slice** keeps only what is near the plane. With **Slice Thickness** 0 (Settings > Section/Slice Plane) you see just the
+- **Slice** keeps only what is near the plane. With **Slice Thickness** 0 (Clipping Plane) you see just the
   cross-section itself; with a thickness you see a slab, centred on the plane.
 - **Clip** is Blender's own clipping region, with filled cut faces (see below). The button is lit while the view
   has a box. Click it to turn Section or Slice off and bring back the box they replaced, or draw a new
@@ -63,72 +63,78 @@ for an Object plane).
 ### Scrub
 
 - **Scrub** sweeps the plane across the scrub range from 0 to 1. With **Scrub by Distance**
-  (Settings > Section/Slice Plane) it shows the position as a distance instead: the world coordinate for X / Y / Z,
+  (Clipping Plane) it shows the position as a distance instead: the world coordinate for X / Y / Z,
   the distance from the object's origin for Object, and from where it was placed for View.
 - The arrows, and **Shift+Alt+Wheel** in the viewport, move the plane by one **Step**
-  (Settings > Section/Slice Plane; default 0.08, one MJF layer). Hold Ctrl as well for 10 steps.
+  (Clipping Plane; default 0.08, one MJF layer). Hold Ctrl as well for 10 steps.
 - The small buttons between the arrows put the plane through the 3D cursor, the middle of the range
   (0.5), or the selection (selected vertices in Edit Mode).
 
-## Settings panel
+## The panel's sections
 
-Everything beyond the main controls lives in the **Settings** panel below the main one,
-closed by default.
+Everything beyond the main controls lives in three sections below them, closed until you open them:
+**Appearance**, **Clipping Plane** and **Measure**.
 
-- **Readout**: plane position and warnings at the bottom centre of the viewport. It hides with
-  overlays (Alt+Shift+Z), as the plane does.
-- **Face Orientation**: the viewport's own overlay, here so you can check it's on. With it on, a cut face
-  seen from inside a part draws in the backface colour.
-- **Clip Tint**: see Clipping region.
+### Readout
 
-### Cut Faces
+The bottom centre of the viewport shows warnings, and nothing while all is well: an open mesh or one with flipped
+faces in amber, an inside-out part or a hole on the plane in red, a part not filled because it displays as Wire or
+Bounds. It warns about every part the plane goes through, whatever the fill (Backfaces and Wireframe too), and hides
+with overlays (Alt+Shift+Z). Measure's hints show in Blender's status bar, as other tools' do.
 
-The faces Crosscut fills where the plane passes through a part.
+### Appearance
 
+How the cut faces look, in sections of their own. With **Print Preview** ticked, the others grey out, since it
+replaces them.
 
-- **Fill**: which parts get filled: **Visible Objects**, **Selected Objects** (everything is still clipped)
+- **Parts**: which parts get filled: **Visible Objects**, **Selected Objects** (everything is still clipped)
   or a **Collection**. Objects displayed as Wire or Bounds are never filled; the panel and readout list
   any that are visible.
-- **Colors**:
+- **Color**:
   - **Auto** follows the viewport's Solid colour setting (Object or Material colour). White
     or grey parts get the **Fill Color** instead, so the cut face stands out; the Fill Color only
     shows in the panel when a part uses it.
   - **Object**, **Material**: the object's or first material's viewport colour.
-  - **Palette**: a distinct colour per part.
+  - **Palette**: a distinct colour per part (never red).
   - **Single**: the Fill Color everywhere.
-- **Saturation**, **Brightness** and **Tint** adjust colors that come from the parts (not the Fill Color). A filled cut
-  face has no lighting, so by default these sit a little grayer and darker than the part's own color.
-- **Fill Opacity** applies to every filled cut face.
-- **Hatching** (Hatched only):
-  - **Hatch Space**: **Model** keeps the spacing in scene units, locked to the part. **Screen**
+  - **Saturation** and **Brightness** adjust colors that come from the parts (not the Fill Color). A filled cut
+    face has no lighting, so by default these sit a little grayer and darker than the part's own color.
+  - **Fill Opacity** applies to every filled cut face.
+  - **Open Part Opacity**: the fill's opacity on a part with holes in its mesh, since its cut face may not
+    show real material (default 50 %). The readout warns in amber when the plane goes through such a
+    part, and in red when the hole is on the plane itself, where the gaps get closed by guesswork.
+- **Lines**:
+  - **Hatch Space** (Hatched only): **Model** keeps the spacing in scene units, locked to the part. **Screen**
     keeps it in pixels at any zoom.
   - **Spacing**, **Angle** and **Line Width** set the lines. In Model space, **Scale with Part** makes
     spacing follow each part's size; Spacing is then what a 50 unit part gets.
   - **Vary per Object** alternates direction, then spacing, between parts, so touching
     sections stay distinguishable. Each part keeps its variation when others are hidden, shown
     or added.
-- **Outline** draws the outline of each cut face. Selected parts' contours are drawn in the
-  theme's selection colours (when the viewport shows selection outlines), whether or not
-  Outline is on.
+  - **Outline** draws the outline of each cut face. Selected parts' contours are drawn in the
+    theme's selection colours (when the viewport shows selection outlines), whether or not
+    Outline is on.
 - **Overlaps**: where parts' sections overlap, **Blend** mixes their colours equally, **Stripes** gives
   each part an equal share of stripes (**Stripe Width** in the hatch space), and **Highlight** marks them,
-  in a **Style** (Solid, Hatched, Cross), **Color**, **Line Color** and **Opacity** you set. Hatched and Cross use the
-  hatching's Spacing and Line Width, so the lines match the cut faces around them. Below full opacity, the blended
-  overlap shows through.
-- **Open Part Opacity**: the fill's opacity on a part with holes in its mesh, since its cut face may not
-  show real material (default 50 %). The readout warns in amber when the plane goes through such a
-  part, and in red when the hole is on the plane itself, where the gaps get closed by guesswork.
-- The readout also names parts that are **inside out**, in red, and parts with **flipped faces**, in
-  amber. Flipped faces make overlapping shells inside a part show as holes.
+  in a **Style** (Solid, Hatched, Cross), **Color** (magenta by default), **Line Color** and **Opacity** you set.
+  Hatched and Cross use the hatching's Spacing and Line Width, so the lines match the cut faces around them. Below
+  full opacity, the blended overlap shows through.
+- **Print Preview**: see below.
+
+**Red means inside out.** An inside-out part's cut faces are red, whatever the colour settings, and the readout
+names it. Nothing else in Crosscut is red by default, so a red cut face is always a part to fix (unless you choose
+red yourself, say for overlaps). The red is the theme's Face Orientation back colour. Parts with **flipped faces**
+(some faces one way, some the other) are named in amber: overlapping shells inside them may show as holes.
 
 In X-ray (Alt+Z) cut faces follow the viewport's X-ray opacity, and nothing hides them or their
 contours.
 
-### Section/Slice Plane
+### Clipping Plane
+
+- **Slice Thickness**: see Slice above.
 
 - **Scrub Range** is what Scrub sweeps across: the **Fill Targets**' bounds, or an **Object**'s bounds, such as a
-  build volume. The eyedropper uses the active object. The range object is never filled, and with it
-  the readout counts steps (for example `step 150 / 1500`).
+  build volume. The eyedropper uses the active object. The range object is never filled.
 - **Scrub by Distance** and **Step**: see Scrub above.
 - **Display**: None, Frame, Tint or Hatched.
 - **Color** sets its colour, and **Second Plane** the colour of a slab's other plane.
@@ -137,10 +143,9 @@ contours.
 
 ## Print Preview
 
-Tick **Print Preview** in **Settings** while Section or Slice is on, with the Z plane and a build volume as the Scrub Range object. The bed fills with
+Tick **Print Preview** in **Appearance** while Section or Slice is on, with the Z plane and a build volume as the Scrub Range object. The bed fills with
 powder up to the plane, the parts below are buried in it, and each part's cut face is drawn as the
-fused layer. Scrub to watch the build come up layer by layer; the readout counts layers at the
-Step size. **Slice** shows one layer of powder (a band, with Slice Thickness), not the whole bed. **Powder** and **Fused** set the colours (white and black by default, as on a
+fused layer. Scrub to watch the build come up layer by layer, a Step at a time. **Slice** shows one layer of powder (a band, with Slice Thickness), not the whole bed. **Powder** and **Fused** set the colours (white and black by default, as on a
 Multi Jet Fusion printer), **Grain** the speckle in the powder. Without a Scrub Range object the
 bed is the parts' bounds plus **Bed Margin**.
 
@@ -157,8 +162,7 @@ axis, each labelled with the world axis it's closest to. Each has its own step a
 **Shift+Alt+Wheel** uses the axis facing you most. At 0 and 1 the box is just clear of the Scrub
 Range. **Scrub by Distance** shows where the box's middle is, as a distance.
 
-**Clip Tint** in Settings shows the region's volume as a faint tint on the background. Blender's own tint
-is always removed, since it can't follow the box; Crosscut's follows it.
+Blender's own tint of the region's volume is removed, since it can't follow the box as it slides.
 
 ### Printer
 
@@ -190,7 +194,7 @@ Pinned lines outlast Measure. Esc stops measuring and leaves them; press Esc aga
 beside the Measure button. With the pin beside it on (**Keep Pinned Lines**), Esc leaves them alone and only the
 X clears them. They last until you clear them or open another file.
 
-In Settings > Measure:
+In the Measure section:
 
 - **Local Width**: the line at the mouse, and its color.
 - **Overlap Max**: the "max" line over an overlap, and its color.

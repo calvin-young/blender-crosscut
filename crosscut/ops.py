@@ -106,6 +106,16 @@ class CROSSCUT_OT_clip(bpy.types.Operator):
         return {'FINISHED'}
 
 
+def _status(context, text):
+    """Blender's status bar, where modal tools put their hints. None gives it back."""
+    ws = getattr(context, "workspace", None)
+    if ws is not None:
+        try:
+            ws.status_text_set(text)
+        except (AttributeError, RuntimeError, TypeError):
+            pass
+
+
 class CROSSCUT_OT_measure(bpy.types.Operator):
     """Measure on cut faces: hover to see how wide a cut face is at the mouse, between any edges in the
     section. Click a line to adjust and pin it: it ends on any edge and snaps square to the edges, unless
@@ -122,24 +132,29 @@ class CROSSCUT_OT_measure(bpy.types.Operator):
             return {'FINISHED'}
         draw.measure_start()
         context.window_manager.modal_handler_add(self)
+        _status(context, draw.measure_hint())
         tag_redraw()
         return {'RUNNING_MODAL'}
 
     def modal(self, context, event):
         from . import draw
         if not draw.measure_running():
+            _status(context, None)
             tag_redraw()
             return {'FINISHED'}
         if event.type == 'ESC' and event.value == 'PRESS':
             if draw.measure_cancel_anchor():
+                _status(context, draw.measure_hint())
                 tag_redraw()
                 return {'RUNNING_MODAL'}
             draw.measure_stop()
+            _status(context, None)
             tag_redraw()
             return {'FINISHED'}
         if event.type == 'LEFTMOUSE':
             if event.value == 'PRESS':
                 self.swallow = draw.measure_click(context, event.mouse_x, event.mouse_y)
+                _status(context, draw.measure_hint())
                 return {'RUNNING_MODAL'} if self.swallow else {'PASS_THROUGH'}
             if self.swallow:  # the rest of a click we used, so it can't select anything
                 return {'RUNNING_MODAL'}

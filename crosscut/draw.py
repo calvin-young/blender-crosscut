@@ -659,9 +659,6 @@ def _adjusted(s, rgb):
     gray = 0.2126 * r + 0.7152 * g + 0.0722 * b
     k = s.fill_saturation
     c = np.array([gray + (r - gray) * k, gray + (g - gray) * k, gray + (b - gray) * k]) * s.fill_brightness
-    a = s.fill_tint_amount
-    if a > 0.0:
-        c = c * (1.0 - a) + np.array(_lin(tuple(s.fill_tint))) * a
     return tuple(float(x) for x in c)
 
 
@@ -880,8 +877,9 @@ def auto_uses_cap_color(context, s):
     return False
 
 
-def backface_color():
-    """The theme's Face Orientation back colour (red by default), linear."""
+def inside_out_color():
+    """The red that marks an inside-out part's cut faces: the theme's Face Orientation back colour (red by
+    default), linear. Nothing else in Crosscut uses red by default, so red always means this (D-049)."""
     try:
         c = bpy.context.preferences.themes[0].view_3d.face_back
     except (AttributeError, IndexError):
@@ -890,7 +888,7 @@ def backface_color():
     return _lin((c[0] * 0.75, c[1] * 0.75, c[2] * 0.75, 1.0))
 
 
-CLIP_TINT_COLOR = (1.0, 1.0, 1.0, 0.012)
+ZERO_SLICE_FILL = (0.35, 0.35, 0.35, 1.0)  # linear: Backfaces' zero-thickness slice, neutral so it can't read as a warning
 MEASURE_DEAD_PIXELS = 4
 MEASURE_SNAP_REACH = 1.25  # of the anchor's 8-pixel radius: 10 pixels
 MEASURE_TEXT_MIN, MEASURE_TEXT_MAX = 7.0, 200.0  # px
@@ -929,14 +927,6 @@ def _selection_rank(target, selection):
 
 def _xray(shading):
     return shading.type == 'SOLID' and shading.show_xray
-
-
-def _seen_from_behind(rv3d, plane):
-    """True if the viewer is on a cap's kept side, looking at it from inside the part."""
-    vi = np.array(rv3d.view_matrix.inverted())
-    if rv3d.is_perspective:
-        return float(plane[:3] @ vi[:3, 3]) + float(plane[3]) > 0.0
-    return float(plane[:3] @ vi[:3, 2]) > 0.0
 
 
 def _write_cap_depth(sh, vp, batch, threshold, tex):
@@ -1095,9 +1085,6 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style, fill_override=None, out
     eps = max(rv3d.view_distance, 1e-6) * 2e-4
 
     info = {"count": 0, "open": [], "open_mesh": [], "inside_out": [], "mixed_normals": []}
-    overlay = getattr(space, "overlay", None)
-    overlays_on = overlay is None or overlay.show_overlays
-    face_orientation = overlays_on and overlay is not None and overlay.show_face_orientation
     live = set()
     colors = {}
     lines = []
@@ -1117,6 +1104,7 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style, fill_override=None, out
     for ci, (plane, bounds) in enumerate(caps):
         hits = []
         oriented = {}
+        inside_out = set()
         for t in targets:
             live.add(t.key)
             res = engine.section(t, ci, plane, depsgraph, bounds, crossings=shell)
@@ -1132,22 +1120,12 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style, fill_override=None, out
             mesh_open = n_open > 0 or engine.is_open_mesh(t, depsgraph)
             hits.append((engine.hatch_index(context, t), t, segs, n_open, serial, mesh_open))
             oriented[t.key] = engine.is_oriented(t, depsgraph)
-            if engine.is_inside_out(t, depsgraph):
-                info["inside_out"].append(t.owner.name)
-            elif not mesh_open and not oriented[t.key]:
-                info["mixed_normals"].append(t.owner.name)
-            if n_open:
-                info["open"].append(t.owner.name)
-            elif mesh_open:
-                info["open_mesh"].append(t.owner.name)
+            if _note_issues(info, t, depsgraph, n_open, mesh_open, oriented[t.key]):
+                inside_out.add(t.key)
         if not hits:
             continue
         info["count"] = max(info["count"], len(hits))
 
-        # with Face Orientation on, a cap seen from inside the part reads as a backface
-        # (a zero-thickness slice has no inside: neither side is its back)
-        behind = (face_orientation and _seen_from_behind(rv3d, plane)
-                  and not (s.mode == 'SLICE' and s.thickness <= 1e-9))
         if show_fill:
             # with overlapping parts, count coverage so overlaps can blend and
             # (optionally) get the interference hatching
@@ -1173,10 +1151,10 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style, fill_override=None, out
                 # 3) composite the cap into the viewport
                 capb = _cap_batch((t.key, ci, "cap"), serial, segs, plane, bounds)
                 if capb is not None:
-                    if fill_override is not None:
+                    if t.key in inside_out:
+                        col = inside_out_color()  # red, over any other colour: the part needs fixing
+                    elif fill_override is not None:
                         col = fill_override
-                    elif behind:
-                        col = backface_color()
                     else:
                         col = colors.get(t.key)
                         if col is None:
@@ -1265,10 +1243,48 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style, fill_override=None, out
     engine.prune(live)
     for k in [k for k in _batches if k[0] not in live and k[0] != "__interference__"]:
         del _batches[k]
+    _tidy_issues(info)
+    return info
+
+
+def _note_issues(info, t, depsgraph, n_open, mesh_open, oriented):
+    """Add a cut part's problems to the readout's lists. True if it's inside out."""
+    bad = engine.is_inside_out(t, depsgraph)
+    if bad:
+        info["inside_out"].append(t.owner.name)
+    elif not mesh_open and not oriented:
+        info["mixed_normals"].append(t.owner.name)
+    if n_open:
+        info["open"].append(t.owner.name)
+    elif mesh_open:
+        info["open_mesh"].append(t.owner.name)
+    return bad
+
+
+def _tidy_issues(info):
     info["open"] = sorted(set(info["open"]))
     info["open_mesh"] = sorted(set(info["open_mesh"]) - set(info["open"]))
     info["inside_out"] = sorted(set(info["inside_out"]))
     info["mixed_normals"] = sorted(set(info["mixed_normals"]))
+
+
+def _scan_issues(context, s, caps):
+    """The readout's problem lists for parts the planes go through, when no cut faces are drawn
+    (Backfaces, Wireframe): it warns about them whatever the fill."""
+    info = {"count": 0, "open": [], "open_mesh": [], "inside_out": [], "mixed_normals": []}
+    try:
+        depsgraph = context.evaluated_depsgraph_get()
+    except (RuntimeError, AttributeError):
+        depsgraph = context.view_layer.depsgraph
+    for ci, (plane, bounds) in enumerate(caps):
+        for t in engine.collect_targets(context, s, depsgraph):
+            res = engine.section(t, ci, plane, depsgraph, bounds)
+            if res is None:
+                continue
+            _segs, n_open, _serial = res
+            _note_issues(info, t, depsgraph, n_open, n_open > 0 or engine.is_open_mesh(t, depsgraph),
+                         engine.is_oriented(t, depsgraph))
+    _tidy_issues(info)
     return info
 
 
@@ -1398,65 +1414,6 @@ def _draw_powder(context, s, rv3d):
         _vbatch('TRIS', {"pos": (tri, 3), "uv": (uv, 2)}).draw(sh)
 
 
-def _clip_prism(context, rv3d):
-    """A clipping region's volume as triangles facing outward: its four walls, running
-    from the viewer (or across the view, in orthographic) to well past the scene, plus ends."""
-    walls = [np.array(p, dtype=np.float64) for p in rv3d.clip_planes
-             if not sm.plane_is_degenerate(np.array(p, dtype=np.float64))]
-    axes = engine.clip_axes(rv3d)
-    if len(walls) != 4 or len(axes) != 2:
-        return None
-    w = sm.normalize(np.cross(axes[0][0], axes[1][0]))
-    reach = context.space_data.clip_end * 0.45
-    centre = float(np.array(rv3d.view_location) @ w)
-    normals = np.array([p[:3] for p in walls])
-    offsets = -np.array([p[3] for p in walls])
-    # rcond: an orthographic box's walls are parallel but for rounding, so they meet nowhere
-    apex, _res, rank, _sv = np.linalg.lstsq(normals, offsets, rcond=1e-3)
-    if rank == 3:  # walls that meet at the eye the box was drawn from
-        start = float(apex @ w)
-        ahead = apex + w * max(reach, 1.0)
-        toward = 1.0 if all(float(n @ ahead) >= o for n, o in zip(normals, offsets, strict=True)) else -1.0
-        heights = (start + toward * reach * 1e-3, start + toward * reach)
-    else:
-        heights = (centre - reach, centre + reach)
-    rings = []
-    for h in heights:
-        ring = []
-        for i in range(4):
-            j = (i + 1) % 4
-            ring.append(np.linalg.solve(np.array([normals[i], normals[j], w]), np.array([offsets[i], offsets[j], h])))
-        rings.append(ring)
-    near, far = rings
-    quads = [[near[i], far[i], far[(i + 1) % 4], near[(i + 1) % 4]] for i in range(4)] + [near, far]
-    middle = np.mean(near + far, axis=0)
-    tris = []
-    for q in quads:
-        centre_q = np.mean(q, axis=0)
-        for a, b, c in ((q[0], q[1], q[2]), (q[0], q[2], q[3])):
-            if float(np.cross(b - a, c - a) @ (centre_q - middle)) < 0.0:
-                b, c = c, b
-            tris += [tuple(a), tuple(b), tuple(c)]
-    return tris
-
-
-def _draw_clip_tint(context, rv3d):
-    """The faint tint Blender gives a clipping region's volume, on the background only.
-    Ours follows the region, and survives Section and Slice, as Blender's box can't."""
-    tris = _clip_prism(context, rv3d)
-    if tris is None:
-        return
-    sh = gpu.shader.from_builtin('UNIFORM_COLOR')
-    gpu.state.depth_test_set('LESS_EQUAL')
-    gpu.state.depth_mask_set(False)
-    gpu.state.blend_set('ALPHA')
-    gpu.state.face_culling_set('FRONT')  # the far side only, once per pixel, so parts hide it
-    sh.bind()
-    sh.uniform_float("color", CLIP_TINT_COLOR)
-    batch_for_shader(sh, 'TRIS', {"pos": tris}).draw(sh)
-    gpu.state.face_culling_set('NONE')
-
-
 def _draw_annotations(context):
     """Draw 3D annotations again, over the caps. Blender draws finished annotations
     before add-on drawing (and only the stroke in progress after it), so a cap
@@ -1491,6 +1448,13 @@ def measure_running():
     return _measure["on"]
 
 
+def measure_hint():
+    """What Measure says in the status bar, for where it is now."""
+    if _measure["anchor"] is not None:
+        return "Measure: click to pin the line, Ctrl stops it snapping, Esc drops it"
+    return "Measure: hover over a cut face, click a line to adjust and pin it, Esc to stop"
+
+
 def measure_start():
     _measure.update(on=True, region=None, a=None, b=None, text="", la=None, lb=None, ltext="", cut=None, anchor=None)
 
@@ -1506,10 +1470,6 @@ def measure_clear():
 
 def measure_has_lines():
     return bool(_measure["dims"])
-
-
-def native_or_lit(s, rv3d):
-    return s.mode == 'OFF' and bool(rv3d.use_clip_planes)
 
 
 def _caps_for(s, rv3d):
@@ -1853,7 +1813,7 @@ def draw_view():
             del _tool_box[rv3d.as_pointer()]  # back to Object Mode: back to no box and no tint
             request_tint_removal(rv3d)
         elif lit:
-            request_tint_removal(rv3d)  # it can't follow the region; _draw_clip_tint can
+            request_tint_removal(rv3d)  # Blender's tinted box can't follow the region as it slides
         elif not rv3d.use_clip_planes:
             _tint_gone.discard(rv3d.as_pointer())
         style = s.cap_style
@@ -1871,8 +1831,6 @@ def draw_view():
         # Blender only applies viewport clipping in Solid and Wireframe shading
         clips = shading_type in {'SOLID', 'WIREFRAME'}
         info["shading_note"] = bool(caps) and not clips
-        if native_or_lit(s, rv3d) and s.clip_tint and context.space_data.overlay.show_overlays:
-            _draw_clip_tint(context, rv3d)
         plane_shown = ours and s.plane_display != 'NONE' and context.space_data.overlay.show_overlays
         quads = _frame_quads(context, s, caps) if plane_shown and caps else []
         if quads and s.plane_display in {'TINT', 'HATCH'}:
@@ -1890,8 +1848,12 @@ def draw_view():
             info.update(_draw_caps(context, s, rv3d, caps, True, style))
         elif caps and solid and ours and s.mode == 'SLICE' and s.thickness <= 1e-9:
             # a zero-thickness slice clips everything, so with Backfaces there
-            # would be nothing at all to see: show the cut as a backface-red fill
-            info.update(_draw_caps(context, s, rv3d, caps, True, 'SOLID', fill_override=backface_color()))
+            # would be nothing at all to see: show the cut as a plain grey fill
+            info.update(_draw_caps(context, s, rv3d, caps, True, 'SOLID', fill_override=ZERO_SLICE_FILL))
+        elif clips and (ours or rv3d.use_clip_planes):
+            # nothing filled (Backfaces, Wireframe), but the readout still warns about the parts being clipped
+            issue_caps = caps or [c for c in engine.native_caps(rv3d) if not _edge_on(rv3d, c[0])]
+            info.update(_scan_issues(context, s, issue_caps))
         info["no_plane_object"] = s.mode != 'OFF' and s.orientation == 'OBJECT' and s.plane_object is None
         info["uncapped"] = engine.hidden_from_caps(context, s) if (ours or native) and solid else []
         if quads:
@@ -1946,34 +1908,17 @@ def _names(names):
 
 
 def readout_lines(scene, s, info):
-    """(lines, warnings, severe warnings) shown at the bottom of the viewport."""
-    lines, warn, severe = [], [], []
+    """(warnings, severe warnings) shown at the bottom of the viewport. Only problems: nothing shows while all
+    is well (D-050)."""
+    warn, severe = [], []
     if not info:
-        return lines, warn, severe
+        return warn, severe
     if "error" in info:
         warn.append("Crosscut draw error (see console): " + info["error"][:90])
-    elif info.get("ours"):
-        c = engine.plane_coordinate(s)
-        if s.orientation == 'OBJECT':
-            axis = f"{s.plane_object.name} {s.object_axis}" if s.plane_object else "?"
-        else:
-            axis = _enum_name(s, 'orientation')
-        head = f"{_enum_name(s, 'mode')} {axis}  {fmt_length(scene, c)}"
-        if s.mode == 'SLICE' and s.thickness > 0:
-            head += f"  ±{fmt_length(scene, s.thickness / 2)}"
-        if (s.print_preview or (s.range_source == 'OBJECT' and s.range_object is not None)) and s.step > 0:
-            lo, hi = engine.scrub_range(s)
-            k = int(round((c - lo) / s.step))
-            total = int(round((hi - lo) / s.step))
-            head += f"   {'layer' if s.print_preview else 'step'} {k} / {total}"
-        head += "   Print Preview" if s.print_preview else f"   {_enum_name(s, 'cap_style')}"
-        lines.append(head)
-    elif info.get("native"):
-        lines.append(f"Clipping Region   {_enum_name(s, 'cap_style')}")
     if info.get("no_plane_object"):
         warn.append("Object plane: pick an object (nothing is clipped until then)")
     if info.get("uncapped"):
-        warn.append("Not capped (Wire/Bounds display): " + _names(info["uncapped"]))
+        warn.append("Not filled (Wire/Bounds display): " + _names(info["uncapped"]))
     if info.get("shading_note"):
         warn.append("Clipping works in Solid and Wireframe shading only; filled cut faces in Solid")
     if info.get("open_mesh"):
@@ -1981,10 +1926,10 @@ def readout_lines(scene, s, info):
     if info.get("mixed_normals"):
         warn.append("Flipped faces, overlaps may show as holes: " + _names(info["mixed_normals"]))
     if info.get("inside_out"):
-        severe.append("Inside out: " + _names(info["inside_out"]))
+        severe.append("Inside out, its cut faces are red: " + _names(info["inside_out"]))
     if info.get("open"):
         severe.append("Open section, gaps filled in by guesswork: " + _names(info["open"]))
-    return lines, warn, severe
+    return warn, severe
 
 
 def draw_readout():
@@ -2022,23 +1967,14 @@ def draw_readout():
             blf.draw(font, text)
         blf.enable(font, blf.SHADOW)
         blf.size(font, 12 * ui)
-    if not s.show_readout:
-        blf.disable(font, blf.SHADOW)
-        return
-    lines, warn, severe = readout_lines(scene, s, _last_info.get(context.region.as_pointer()))
-    if _measure["on"]:
-        lines = lines + ["Measure: click to place the line, Ctrl to stop it snapping, Esc to drop it" if _measure["anchor"] is not None
-                         else "Measure: hover over a cut face, click a line to adjust and pin it, Esc to stop"]
-    elif _measure["dims"] and not s.measure_keep:
-        lines = lines + ["Pinned measurements: Esc to clear"]
-    if not lines and not warn and not severe:
+    warn, severe = readout_lines(scene, s, _last_info.get(context.region.as_pointer()))
+    if not warn and not severe:
         blf.disable(font, blf.SHADOW)
         return
     y = 16 * ui
     # centred: the bottom-left corner belongs to Blender's Adjust Last Operation panel
     for text, col in [(t, WARNING_RED) for t in reversed(severe)] + \
-                     [(t, (1.0, 0.6, 0.1, 1.0)) for t in reversed(warn)] + \
-                     [(t, (0.92, 0.92, 0.92, 1.0)) for t in reversed(lines)]:
+                     [(t, (1.0, 0.6, 0.1, 1.0)) for t in reversed(warn)]:
         blf.color(font, *col)
         blf.position(font, (context.region.width - blf.dimensions(font, text)[0]) / 2, y, 0)
         blf.draw(font, text)

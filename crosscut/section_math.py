@@ -898,11 +898,12 @@ def section_measures(seg, point, oriented=True, half=1.0, cells=160, local=True,
 
 
 def palette_color(key):
-    """Stable, distinct, mid-saturation colour for a name (sRGB 0-1)."""
+    """Stable, distinct, mid-saturation colour for a name (sRGB 0-1), never red."""
     import colorsys
     import zlib
     h = (zlib.crc32(key.encode("utf-8")) % 360) / 360.0
     # golden-ratio spread on top of the hash keeps nearby names apart
     h = (h + 0.61803398875 * (len(key) % 7)) % 1.0
+    h = 0.06 + 0.88 * h  # never red: red marks an inside-out part (D-049)
     r, g, b = colorsys.hls_to_rgb(h, 0.55, 0.45)
     return (r, g, b)

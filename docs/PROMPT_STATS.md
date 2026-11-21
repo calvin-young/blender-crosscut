@@ -23,7 +23,7 @@ line below carries a category.
 
 | Bugs found | UI tweaks | New features | Direction | Total |
 |---|---|---|---|---|
-| 31 | 77 | 38 | 27 | 173 |
+| 32 | 85 | 39 | 27 | 183 |
 
 ## Sessions
 
@@ -33,7 +33,7 @@ steering lines matters more than the count of prompts.
 
 | Date | Tool and model | Prompts | Steering lines | Notes |
 |---|---|---|---|---|
-| 2026-11-12/18 | Claude Code (workstation), Fable 5.2 then Opus 5.5 | 4 | 5 | Audit and vision (review only); 0.17.0 overlap hatch; 0.18.0 measure any edge, select by cut face |
+| 2026-11-12/20 | Claude Code (workstation), Fable 5.2 then Opus 5.5 | 5 | 15 | Audit and vision (review only); 0.17.0 overlap hatch; 0.18.0 measure any edge, select by cut face; 0.19.0 panel sections, red for inside out |
 | 2026-11-04/05 | Claude Code (workstation), Opus 5.5 | 2 | 11 | The presentation demo reel, moved here from a separate demo-reels repo |
 | 2026-11-04/09 | Claude Code (workstation), Opus 5.5 | 3 | 13 | 0.16.0: snap, 580 color first try, FDM placeholder; design for saved lines |
 | 2026-11-02 | Claude Code (workstation), Opus 5.5 | 12 | 70 | 0.9.2 to 0.15.1 from the maintainer's notes after several days of real use |
@@ -48,6 +48,16 @@ One line for each thing the human contributed that the AI would not have done on
 newest first, tagged with its kind (decide, correct, domain, tested, scope) and, from 2026-11-03, its
 category (bug, ui, feature, direction).
 
+- 2026-11-20 [tested][ui]: the readout only when there's a problem, never just the plane's position; always warn when clipping through a part with an issue; no checkbox.
+- 2026-11-20 [decide][ui]: un-nest the sections from Settings.
+- 2026-11-20 [decide][ui]: the same red nowhere else unless the user picks it, so it can't mislead.
+- 2026-11-20 [decide][feature]: drop the Face Orientation toggle; make an inside-out part's cut faces red instead.
+- 2026-11-20 [decide][ui]: drop tint altogether.
+- 2026-11-20 [decide][ui]: Print Preview as one of Appearance's sections, greying out the others when on.
+- 2026-11-20 [decide][ui]: Appearance's settings in collapsible sections.
+- 2026-11-20 [decide][ui]: rename Section/Slice Plane to Clipping Plane, Cut Faces to Appearance.
+- 2026-11-20 [tested][bug]: Hatch Space Model seemed to behave like Screen (not reproduced yet).
+- 2026-11-20 [tested][ui]: the Clip Tint toggle seemed to do nothing (it only tinted an orbited clipping region).
 - 2026-11-18 [tested][bug]: selecting a part that sits in another part's hole picked the other part first; selection should follow the cut face.
 - 2026-11-18 [scope][feature]: a snap for a measuring line that ends on a curved edge (closest distance).
 - 2026-11-18 [tested][feature]: measure between any lines in the section (other parts' edges, overlap edges), from wherever the first click is.

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.19.0 (2026-11-20)
+
+- **The panel**: the main controls, then three sections that open and close: **Appearance**, **Clipping Plane** and
+  **Measure**, no longer inside Settings. Appearance has its own sections: Parts, Color, Lines, Overlaps and
+  **Print Preview**. With Print Preview ticked, the others grey out.
+- **Red means inside out**: an inside-out part's cut faces are red, whatever the colours. Nothing else is red by
+  default: the overlap highlight is now magenta, the palette skips red, and Backfaces' zero-thickness slice is grey.
+- **The readout** shows only warnings, and nothing while all is well (no more "Section Z 0.000 Hatched"). It warns
+  with Backfaces and in Wireframe too. Its checkbox is gone. Measure's hints moved to Blender's status bar.
+- Removed: **Clip Tint**, the fill colour **Tint** and **Tint Amount**, and the **Face Orientation** checkbox (and the
+  backface colour on cut faces seen from inside a part, which red now means something else).
+
 ## 0.18.0 (2026-11-18)
 
 - **Measure** works between any edges in the section, of any part. Hovering measures the region the mouse is in:

@@ -205,10 +205,6 @@ class CrosscutSettings(bpy.types.PropertyGroup):
         description="Where the middle of the clipping region is along this axis",
         get=_clip_position_get(1), set=_clip_position_set(1),
     )
-    clip_tint: BoolProperty(
-        name="Clip Tint", default=False, update=tag_redraw,
-        description="Show a clipping region's volume as a faint tint on the background",
-    )
     measure_color: FloatVectorProperty(
         name="Local Color", subtype='COLOR_GAMMA', size=3, min=0.0, max=1.0, default=(0.50, 0.82, 1.0),
         description="Colour of the local width's line and length", update=tag_redraw,
@@ -246,11 +242,15 @@ class CrosscutSettings(bpy.types.PropertyGroup):
         name="Local Width", default=True, update=tag_redraw,
         description="Show the width right where the mouse is: of a part's section, or of an overlap",
     )
-    ui_settings: BoolProperty(name="Settings", default=False, options={'HIDDEN'})
-    ui_cut_faces: BoolProperty(name="Cut Faces", default=False, options={'HIDDEN'})
-    ui_plane: BoolProperty(name="Section/Slice Plane", default=False, options={'HIDDEN'})
-    ui_measure: BoolProperty(name="Measure Overlap", default=False, options={'HIDDEN'})
+    # which of the panel's sections are open
+    ui_cut_faces: BoolProperty(name="Appearance", default=False, options={'HIDDEN'})
+    ui_parts: BoolProperty(name="Parts", default=False, options={'HIDDEN'})
+    ui_color: BoolProperty(name="Color", default=False, options={'HIDDEN'})
+    ui_hatching: BoolProperty(name="Lines", default=False, options={'HIDDEN'})
+    ui_overlaps: BoolProperty(name="Overlaps", default=False, options={'HIDDEN'})
     ui_print_preview: BoolProperty(name="Print Preview", default=False, options={'HIDDEN'})
+    ui_plane: BoolProperty(name="Clipping Plane", default=False, options={'HIDDEN'})
+    ui_measure: BoolProperty(name="Measure", default=False, options={'HIDDEN'})
     scrub_distance: BoolProperty(
         name="Scrub by Distance", default=False,
         description="Show the plane position as a distance instead of a 0-1 slider across the range",
@@ -323,14 +323,6 @@ class CrosscutSettings(bpy.types.PropertyGroup):
         name="Brightness", subtype='FACTOR', min=0.0, max=1.0, default=0.5, update=tag_redraw,
         description="Darkens colors that come from the parts, so an unlit cut face sits with the shaded surfaces around it",
     )
-    fill_tint: FloatVectorProperty(
-        name="Tint", subtype='COLOR_GAMMA', size=3, min=0.0, max=1.0, default=(1.0, 0.25, 0.2), update=tag_redraw,
-        description="Color to mix into colors that come from the parts",
-    )
-    fill_tint_amount: FloatProperty(
-        name="Tint Amount", subtype='FACTOR', min=0.0, max=1.0, default=0.0, update=tag_redraw,
-        description="How much of the Tint to mix in",
-    )
     fill_opacity: FloatProperty(
         name="Fill Opacity", subtype='FACTOR', min=0.0, max=1.0, default=1.0, update=tag_redraw,
         description="Opacity of every filled cut face",
@@ -370,11 +362,11 @@ class CrosscutSettings(bpy.types.PropertyGroup):
         ],
     )
     interference_color: FloatVectorProperty(
-        name="Color", subtype='COLOR_GAMMA', size=3, min=0.0, max=1.0, default=(0.86, 0.10, 0.08),
-        description="Fill colour of overlapping areas", update=tag_redraw,
+        name="Color", subtype='COLOR_GAMMA', size=3, min=0.0, max=1.0, default=(0.78, 0.16, 0.85),
+        description="Fill colour of overlapping areas (red marks inside-out parts, so it's best kept for that)", update=tag_redraw,
     )
     interference_line_color: FloatVectorProperty(
-        name="Line Color", subtype='COLOR_GAMMA', size=3, min=0.0, max=1.0, default=(1.0, 0.85, 0.80),
+        name="Line Color", subtype='COLOR_GAMMA', size=3, min=0.0, max=1.0, default=(1.0, 0.90, 1.0),
         description="Hatch line colour of overlapping areas", update=tag_redraw,
     )
     interference_opacity: FloatProperty(
@@ -402,8 +394,6 @@ class CrosscutSettings(bpy.types.PropertyGroup):
         name="Opacity", subtype='FACTOR', min=0.0, max=1.0, soft_max=0.1, default=0.03, update=tag_redraw,
         description="Tint opacity (the slider goes to 0.1; type a value up to 1)",
     )
-    show_readout: BoolProperty(name="Readout", default=True, update=tag_redraw,
-                               description="Show the plane position and warnings in the viewport")
 
     range_source: EnumProperty(
         name="Scrub Range", default='TARGETS', update=tag_redraw,

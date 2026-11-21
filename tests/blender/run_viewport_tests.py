@@ -201,6 +201,10 @@ def is_red(c):
     return c[0] > 140 and c[0] > c[1] + 60 and c[0] > c[2] + 60
 
 
+def is_magenta(c):
+    return c[0] > 120 and c[2] > 120 and c[1] < min(c[0], c[2]) - 40
+
+
 def is_greyish(c, lo=90):
     return max(c) - min(c) < 25 and min(c) >= lo
 
@@ -247,12 +251,12 @@ def settings(s, **kw):
     base = dict(mode='OFF', orientation='Z', offset=0.0, flip=False, thickness=0.0,
                 cap_style='SOLID', targets='VISIBLE', color_source='SINGLE', single_color=GREEN,
                 hatch_vary=True, outline=True, plane_display='NONE',
-                show_readout=True, range_source='TARGETS', range_object=None,
+                range_source='TARGETS', range_object=None,
                 hatch_space='SCREEN', hatch_pitch_px=10.0, scrub_distance=False, overlap_style='HIGHLIGHT',
                 interference_style='CROSS', interference_opacity=1.0, plane_opacity=0.10,
-                stripe_width_px=12.0, open_opacity=1.0, object_axis='Z', clip_tint=True,
+                stripe_width_px=12.0, open_opacity=1.0, object_axis='Z',
                 measure_max=True, measure_local=True, measure_section_max=False,
-                measure_ignore_overlaps=False, measure_keep=False, fill_saturation=1.0, fill_brightness=1.0, fill_tint_amount=0.0,
+                measure_ignore_overlaps=False, measure_keep=False, fill_saturation=1.0, fill_brightness=1.0,
                 fill_opacity=1.0)
     base.update(kw)
     for k, v in base.items():
@@ -375,12 +379,13 @@ def slices(view):
           is_greyish(shot.at(view.px((0, -39.3, 0))), lo=60), f"{shot.at(view.px((0, -39.3, 0)))}")
     check(T, "slab: pole clipped", near(shot.at(view.px((0, 0, 39))), bg, BG_TOL))
 
-    # Backfaces + a zero-thickness slice would show nothing at all: it shows the cut in backface red
+    # Backfaces + a zero-thickness slice would show nothing at all: it shows the cut in plain grey (red is for inside out)
     settings(s, mode='SLICE', orientation='Z', offset=0.0, thickness=0.0, cap_style='BACKFACES')
     yield from settle()
     shot = Shot(view, "slice_section_only_backfaces")
     c = shot.at(view.px((0, -32, 0)))
-    check(T, "backfaces, zero thickness: section shown in backface red", is_red(c), f"{c}")
+    check(T, "backfaces, zero thickness: section shown in grey", not is_red(c) and is_greyish(c, lo=40)
+          and not near(c, bg, BG_TOL), f"{c}")
     check(T, "backfaces, zero thickness: hole is background", near(shot.at(view.px((0, 0, 0))), bg, BG_TOL))
     settings(s, mode='SLICE', orientation='Z', offset=0.0, thickness=10.0, cap_style='BACKFACES')
     yield from settle()
@@ -404,7 +409,7 @@ def multibody(view):
     yield from settle()
     shot = Shot(view, "multibody_interference")
     c = shot.at(view.px((4, 0, 0)))  # inside both part-001 and part-002
-    check(T, "overlap is red", is_red(c), f"{c}")
+    check(T, "overlap highlighted (magenta, not red: red is for inside out)", is_magenta(c) and not is_red(c), f"{c}")
     c = shot.at(view.px((-25, 0, 0)))
     check(T, "part-001 alone is its colour (blue)", c[2] > c[0] + 40, f"{c}")
     c = shot.at(view.px((45, 0, 0)))
@@ -414,7 +419,7 @@ def multibody(view):
     yield from settle()
     shot = Shot(view, "multibody_no_interference")
     c = shot.at(view.px((4, 0, 0)))
-    check(T, "interference off: overlap not red", not is_red(c), f"{c}")
+    check(T, "interference off: overlap not highlighted", not is_magenta(c), f"{c}")
     a1 = shot.at(view.px((-25, 0, 0)))   # part-001 alone (blue)
     a2 = shot.at(view.px((20, 0, 0)))    # part-002 alone (orange)
     # the overlap blends the two colours instead of one covering the other
@@ -443,7 +448,7 @@ def multibody(view):
     settings(s, mode='SECTION', orientation='Z', offset=0.0, color_source='OBJECT', overlap_style='HIGHLIGHT', interference_style='CROSS', interference_opacity=0.4)
     yield from settle()
     Shot(view, "multibody_interference_translucent")
-    s.interference_color = (0.86, 0.10, 0.08)
+    s.interference_color = (0.78, 0.16, 0.85)
     s.interference_opacity = 1.0
     s.overlap_style = 'BLEND'
 
@@ -634,13 +639,13 @@ def open_mesh(view):
     shot = Shot(view, "open_mesh_warning")
     c = shot.at(view.px((0, 0, 0)))
     check(T, "open contour is closed and filled", is_green(c), f"{c}")
-    lines, warn, severe = cc("draw").readout_lines(scene, s, info)
+    warn, severe = cc("draw").readout_lines(scene, s, info)
     check(T, "open section: severe warning", len(severe) == 1 and not warn, f"{warn} {severe}")
     # a cut away from the hole: closed contour, but the mesh is open
     settings(s, mode='SECTION', orientation='Z', offset=0.0)
     yield from settle()
     info = cc("draw").last_info(view.region)
-    lines, warn, severe = cc("draw").readout_lines(scene, s, info)
+    warn, severe = cc("draw").readout_lines(scene, s, info)
     check(T, "cut away from the hole: mild warning", info.get("open_mesh") == ["part-001"] and warn and not severe,
           f"{info.get('open_mesh')} {warn} {severe}")
     p = view.px((0, 0, 0))
@@ -727,8 +732,7 @@ def local_axes(view):
     yield from settle()
     Shot(view, "local_axis_x")
     info = cc("draw").last_info(view.region)
-    head = cc("draw").readout_lines(scene, s, info)[0][0]
-    check(T, "readout names the axis", "part-001 X" in head, repr(head))
+    check(T, "readout quiet while all is well", cc("draw").readout_lines(scene, s, info) == ([], []), str(info))
     with view.override():
         before = ob.matrix_world.copy()
         bpy.ops.crosscut.add_plane(align='VIEW')
@@ -1203,114 +1207,6 @@ def tools_through_clipping(view):
 
 
 @test
-def clip_tint(view):
-    # Blender's faint box goes by default, and as soon as you scrub with the setting on
-    T = "clip_tint"
-    if not bpy.app.use_event_simulate:
-        print("    skipped: run Blender with --enable-event-simulate")
-        return
-    scene = new_scene("cc-tint")
-    box("part-001", (20, 20, 20), (200, 0, 0))   # clear of the box, which then shows the bare background
-    s = scene.crosscut
-    view.look((0, 0, 0), 300, (0, 0, 0), ortho=True)
-    win = bpy.context.window
-    r = view.region
-
-    def draw_box():
-        a, b = view.px((-10, -10, 0)), view.px((10, 10, 0))
-        with view.override():
-            bpy.ops.crosscut.clip('INVOKE_DEFAULT')
-        yield 0.1
-        win.event_simulate('MOUSEMOVE', 'NOTHING', x=r.x + a[0], y=r.y + a[1])
-        yield 0.05
-        win.event_simulate('LEFTMOUSE', 'PRESS', x=r.x + a[0], y=r.y + a[1])
-        yield 0.05
-        win.event_simulate('MOUSEMOVE', 'NOTHING', x=r.x + b[0], y=r.y + b[1])
-        yield 0.05
-        win.event_simulate('LEFTMOUSE', 'RELEASE', x=r.x + b[0], y=r.y + b[1])
-        yield 0.2
-        view.look((0, 0, 0), 300, (0, 0, 0), ortho=True)
-        yield from settle()
-
-    def draw_box_here():
-        a, b = view.px((-10, -10, 0)), view.px((10, 10, 0))
-        with view.override():
-            bpy.ops.crosscut.clip('INVOKE_DEFAULT')
-        yield 0.1
-        win.event_simulate('MOUSEMOVE', 'NOTHING', x=r.x + a[0], y=r.y + a[1])
-        yield 0.05
-        win.event_simulate('LEFTMOUSE', 'PRESS', x=r.x + a[0], y=r.y + a[1])
-        yield 0.05
-        win.event_simulate('MOUSEMOVE', 'NOTHING', x=r.x + b[0], y=r.y + b[1])
-        yield 0.05
-        win.event_simulate('LEFTMOUSE', 'RELEASE', x=r.x + b[0], y=r.y + b[1])
-        yield 0.2
-        yield from settle()
-
-    far = (view.region.width // 8, view.region.height // 2)  # plain background
-
-    def tinted(name):
-        shot = Shot(view, name)
-        inside, bg = shot.at(view.px((0, 0, 0)), r=2), shot.at(far, r=2)
-        return not near(inside, bg, 0), f"{inside} {bg}"
-
-    settings(s, clip_tint=False)
-    yield from draw_box()
-    on, d = tinted("tint_off")
-    check(T, "by default there's no tint", not on and view.rv3d.use_clip_planes, d)
-    n = len(cc("engine").clip_axes(view.rv3d))
-    check(T, "the region's planes survive", n == 2, str(n))
-    s.clip_tint = True
-    yield 0.1
-    yield from settle()
-    on, d = tinted("tint_on")
-    check(T, "turning it on shows it, without a new box", on, d)
-    s.clip_tint = False
-    yield from settle()
-    on, d = tinted("tint_off_again")
-    check(T, "off again hides it", not on, d)
-    s.clip_tint = True
-    yield from settle()
-    on, d = tinted("tint_on_again")
-    check(T, "and back on shows it", on, d)
-    with view.override():
-        bpy.ops.crosscut.set_mode(mode='SLICE')
-    yield 0.2
-    yield from settle()
-    on, d = tinted("tint_during_slice")
-    with view.override():
-        bpy.ops.crosscut.clip('INVOKE_DEFAULT')
-    yield 0.2
-    yield from settle()
-    on, d = tinted("tint_after_slice")
-    check(T, "Slice and back keeps it", on and view.rv3d.use_clip_planes, d)
-    # it follows a scrub
-    axes = cc("engine").clip_axes(view.rv3d)
-    with view.override():
-        s.clip_position_1 = axes[0][1] + 40.0
-        s.clip_position_2 = axes[1][1] + 40.0
-    yield 0.1
-    yield from settle()
-    on, d = tinted("tint_scrubbed")
-    check(T, "it moves with the box: the old place is clear", not on, d)
-    # in perspective, where a box's walls meet at the eye, and after orbiting
-    with view.override():
-        bpy.ops.crosscut.clip('INVOKE_DEFAULT')  # removes it
-    yield 0.1
-    view.look((0, 0, 0), 300, (0, 0, 0))
-    yield from settle()
-    yield from draw_box_here()
-    shot = Shot(view, "tint_perspective")
-    inside, bg = shot.at(view.px((0, 0, 0)), r=2), shot.at(far, r=2)
-    check(T, "perspective: shows", not near(inside, bg, 2), f"{inside} {bg}")
-    view.look((0, 0, 0), 300, (50, 0, 40))
-    yield from settle()
-    Shot(view, "tint_perspective_orbit")
-    view.rv3d.use_clip_planes = False
-    check(T, "no draw errors", not errors(), str(errors()))
-
-
-@test
 def random_colors(view):
     # in Random shading the caps match what Blender draws on the parts
     T = "random_colors"
@@ -1339,12 +1235,8 @@ def random_colors(view):
     yield from settle()
     gray = Shot(view, "random_colors_gray").at(p)
     check(T, "Saturation grays it", max(gray) - min(gray) < 4 < max(full) - min(full), f"{gray} {full}")
-    s.fill_saturation, s.fill_tint_amount, s.fill_tint = 1.0, 1.0, (1.0, 0.0, 0.0)
-    yield from settle()
-    tinted = Shot(view, "random_colors_tint").at(p)
-    check(T, "Tint mixes in", tinted[0] > 200 and tinted[1] < 30, f"{tinted}")
     # over the part's own inside, which Flat light shows in its full colour
-    s.fill_tint_amount, s.fill_brightness = 0.0, 0.3
+    s.fill_saturation, s.fill_brightness = 1.0, 0.3
     yield from settle()
     solid = Shot(view, "random_colors_opaque").at(p)
     s.fill_opacity = 0.5
@@ -1375,7 +1267,7 @@ def overlays_off(view):
     check(T, "plane hides with overlays", not near(on.at(corner), bg, 4) and near(off.at(corner), bg, 4),
           f"{on.at(corner)} {off.at(corner)} {bg}")
     readout_area = off.px[off.oy + 8:off.oy + 30, off.ox + view.region.width // 3:off.ox + 2 * view.region.width // 3]
-    check(T, "readout hides with overlays", int(np.ptp(readout_area, axis=(0, 1)).max()) <= 3)
+    check(T, "readout hides with overlays (the open top is warned about)", int(np.ptp(readout_area, axis=(0, 1)).max()) <= 3)
     # measuring lines go with their lengths
     dr = cc("draw")
     dr._measure["dims"].append((np.array((-60.0, 40.0, 0.0)), np.array((60.0, 40.0, 0.0)), "1"))
@@ -1391,8 +1283,8 @@ def overlays_off(view):
 
 
 @test
-def face_orientation(view):
-    T = "face_orientation"
+def inside_out(view):
+    T = "inside_out"
     scene = new_scene("cc-face")
     ob = box("part-001", (30, 30, 30))
     s = scene.crosscut
@@ -1408,11 +1300,16 @@ def face_orientation(view):
     yield 0.1
     yield from settle()
     info = cc("draw").last_info(view.region)
-    severe = cc("draw").readout_lines(scene, s, info)[2]
+    severe = cc("draw").readout_lines(scene, s, info)[1]
     check(T, "inside out: named in red", info.get("inside_out") == ["part-001"] and any("Inside out" in w for w in severe),
           f"{info} {severe}")
     shot = Shot(view, "inside_out")
-    check(T, "inside out: still capped", is_green(shot.at(view.px((0, 0, 0)))))
+    check(T, "inside out: its cut face is red", is_red(shot.at(view.px((0, 0, 0)))), str(shot.at(view.px((0, 0, 0)))))
+    s.cap_style = 'BACKFACES'
+    yield from settle()
+    severe = cc("draw").readout_lines(scene, s, cc("draw").last_info(view.region))[1]
+    check(T, "inside out: still named with Backfaces", any("Inside out" in w for w in severe), str(severe))
+    s.cap_style = 'SOLID' 
     ob.data.polygons[0].flip()
     ob.data.update()
     yield 0.1
@@ -1420,31 +1317,15 @@ def face_orientation(view):
     info = cc("draw").last_info(view.region)
     check(T, "one face flipped the other way: mixed normals", info.get("mixed_normals") == ["part-001"]
           or info.get("inside_out") == ["part-001"], str(info))
-    # a cap seen from inside the part, with Face Orientation on, is the backface colour
+    # a healthy part seen from inside its cut is never red: red only means inside out
     bpy.data.objects.remove(ob)
     box("part-002", (30, 30, 30), open_top=True)
     settings(s, mode='SECTION', orientation='Y', offset=0.0, flip=False)  # keeps y < 0
-    view.space.overlay.show_face_orientation = True
     view.look((0, 0, 0), 200, (20, 0, 0))     # from -y, through the open top: the viewer is on the kept side
     yield 0.1
     yield from settle()
     back = Shot(view, "cap_from_behind").at(view.px((0, 0, 10)))
-    view.look((0, 0, 0), 200, (20, 0, 180))   # from +y: the cut side
-    yield from settle()
-    front = Shot(view, "cap_from_front").at(view.px((0, 0, 10)))
-    view.space.overlay.show_face_orientation = False
-    check(T, "from inside with Face Orientation: reads red", is_red(back), f"{back}")
-    check(T, "from the cut side: its own colour", is_green(front), f"{front}")
-    # a zero-thickness slice has no inside: both sides keep the cap's colour
-    settings(s, mode='SLICE', orientation='Y', offset=0.0)
-    view.space.overlay.show_face_orientation = True
-    for name, rot in (("a", (20, 0, 0)), ("b", (20, 0, 180))):
-        view.look((0, 0, 0), 200, rot)
-        yield 0.1
-        yield from settle()
-        c = Shot(view, f"slice_side_{name}").at(view.px((0, 0, 10)))
-        check(T, f"zero-thickness slice, side {name}: not red", is_green(c), f"{c}")
-    view.space.overlay.show_face_orientation = False
+    check(T, "seen from inside, a healthy part's cut face isn't red", not is_red(back), f"{back}")
     check(T, "no draw errors", not errors(), str(errors()))
 
 
@@ -1486,6 +1367,38 @@ def annotations_over_caps(view):
     check(T, "hides with its overlay toggle", is_green(c), f"{c}")
     view.space.overlay.show_annotation = True
     check(T, "no draw errors", not errors(), str(errors()))
+
+
+@test
+def hatch_model_space(view):
+    """Model space hatching is locked to the part: zooming out shrinks its spacing on screen; Screen space doesn't."""
+    T = "hatch_model_space"
+    scene = new_scene("cc-hatch-model")
+    box("part-001", (60, 60, 20), (0, 0, 0))
+    s = scene.crosscut
+
+    def period(shot):
+        x, y = view.px((0, 0, 0))
+        row = shot.px[y + shot.oy, x + shot.ox - 200:x + shot.ox + 200].sum(axis=1).astype(np.float64)
+        row -= row.mean()
+        spec = np.abs(np.fft.rfft(row))
+        k = int(spec[2:].argmax()) + 2
+        return len(row) / k
+
+    out = {}
+    for space in ('MODEL', 'SCREEN'):
+        settings(s, mode='SECTION', orientation='Z', cap_style='HATCH', hatch_space=space, hatch_pitch=2.0,
+                 hatch_pitch_px=12.0, hatch_scale=0.0, hatch_vary=False, outline=False)
+        for dist in (80, 160):
+            view.look((0, 0, 0), dist, (0, 0, 0), ortho=False)
+            yield 0.05
+            yield from settle()
+            out[space, dist] = period(Shot(view, f"hatch_{space.lower()}_{dist}"))
+    m = out['MODEL', 80] / out['MODEL', 160]
+    sc = out['SCREEN', 80] / out['SCREEN', 160]
+    check(T, "Model: twice as far, half the spacing on screen", abs(m - 2.0) < 0.25, f"{out['MODEL', 80]:.1f} / {out['MODEL', 160]:.1f}")
+    check(T, "Screen: the same spacing at any zoom", abs(sc - 1.0) < 0.15, f"{out['SCREEN', 80]:.1f} / {out['SCREEN', 160]:.1f}")
+    s.hatch_pitch, s.hatch_scale = 0.5, 0.5
 
 
 @test
@@ -2078,7 +1991,7 @@ def handoff(view):
 
     def shaded(shot):
         return int((empty & win & (np.abs(shot.px - bgc).max(axis=2) > 0)).sum())
-    check(T, "Alt+B box volume is shaded (test sees it)", shaded(boxed) > 2000, f"{shaded(boxed)} px")
+    # (Blender's own tint of the box volume is removed as soon as it appears, and Crosscut no longer draws one)
     check(T, "on over Alt+B: no leftover box shading", shaded(on) < 200, f"{shaded(on)} px")
     with view.override():
         bpy.ops.crosscut.set_mode(mode='SECTION')
@@ -2342,7 +2255,7 @@ def object_plane_and_plane_tint(view):
     yield from settle()
     info = cc("draw").last_info(view.region)
     check(T, "no plane object: no clipping", not view.rv3d.use_clip_planes, str(info))
-    lines, warn, _severe = cc("draw").readout_lines(scene, s, info)
+    warn, _severe = cc("draw").readout_lines(scene, s, info)
     check(T, "no plane object: readout asks for one", any("pick an object" in w for w in warn), str(warn))
     # one Empty among parts: the Empty is picked, and the plane goes through it
     e = bpy.data.objects.new("plane-empty", None)
@@ -2367,7 +2280,7 @@ def object_plane_and_plane_tint(view):
     w.display_type = 'WIRE'
     settings(s, mode='SECTION', orientation='Z', offset=0.0)
     yield from settle()
-    lines, warn, _severe = cc("draw").readout_lines(scene, s, cc("draw").last_info(view.region))
+    warn, _severe = cc("draw").readout_lines(scene, s, cc("draw").last_info(view.region))
     check(T, "wire object: readout warns it isn't capped", any("bucket-01" in x for x in warn), str(warn))
     s.plane_object = None
     bpy.data.objects.remove(w)
@@ -2520,8 +2433,8 @@ def readout(view):
     yield 0.1
     yield from settle()
     Shot(view, "readout_range_object")
-    text = cc("draw").readout_lines(scene, s, cc("draw").last_info(view.region))[0][0]
-    check(T, "readout in scene units (mm)", "12" in text and "mm" in text, repr(text))
+    check(T, "lengths in scene units (mm)", cc("draw").fmt_length(scene, 12.0) == "12.000 mm",
+          cc("draw").fmt_length(scene, 12.0))
     check(T, "no draw errors", not errors(), str(errors()))
 
 
@@ -2644,15 +2557,26 @@ def ui_panels(view):
     yield from settle()
     # every settings section opened, to see them and to run their drawing
     s.overlap_style = 'HIGHLIGHT'
-    s.ui_settings = True
-    for name, prop in (("cut_faces", "ui_cut_faces"), ("plane", "ui_plane"), ("measure", "ui_measure"),
-                       ("print_preview", "ui_print_preview")):
+    s.ui_cut_faces = True
+    for name, prop in (("parts", "ui_parts"), ("color", "ui_color"), ("lines", "ui_hatching"),
+                       ("overlaps", "ui_overlaps"), ("print_preview", "ui_print_preview")):
+        setattr(s, prop, True)
+        yield 0.1
+        yield from settle()
+        Shot(view, f"ui_appearance_{name}")
+        setattr(s, prop, False)
+    s.ui_hatching = s.ui_overlaps = s.print_preview = True
+    yield 0.1
+    yield from settle()
+    Shot(view, "ui_appearance_print_preview_on")
+    s.ui_hatching = s.ui_overlaps = s.print_preview = False
+    s.ui_cut_faces = False
+    for name, prop in (("plane", "ui_plane"), ("measure", "ui_measure")):
         setattr(s, prop, True)
         yield 0.1
         yield from settle()
         Shot(view, f"ui_section_{name}")
         setattr(s, prop, False)
-    s.ui_settings = False
     yield 0.1
     yield from settle()
     shot = Shot(view, "ui_sidebar")
@@ -2881,9 +2805,8 @@ def print_preview(view):
     settings(s, mode='SECTION', orientation='Z', offset=0.0, range_source='OBJECT', range_object=bed)
     s.print_preview = True
     yield from settle()
-    lines = cc("draw").readout_lines(scene, s, cc("draw").last_info(view.region))[0]
-    check(T, "readout counts layers", bool(lines) and "layer " in lines[0] and "Print Preview" in lines[0],
-          str(lines))
+    check(T, "readout quiet while all is well", cc("draw").readout_lines(scene, s, cc("draw").last_info(view.region))
+          == ([], []), str(cc("draw").last_info(view.region)))
     s.print_preview = False
     yield from settle()
     c = Shot(view, "print_preview_off").at(view.px((0, -32, 0)), r=2)

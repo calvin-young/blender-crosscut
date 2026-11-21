@@ -37,6 +37,28 @@ this list is an assumption, tracked in the table at the end.
 
 ## Decisions
 
+### D-050: The panel in sections, the readout for problems only (2026-11-20)
+
+The maintainer's restructure: Settings is gone; below the main controls sit Appearance (was Cut Faces), Clipping
+Plane (was Section/Slice Plane) and Measure, each a closed layout panel. Appearance has its own: Parts, Color, Lines,
+Overlaps and Print Preview, whose header carries its checkbox; with it on, the other four grey out (they still open).
+Clip Tint was confused with the fill's Tint (its toggle seemed to do nothing, since it only shows in an orbited
+clipping region): both are removed, as is the fill Tint. The readout no longer has a checkbox and shows only problems,
+so "Section Z 0.000 Hatched", the layer counter and Measure's hints are gone from it; the hints moved to the status bar,
+where Blender's own modal tools put theirs. It now also warns when nothing is filled (Backfaces, Wireframe): the
+problems are found by cutting the parts without drawing. Assumed, not asked: dropping Print Preview's layer counter
+with the rest; dropping the fill Tint as well as Clip Tint ("ditch tint altogether"); the plane's Tint display stays.
+
+### D-049: Red means inside out, and nothing else (2026-11-20)
+
+The maintainer asked to drop the Face Orientation checkbox and instead show a problem: an inside-out part's cut faces
+are red, whatever the fill colours, in every mode including Print Preview. The red is the theme's Face Orientation
+back colour, the same thing Blender means by red. For it to mean only that, nothing else is red by default: the
+overlap highlight is magenta (0.78, 0.16, 0.85), its line colour a pale pink, the palette skips hues near red,
+Backfaces' zero-thickness slice is grey, and the old backface colour on a cut face seen from inside a part (with
+Face Orientation on, from 0.9.2) is gone. A user may still pick red for anything. Random colours follow Blender's own random
+colours and aren't changed: a reddish part there is pale, not saturated red. Assumed: magenta for overlaps.
+
 ### D-048: Click-select follows the cut face under the mouse (2026-11-18)
 
 Blender's click-select picks by the clipped geometry behind a cut face. Where a part sits in another part's hole
