@@ -59,7 +59,12 @@ def _draw_main(layout, context):
                 st.clip_axis = i
     elif s.mode != 'OFF':  # hide, don't grey out, what doesn't apply (Flip above is the exception)
         r = col.row(align=True)
-        if s.scrub_distance:
+        if s.print_preview:
+            # a printer counts layers, so Print Preview's scrub does too
+            r.label(text="Layer")
+            r.prop(s, "print_layer", text="")
+            r.label(text=f"/ {engine.layer_count(s)}")
+        elif s.scrub_distance:
             r.prop(s, "offset")
         else:
             r.prop(s, "position", slider=True)
@@ -245,6 +250,9 @@ def _draw_print_preview(layout, context):
     col.active = s.print_preview
     if s.mode == 'OFF':
         col.label(text="Needs Section or Slice", icon='INFO')
+    r = col.row(align=True)
+    r.prop(s, "layer_thickness")
+    r.operator("crosscut.layer_from_printer", text="", icon='FILE_REFRESH')
     col.prop(s, "print_profile")
     if s.print_profile == 'MJF_580':
         col.prop(s, "color_depth")

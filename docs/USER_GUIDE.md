@@ -145,7 +145,10 @@ contours.
 
 Tick **Print Preview** in **Appearance** while Section or Slice is on, with the Z plane and a build volume as the Scrub Range object. The bed fills with
 powder up to the plane, the parts below are buried in it, and each part's cut face is drawn as the
-fused layer. Scrub to watch the build come up layer by layer, a Step at a time. **Slice** shows one layer of powder (a band, with Slice Thickness), not the whole bed. **Powder** and **Fused** set the colours (white and black by default, as on a
+fused layer. The Scrub slider counts layers (**Layer 12 / 300**), and the step buttons and Shift+Alt+Wheel move one
+layer, so you can watch the build come up layer by layer. **Layer Thickness** is the layer height: it's set from
+Bucket Builder's printer when you turn Print Preview on (MJF 5600: 0.09 mm; 580, 540, 4200, 5200: 0.08 mm), or the
+5600's when Bucket Builder isn't installed. The button beside it reads the printer again. **Slice** shows one layer of powder (a band, with Slice Thickness), not the whole bed. **Powder** and **Fused** set the colours (white and black by default, as on a
 Multi Jet Fusion printer), **Grain** the speckle in the powder. Without a Scrub Range object the
 bed is the parts' bounds plus **Bed Margin**.
 

@@ -81,6 +81,30 @@ def _set_position(self, value):
     self.offset = lo + value * (hi - lo) - base
 
 
+def _get_layer(self):
+    lo, _hi = engine.scrub_range(self)
+    c = engine.plane_coordinate(self)
+    if c is None:
+        return 0
+    return min(max(int(round((c - lo) / max(self.layer_thickness, 1e-9))), 0), engine.layer_count(self))
+
+
+def _set_layer(self, value):
+    lo, _hi = engine.scrub_range(self)
+    base = engine.plane_base(self)
+    if base is None:
+        return
+    k = min(max(int(value), 0), engine.layer_count(self))
+    self.offset = lo + k * self.layer_thickness - base
+
+
+def _print_preview_changed(self, context):
+    if self.print_preview:
+        # the layers of the printer Bucket Builder is set up for, or the 5600's
+        self.layer_thickness = engine.printer_layer(context.scene)[0]
+    tag_redraw(self, context)
+
+
 def _clip_view(index):
     """A wall pair of the current view's clipping region: (rv3d, axis, centre, half), or None."""
     rv3d = getattr(bpy.context.space_data, "region_3d", None)
@@ -406,10 +430,22 @@ class CrosscutSettings(bpy.types.PropertyGroup):
     range_object: PointerProperty(name="Range Object", type=bpy.types.Object, update=tag_redraw)
 
     print_preview: BoolProperty(
-        name="Print Preview", default=False, update=tag_redraw,
+        name="Print Preview", default=False, update=_print_preview_changed,
         description="Show the build as it looks inside a powder-bed printer: powder fills the bed up to "
                     "the plane and each part's cut face is the fused, inked layer. For Section and "
                     "Slice; the bed is the Scrub Range object, or the targets' bounds",
+    )
+    layer_thickness: FloatProperty(
+        name="Layer Thickness", subtype='DISTANCE', unit='LENGTH', min=1e-4, default=0.09, precision=3,
+        description="Height of one printed layer: what Print Preview's Layer slider and step buttons count. "
+                    "Set from Bucket Builder's printer when Print Preview is turned on (the MJF 5600's 0.09 mm "
+                    "without it)",
+        update=tag_redraw,
+    )
+    print_layer: IntProperty(
+        name="Layer", min=0,
+        description="Which layer the build is up to, counted from the bottom of the scrub range",
+        get=_get_layer, set=_set_layer,
     )
     print_profile: EnumProperty(
         name="Printer", default='MJF_5600', update=tag_redraw,

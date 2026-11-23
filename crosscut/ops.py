@@ -436,7 +436,8 @@ class CROSSCUT_OT_step(bpy.types.Operator):
 
     def execute(self, context):
         s = _s(context)
-        delta = s.step * self.multiplier * (1 if self.direction >= 0 else -1)
+        size = s.layer_thickness if s.print_preview and s.mode != 'OFF' else s.step  # Print Preview steps a layer
+        delta = size * self.multiplier * (1 if self.direction >= 0 else -1)
         if s.mode == 'OFF':  # a clipping region
             from . import draw
             rv3d = context.space_data.region_3d
@@ -570,6 +571,23 @@ class CROSSCUT_OT_add_plane(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class CROSSCUT_OT_layer_from_printer(bpy.types.Operator):
+    bl_idname = "crosscut.layer_from_printer"
+    bl_label = "Layer Thickness from Printer"
+
+    @classmethod
+    def description(cls, context, _props):
+        t, name = engine.printer_layer(context.scene)
+        return f"Use the layer thickness of {name}: {t:g} mm (Bucket Builder's printer, or the MJF 5600 without it)"
+
+    def execute(self, context):
+        s = _s(context)
+        s.layer_thickness, name = engine.printer_layer(context.scene)
+        self.report({'INFO'}, f"Layer thickness from {name}")
+        tag_redraw()
+        return {'FINISHED'}
+
+
 class CROSSCUT_OT_use_bounds(bpy.types.Operator):
     """Use the active object's bounds as the scrub range (e.g. a build volume)"""
     bl_idname = "crosscut.use_bounds"
@@ -605,6 +623,7 @@ classes = (
     CROSSCUT_OT_to_cursor,
     CROSSCUT_OT_to_selection,
     CROSSCUT_OT_add_plane,
+    CROSSCUT_OT_layer_from_printer,
     CROSSCUT_OT_use_bounds,
 )
 

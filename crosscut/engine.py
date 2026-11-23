@@ -288,6 +288,31 @@ def _range_along(s, n):
     return sm.project_range(pts, n)
 
 
+# Layer thickness by printer model, matched against the printer's name, first match wins. HP doesn't
+# publish these on its own product pages; the figures are from its distributors' and users' spec sheets
+# (D-051). The 1200's isn't published anywhere we found: the MJF default it shares with the 580 is a guess.
+LAYER_THICKNESS = (("5600", 0.09), ("5200", 0.08), ("5000", 0.08), ("4200", 0.08),
+                   ("580", 0.08), ("540", 0.08), ("1200", 0.08))
+DEFAULT_PRINTER = ("HP MJF 5600", 0.09)
+
+
+def printer_layer(scene):
+    """(layer thickness, printer name) for Print Preview: Bucket Builder's printer if it's installed and
+    its name names a known model, else the MJF 5600."""
+    bb = getattr(scene, "bucket_builder", None)
+    name = getattr(bb, "printer", "") if bb is not None else ""
+    for model, t in LAYER_THICKNESS:
+        if model in name:
+            return t, name
+    return DEFAULT_PRINTER[1], DEFAULT_PRINTER[0]
+
+
+def layer_count(s):
+    """How many layers of `s.layer_thickness` the scrub range holds."""
+    lo, hi = scrub_range(s)
+    return max(int(np.ceil((hi - lo) / max(s.layer_thickness, 1e-9) - 1e-6)), 0)
+
+
 def center_offset(s):
     """Offset that puts the plane through the middle of the scrub range."""
     lo, hi = scrub_range(s)

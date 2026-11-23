@@ -217,6 +217,16 @@ def test_unused_slots_clip_nothing():
     assert sm.CLIP_NONE[3] > 0
 
 
+
+def test_layer_thickness_follows_bucket_builders_printer():
+    scene = types.SimpleNamespace()
+    assert engine.printer_layer(scene) == (0.09, "HP MJF 5600")  # no Bucket Builder: the 5600
+    for name, t in (("HP MJF 580", 0.08), ("HP MJF 580+", 0.08), ("HP MJF 5600", 0.09), ("HP MJF 1200", 0.08)):
+        scene.bucket_builder = types.SimpleNamespace(printer=name)
+        assert engine.printer_layer(scene) == (t, name), name
+    scene.bucket_builder = types.SimpleNamespace(printer="My custom box")
+    assert engine.printer_layer(scene) == (0.09, "HP MJF 5600")
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

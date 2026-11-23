@@ -37,6 +37,20 @@ this list is an assumption, tracked in the table at the end.
 
 ## Decisions
 
+### D-051: Print Preview counts layers (2026-11-23)
+
+The maintainer asked for the layer counter back, in the scrub itself: in Print Preview the Scrub slider reads
+"Layer k / N", counted from the bottom of the scrub range, and the step buttons and wheel move one layer. The layer
+height is a new **Layer Thickness**, taken from Bucket Builder's printer (`scene.bucket_builder.printer`, matched by
+model number in its name) when Print Preview is turned on, else the MJF 5600's; a button reads the printer again, and
+the user may type any value. Bucket Builder keeps no layer thickness, so Crosscut keeps a small table. HP's own
+product pages don't give the figure (its 1200 datasheet is password-protected and its 5600 brochure link failed), so
+the values come from distributors' and users' spec sheets: 5600 0.09 mm (HP's brochure as hosted by DKSH, Ocean
+Science Technology's listing, MatterHackers), 580/540 0.08 mm (university equipment pages, e.g. UMD's), 4200, 5000
+and 5200 0.08 mm (DKSH). The 1200's isn't published anywhere we found; 0.08 mm is a guess. To confirm with the
+maintainer, who knows the machines. Under portfolio decision D2 the figure belongs in the shared printer file once it
+exists. The plane's Tint display stays (the maintainer, same day).
+
 ### D-050: The panel in sections, the readout for problems only (2026-11-20)
 
 The maintainer's restructure: Settings is gone; below the main controls sit Appearance (was Cut Faces), Clipping

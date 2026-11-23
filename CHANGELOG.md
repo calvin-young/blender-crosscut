@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.20.0 (2026-11-23)
+
+- **Print Preview counts layers**: the Scrub slider becomes **Layer 0 / N**, and the step buttons and
+  Shift+Alt+Wheel move one layer. **Layer Thickness** (in Print Preview) sets the layer height. It comes from
+  Bucket Builder's printer when Print Preview is turned on, or the MJF 5600's 0.09 mm without Bucket Builder; the
+  button beside it reads the printer again.
+
 ## 0.19.0 (2026-11-20)
 
 - **The panel**: the main controls, then three sections that open and close: **Appearance**, **Clipping Plane** and

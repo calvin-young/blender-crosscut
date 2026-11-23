@@ -23,7 +23,7 @@ line below carries a category.
 
 | Bugs found | UI tweaks | New features | Direction | Total |
 |---|---|---|---|---|
-| 32 | 85 | 39 | 27 | 183 |
+| 32 | 87 | 40 | 27 | 186 |
 
 ## Sessions
 
@@ -33,7 +33,7 @@ steering lines matters more than the count of prompts.
 
 | Date | Tool and model | Prompts | Steering lines | Notes |
 |---|---|---|---|---|
-| 2026-11-12/20 | Claude Code (workstation), Fable 5.2 then Opus 5.5 | 5 | 15 | Audit and vision (review only); 0.17.0 overlap hatch; 0.18.0 measure any edge, select by cut face; 0.19.0 panel sections, red for inside out |
+| 2026-11-12/23 | Claude Code (workstation), Fable 5.2 then Opus 5.5 | 6 | 18 | Audit and vision (review only); 0.17.0 overlap hatch; 0.18.0 measure any edge, select by cut face; 0.19.0 panel sections, red for inside out; 0.20.0 layer scrub |
 | 2026-11-04/05 | Claude Code (workstation), Opus 5.5 | 2 | 11 | The presentation demo reel, moved here from a separate demo-reels repo |
 | 2026-11-04/09 | Claude Code (workstation), Opus 5.5 | 3 | 13 | 0.16.0: snap, 580 color first try, FDM placeholder; design for saved lines |
 | 2026-11-02 | Claude Code (workstation), Opus 5.5 | 12 | 70 | 0.9.2 to 0.15.1 from the maintainer's notes after several days of real use |
@@ -48,6 +48,9 @@ One line for each thing the human contributed that the AI would not have done on
 newest first, tagged with its kind (decide, correct, domain, tested, scope) and, from 2026-11-03, its
 category (bug, ui, feature, direction).
 
+- 2026-11-23 [decide][feature]: Print Preview's scrub counts layers (Layer 0 to N), with a Layer Thickness from Bucket Builder's printer, or the 5600's.
+- 2026-11-23 [decide][ui]: keep the plane's Tint display.
+- 2026-11-23 [decide][ui]: red for overlaps after all (clash with red-for-inside-out, being settled).
 - 2026-11-20 [tested][ui]: the readout only when there's a problem, never just the plane's position; always warn when clipping through a part with an issue; no checkbox.
 - 2026-11-20 [decide][ui]: un-nest the sections from Settings.
 - 2026-11-20 [decide][ui]: the same red nowhere else unless the user picks it, so it can't mislead.

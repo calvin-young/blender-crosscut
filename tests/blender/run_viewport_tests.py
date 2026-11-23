@@ -2807,6 +2807,40 @@ def print_preview(view):
     yield from settle()
     check(T, "readout quiet while all is well", cc("draw").readout_lines(scene, s, cc("draw").last_info(view.region))
           == ([], []), str(cc("draw").last_info(view.region)))
+    # the scrub counts layers, of the printer's thickness (no Bucket Builder here: the 5600's 0.09 mm)
+    eng = cc("engine")
+    offset0 = s.offset
+    check(T, "layer thickness from the default printer", abs(s.layer_thickness - 0.09) < 1e-6, str(s.layer_thickness))
+    lo, hi = eng.scrub_range(s)
+    s.print_layer = 10
+    check(T, "Layer 10 puts the plane ten layers up", abs(eng.plane_coordinate(s) - (lo + 0.9)) < 1e-4,
+          f"{eng.plane_coordinate(s)} {lo}")
+    with view.override():
+        bpy.ops.crosscut.step(direction=1)
+    check(T, "a step is one layer", s.print_layer == 11, str(s.print_layer))
+    check(T, "the count covers the range", eng.layer_count(s) == int(np.ceil((hi - lo) / 0.09 - 1e-6)), str(eng.layer_count(s)))
+    s.layer_thickness = 0.08
+    with view.override():
+        bpy.ops.crosscut.layer_from_printer()
+    check(T, "the refresh button reads the printer again", abs(s.layer_thickness - 0.09) < 1e-6)
+    s.ui_cut_faces = s.ui_print_preview = True
+    view.space.show_region_ui = True
+    # the active sidebar tab is read-only from Python: show the panel in the "Tool" tab for the screenshot
+    panels = [c for c in cc("ui").classes if getattr(c, "bl_region_type", "") == 'UI']
+    for c in panels:
+        bpy.utils.unregister_class(c)
+        c.bl_category = "Tool"
+        bpy.utils.register_class(c)
+    yield 0.2
+    yield from settle()
+    Shot(view, "print_preview_layer_scrub")
+    for c in panels:
+        bpy.utils.unregister_class(c)
+        c.bl_category = "Crosscut"
+        bpy.utils.register_class(c)
+    s.ui_cut_faces = s.ui_print_preview = False
+    view.space.show_region_ui = False
+    s.offset = offset0
     s.print_preview = False
     yield from settle()
     c = Shot(view, "print_preview_off").at(view.px((0, -32, 0)), r=2)
