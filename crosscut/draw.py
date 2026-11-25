@@ -277,17 +277,19 @@ def _shader(kind):
     return sh
 
 
+OFFSCREEN_SIZES = 4  # views of different sizes each keep theirs, instead of reallocating every frame (audit 3)
+
+
 def _offscreen(w, h):
     key = (w, h)
-    pair = _offscreens.get(key)
+    pair = _offscreens.pop(key, None)
     if pair is None:
-        for old in _offscreens.values():
-            for o in old:
+        while len(_offscreens) >= OFFSCREEN_SIZES:
+            for o in _offscreens.pop(next(iter(_offscreens))):  # the least recently used
                 o.free()
-        _offscreens.clear()
         # mask, running count, total count, winding
         pair = tuple(gpu.types.GPUOffScreen(w, h) for _ in range(4))
-        _offscreens[key] = pair
+    _offscreens[key] = pair  # most recently used last
     return pair
 
 
@@ -543,6 +545,26 @@ def forget_saved_clips():
     _saved_clip.clear()
 
 
+_VIEW_STATE = (_clip_state, _saved_clip, _tool_box, _clip_lit, _last_info)
+
+
+def forget_views():
+    """Another file was loaded: its views are new, and one may even land at an old one's address (audit 9)."""
+    for d in _VIEW_STATE:
+        d.clear()
+    for st in (_tint_gone, _tint_pending, _to_prime, _tool_box_pending):
+        st.clear()
+
+
+def _forget_closed_views(live):
+    """Drop what's kept for views that have closed, so a new view at the same address starts clean."""
+    for d in (_clip_state, _saved_clip, _tool_box, _clip_lit):
+        for k in [k for k in d if k not in live]:
+            del d[k]
+    for st in (_tint_gone, _to_prime):
+        st.intersection_update(live)
+
+
 def request_tint_removal(rv3d):
     """Remove Blender's tinted box from this view's clipping region, once, as soon
     as Blender lets an operator run."""
@@ -596,8 +618,10 @@ def sync_clip(rv3d, desired, area=None):
             _request_mode_off()
             return False
     else:
-        if cur_on and any(not sm.plane_is_degenerate(p) for p in cur.reshape(6, 4)):
-            _saved_clip[key] = cur.reshape(6, 4).tolist()  # so Clip can bring it back
+        if (cur_on and any(not sm.plane_is_degenerate(p) for p in cur.reshape(6, 4))
+                and not np.allclose(cur, _flat(_pad6(desired)), atol=1e-5, rtol=1e-6)):
+            # the user's box, so Clip can bring it back; not our own planes, as a file saved with Section on has
+            _saved_clip[key] = cur.reshape(6, 4).tolist()
         st = {"ours": None}
         _clip_state[key] = st
         # Without Alt+B there may be no clipping box at all; with Alt+B,
@@ -627,7 +651,9 @@ def sync_views():
     """Apply the current settings to every 3D view right away, so the scene is
     drawn with the new planes in the same frame (called from property updates
     and operators; the draw callback only catches what these miss)."""
+    live = set()
     for win, area, region, rv3d in _iter_views():
+        live.add(rv3d.as_pointer())
         scene = win.scene
         s = getattr(scene, "crosscut", None)
         if s is None:
@@ -636,6 +662,7 @@ def sync_views():
         sync_clip(rv3d, planes[0] if planes else None, area)
         if rv3d.as_pointer() in _to_prime:
             _prime(win, area, region, rv3d)  # now, so the next frame is already clipped
+    _forget_closed_views(live)
 
 
 def release_all_views():

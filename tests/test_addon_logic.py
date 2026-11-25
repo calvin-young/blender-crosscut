@@ -227,6 +227,37 @@ def test_layer_thickness_follows_bucket_builders_printer():
     scene.bucket_builder = types.SimpleNamespace(printer="My custom box")
     assert engine.printer_layer(scene) == (0.09, "HP MJF 5600")
 
+
+def test_own_planes_from_a_saved_file_are_not_the_users_box():
+    draw._clip_state.clear()
+    draw._saved_clip.clear()
+    want = [np.array([0, 0, -1.0, 3.0])]
+    # a file saved with Section on comes back with clipping on and our planes in the view
+    r = FakeRV3D(on=True, planes=draw._pad6(want))
+    draw.sync_clip(r, want)
+    assert r.as_pointer() not in draw._saved_clip  # Clip would bring back a stale "box"
+    user_box = [[1.0, 0, 0, 5]] + [[0.0, 0, 0, 1]] * 5
+    r2 = FakeRV3D(on=True, planes=[list(p) for p in user_box])
+    draw.sync_clip(r2, want)
+    assert r2.as_pointer() in draw._saved_clip  # a real box is still kept
+
+
+def test_closed_views_are_forgotten():
+    draw._clip_state[12345] = {"ours": None}
+    draw._saved_clip[12345] = [[0.0, 0, 0, 1]] * 6
+    draw.sync_views()  # no windows open: every view has closed
+    assert 12345 not in draw._clip_state and 12345 not in draw._saved_clip
+
+
+def test_undo_keeps_pinned_lines_and_load_clears_them():
+    line = (np.zeros(3), np.ones(3), "1.732")
+    draw._measure["dims"] = [line]
+    engine.on_undo()
+    assert draw._measure["dims"] == [line]
+    draw._clip_state[999] = {"ours": None}
+    engine.on_load()
+    assert draw._measure["dims"] == [] and 999 not in draw._clip_state
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

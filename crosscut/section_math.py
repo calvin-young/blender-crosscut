@@ -178,7 +178,9 @@ def shell_inward(seg, normal, flip=False):
     per_seg = np.cross(np.asarray(normal, dtype=np.float64), d)  # its length is the segment's
     if flip:
         per_seg = -per_seg
-    _pts, ids = np.unique(seg.reshape(-1, 3), axis=0, return_inverse=True)
+    pts = np.ascontiguousarray(seg.reshape(-1, 3))
+    # rows as raw bytes: much faster than np.unique(axis=0), which sorts row by row (audit 6)
+    _keys, ids = np.unique(pts.view(np.dtype((np.void, pts.dtype.itemsize * 3))).ravel(), return_inverse=True)
     ids = ids.reshape(-1)
     summed = np.zeros((int(ids.max()) + 1, 3)) if len(ids) else np.zeros((0, 3))
     np.add.at(summed, ids, np.repeat(per_seg, 2, axis=0))
@@ -246,11 +248,12 @@ def mesh_signed_volume(verts, tris):
     return float(np.einsum("ij,ij->i", a - o, np.cross(b - o, c - o)).sum()) / 6.0
 
 
-def close_open_contours(segments, max_open=4096):
+def close_open_contours(segments, max_open=600):
     """Add segments that join open endpoints pairwise (nearest first), so an
     almost-closed section from a slightly non-manifold mesh still fills
     sensibly instead of producing even-odd garbage. Returns segments unchanged
-    when every contour is closed or there are too many open ends to pair."""
+    when every contour is closed or there are too many open ends to pair (the pairing is
+    all-against-all: 600 ends is 360,000 distances, 4096 was 16 million on every scrub step)."""
     if len(segments) == 0:
         return segments
     pts = np.ascontiguousarray(segments.reshape(-1, 3))

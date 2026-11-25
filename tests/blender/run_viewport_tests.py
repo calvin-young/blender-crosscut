@@ -2497,6 +2497,44 @@ def performance(view):
 
 
 @test
+def many_copies(view):
+    """A build repeats a few meshes many times: copies of one mesh share its cache entry (audit 1)."""
+    T = "many_copies"
+    scene = new_scene("cc-copies")
+    src = dense_sphere("part-000", 4, radius=4.0)  # ~5k triangles
+    for i in range(1, 200):
+        ob = bpy.data.objects.new(f"part-{i:03}", src.data)
+        ob.location = ((i % 20) * 10.0 - 95.0, (i // 20) * 10.0 - 45.0, 0.0)
+        bpy.context.scene.collection.objects.link(ob)
+    src.location = (-95.0, -45.0, 0.0)
+    s = scene.crosscut
+    view.look((0, 0, 0), 260, (55, 0, 30))
+    settings(s, mode='SECTION', orientation='Z', offset=0.5, cap_style='HATCH')
+    yield 0.1
+    cc("engine").invalidate_all()
+    t0 = time.perf_counter()
+    redraw(1)
+    first = time.perf_counter() - t0
+    keys = [k for k in cc("engine")._meshes if k[1] == src.data.name_full]
+    check(T, "200 copies of one mesh: read once", len(keys) == 1, str(keys[:3]))
+    times = []
+    for i in range(10):
+        s.offset = -3.0 + i * 0.6
+        t0 = time.perf_counter()
+        redraw(1)
+        times.append(time.perf_counter() - t0)
+    med = sorted(times)[len(times) // 2]
+    Shot(view, "many_copies")
+    check(T, f"200 parts: first draw {first * 1000:.0f} ms, scrub median {med * 1000:.0f} ms", med < 0.5)
+    # editing one copy's mesh updates them all, as it should: they share it
+    with view.override():
+        src.data.vertices[0].co.z += 0.0  # touch
+    src.data.update()
+    yield from settle()
+    check(T, "no draw errors", not errors(), str(errors()))
+
+
+@test
 def drag_perf(view):
     """Moving a part must stay smooth with Alt+B clipping too (6 cap planes, not 1)."""
     T = "drag_perf"

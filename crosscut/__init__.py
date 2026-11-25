@@ -22,11 +22,16 @@ def _on_load(*args):
     engine.on_load(*args)
 
 
+@persistent
+def _on_undo(*args):
+    engine.on_undo(*args)
+
+
 _handlers = (
     (bpy.app.handlers.depsgraph_update_post, _on_depsgraph),
     (bpy.app.handlers.load_post, _on_load),
-    (bpy.app.handlers.undo_post, _on_load),
-    (bpy.app.handlers.redo_post, _on_load),
+    (bpy.app.handlers.undo_post, _on_undo),
+    (bpy.app.handlers.redo_post, _on_undo),
 )
 
 

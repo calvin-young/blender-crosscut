@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.21.1 (2026-11-25)
+
+- Copies of one mesh are read and stored once: a build of 200 copies draws first in half the time (180 ms, was 384)
+  and keeps one copy of the mesh in memory, not 200.
+- Undo and redo no longer delete pinned measuring lines.
+- After opening a file saved with Section on, or closing a 3D view, Crosscut no longer mistakes its own old planes
+  for a clipping box of yours (Clip could bring back a stale box, or Section could switch itself off).
+- Two viewports of different sizes no longer rebuild their drawing buffers every frame; cut faces of 580 color and
+  badly open meshes cost less while scrubbing; caches of deleted objects are freed.
+
 ## 0.21.0 (2026-11-25)
 
 - **Inside-out parts**: instead of a red cut face, the part's own surface is painted red wherever it isn't clipped,

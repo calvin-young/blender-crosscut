@@ -368,7 +368,11 @@ def collect_targets(context, s, depsgraph):
         pid = tuple(inst.persistent_id) if is_inst else ()
         data_name = ob.data.name_full if ob.data is not None else ""
         key = (orig.name_full, is_inst, pid)
-        mesh_key = (orig.name_full, data_name, is_inst)
+        if ob.type == 'MESH' and not is_inst and not orig.modifiers and getattr(orig.data, "shape_keys", None) is None:
+            # a plain mesh evaluates to its data: copies of one part share it, read and stored once (audit 1)
+            mesh_key = ("MESH", data_name, False)
+        else:
+            mesh_key = (orig.name_full, data_name, is_inst)
         out.append(Target(key, mesh_key, ob, np.array(inst.matrix_world), orig, owner))
     out.sort(key=lambda t: (t.owner.name_full, t.key))
     return out
@@ -385,7 +389,9 @@ _surfaces = {}      # (mesh name, object name if it has modifiers) -> what surfa
 
 
 def invalidate_object(name):
-    for mk in [mk for mk in _meshes if mk[0] == name]:
+    ob = bpy.data.objects.get(name)
+    data = ob.data.name_full if ob is not None and ob.data is not None else None
+    for mk in [mk for mk in _meshes if mk[0] == name or (mk[0] == "MESH" and mk[1] == data)]:
         for ck in [ck for ck in _surfaces if ck[0] == mk[1]]:
             del _surfaces[ck]
         del _meshes[mk]
@@ -645,6 +651,18 @@ def prune(live_keys):
     """Drop cached sections for targets that no longer exist."""
     for k in [k for k in _sections if k[0] not in live_keys]:
         del _sections[k]
+    for k in [k for k in _crossings if k[0] not in live_keys]:
+        del _crossings[k]
+
+
+def _sweep_meshes():
+    """Forget the meshes of deleted objects (audit 8)."""
+    names = {ob.name_full for ob in bpy.data.objects}
+    datas = {me.name_full for me in bpy.data.meshes}
+    for mk in [mk for mk in _meshes if (mk[1] not in datas if mk[0] == "MESH" else mk[0] not in names)]:
+        del _meshes[mk]
+    for ck in [ck for ck in _surfaces if ck[1] and ck[1] not in names]:
+        del _surfaces[ck]
 
 
 # ---------------------------------------------------------------- handlers
@@ -663,6 +681,8 @@ def on_depsgraph_update(_scene, depsgraph):
             for ob in bpy.data.objects:
                 if ob.data == orig:
                     invalidate_object(ob.name_full)
+    if len(_meshes) > 2 * len(bpy.data.objects) + 16:
+        _sweep_meshes()
     if plane_moved:
         # an Object plane (or a range object) may have moved: update the clip
         # planes before the next redraw instead of one frame late
@@ -674,8 +694,14 @@ def on_depsgraph_update(_scene, depsgraph):
 
 
 def on_load(*_args):
+    """Another file: nothing cached or remembered about the old one's views and parts is valid."""
     invalidate_all()
     from . import draw
     draw.measure_stop()
     draw.measure_clear()
-    draw.forget_saved_clips()
+    draw.forget_views()
+
+
+def on_undo(*_args):
+    """Undo and redo may change any mesh, but the views and the pinned lines stay (they're the user's)."""
+    invalidate_all()
