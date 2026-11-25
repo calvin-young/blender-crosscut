@@ -409,7 +409,7 @@ def multibody(view):
     yield from settle()
     shot = Shot(view, "multibody_interference")
     c = shot.at(view.px((4, 0, 0)))  # inside both part-001 and part-002
-    check(T, "overlap highlighted (magenta, not red: red is for inside out)", is_magenta(c) and not is_red(c), f"{c}")
+    check(T, "overlap is red", is_red(c), f"{c}")
     c = shot.at(view.px((-25, 0, 0)))
     check(T, "part-001 alone is its colour (blue)", c[2] > c[0] + 40, f"{c}")
     c = shot.at(view.px((45, 0, 0)))
@@ -419,7 +419,7 @@ def multibody(view):
     yield from settle()
     shot = Shot(view, "multibody_no_interference")
     c = shot.at(view.px((4, 0, 0)))
-    check(T, "interference off: overlap not highlighted", not is_magenta(c), f"{c}")
+    check(T, "interference off: overlap not red", not is_red(c), f"{c}")
     a1 = shot.at(view.px((-25, 0, 0)))   # part-001 alone (blue)
     a2 = shot.at(view.px((20, 0, 0)))    # part-002 alone (orange)
     # the overlap blends the two colours instead of one covering the other
@@ -448,7 +448,7 @@ def multibody(view):
     settings(s, mode='SECTION', orientation='Z', offset=0.0, color_source='OBJECT', overlap_style='HIGHLIGHT', interference_style='CROSS', interference_opacity=0.4)
     yield from settle()
     Shot(view, "multibody_interference_translucent")
-    s.interference_color = (0.78, 0.16, 0.85)
+    s.interference_color = (0.86, 0.10, 0.08)
     s.interference_opacity = 1.0
     s.overlap_style = 'BLEND'
 
@@ -1304,11 +1304,19 @@ def inside_out(view):
     check(T, "inside out: named in red", info.get("inside_out") == ["part-001"] and any("Inside out" in w for w in severe),
           f"{info} {severe}")
     shot = Shot(view, "inside_out")
-    check(T, "inside out: its cut face is red", is_red(shot.at(view.px((0, 0, 0)))), str(shot.at(view.px((0, 0, 0)))))
+    check(T, "inside out: its cut face keeps its colour", is_green(shot.at(view.px((0, 0, 0)))),
+          str(shot.at(view.px((0, 0, 0)))))
+    side = view.px((0, -15, -8))
+    check(T, "inside out: its surface below the cut is red", is_red(shot.at(side)), str(shot.at(side)))
+    above = view.px((0, -15, 8))
+    check(T, "inside out: nothing red where it's clipped", not is_red(shot.at(above)), str(shot.at(above)))
     s.cap_style = 'BACKFACES'
     yield from settle()
     severe = cc("draw").readout_lines(scene, s, cc("draw").last_info(view.region))[1]
     check(T, "inside out: still named with Backfaces", any("Inside out" in w for w in severe), str(severe))
+    shot = Shot(view, "inside_out_backfaces")
+    check(T, "inside out with Backfaces: the inside seen through the cut is red", is_red(shot.at(view.px((0, 0, -8)))),
+          str(shot.at(view.px((0, 0, -8)))))
     s.cap_style = 'SOLID' 
     ob.data.polygons[0].flip()
     ob.data.update()

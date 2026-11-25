@@ -63,7 +63,18 @@ where Blender's own modal tools put theirs. It now also warns when nothing is fi
 problems are found by cutting the parts without drawing. Assumed, not asked: dropping Print Preview's layer counter
 with the rest; dropping the fill Tint as well as Clip Tint ("ditch tint altogether"); the plane's Tint display stays.
 
-### D-049: Red means inside out, and nothing else (2026-11-20)
+### D-049 revised: Inside-out parts are painted red in 3D; overlaps are red again (2026-11-25)
+
+The maintainer chose red for overlaps as well: cut faces are hatched by default, and an inside-out warning is 3D,
+not 2D, so they read apart. Taking "3D" at its word, an inside-out part's cut face keeps its colour, and the part's
+own surface is painted red wherever it isn't clipped (a shader discards the clipped side, since Blender doesn't clip
+add-on drawing), lit by the angle to the viewer so it reads as a surface. It shows with Backfaces too, where the
+inside is seen straight through the cut. Overlap defaults are back to red (0.86, 0.10, 0.08) with a pale line
+colour; the palette still skips red, and the zero slice under Backfaces stays grey. The one case close to confusing:
+Fill Solid with Overlaps Solid, where a flat red overlap can touch a red side of an inside-out part (screenshot sent to
+the maintainer). Straight from above, an inside-out part shows no red, only the readout's warning.
+
+### D-049: Red means inside out, and nothing else (2026-11-20; revised above)
 
 The maintainer asked to drop the Face Orientation checkbox and instead show a problem: an inside-out part's cut faces
 are red, whatever the fill colours, in every mode including Print Preview. The red is the theme's Face Orientation

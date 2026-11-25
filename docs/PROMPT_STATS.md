@@ -23,7 +23,7 @@ line below carries a category.
 
 | Bugs found | UI tweaks | New features | Direction | Total |
 |---|---|---|---|---|
-| 32 | 87 | 40 | 27 | 186 |
+| 32 | 88 | 40 | 27 | 187 |
 
 ## Sessions
 
@@ -48,6 +48,7 @@ One line for each thing the human contributed that the AI would not have done on
 newest first, tagged with its kind (decide, correct, domain, tested, scope) and, from 2026-11-03, its
 category (bug, ui, feature, direction).
 
+- 2026-11-24 [decide][ui]: red for both overlaps and inside-out parts: the overlap is hatched 2D, inside-out is 3D.
 - 2026-11-23 [decide][feature]: Print Preview's scrub counts layers (Layer 0 to N), with a Layer Thickness from Bucket Builder's printer, or the 5600's.
 - 2026-11-23 [decide][ui]: keep the plane's Tint display.
 - 2026-11-23 [decide][ui]: red for overlaps after all (clash with red-for-inside-out, being settled).

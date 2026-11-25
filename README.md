@@ -27,10 +27,10 @@ the maintainer's hand-made mock-ups in [docs/images/reference/](docs/images/refe
   fixed step (default 0.08, one MJF layer at 1 unit = 1 mm); add Ctrl for 10 steps.
 - **Several parts**: hatching alternates per part (ISO 128-50 style); where sections overlap,
   overlapping cut faces blend their colours, share the area in stripes, or get an adjustable
-  highlight (magenta cross-hatching by default).
+  highlight (red cross-hatching by default).
 - **Plane display**: frame, tint or hatching, in colours you choose; a slab's two planes get
   different colours.
-- **Inside-out parts** show red cut faces, and red means nothing else. **Open meshes** are named in the viewport readout whenever the plane goes through one, and their
+- **Inside-out parts** that the plane goes through are painted red, as Face Orientation would show them. **Open meshes** are named in the viewport readout whenever the plane goes through one, and their
   cut faces go translucent, since the fill may not be real material. Where the hole is on the plane,
   the warning turns red; gaps are closed so the fill still makes sense.
 - **Scrub a clipping region**: slide it through the parts along either axis, without changing its size.
@@ -101,7 +101,7 @@ whole section.
 
 ## Status
 
-**In development (0.20.0).** It's used on real work and still getting bug fixes and new features. 0.1.0 was written without access to Blender; since 0.2.0
+**In development (0.21.0).** It's used on real work and still getting bug fixes and new features. 0.1.0 was written without access to Blender; since 0.2.0
 every build is run and tested in Blender with an automated in-viewport test suite
 ([`tests/blender/`](tests/blender/run_viewport_tests.py)), and 0.3.0 to 0.9.0 followed the
 maintainer's tests on real parts. Tested on Blender 4.2.23 LTS and 5.2.3 LTS (Linux, OpenGL;

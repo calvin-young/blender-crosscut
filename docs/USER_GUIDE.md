@@ -116,14 +116,14 @@ replaces them.
     Outline is on.
 - **Overlaps**: where parts' sections overlap, **Blend** mixes their colours equally, **Stripes** gives
   each part an equal share of stripes (**Stripe Width** in the hatch space), and **Highlight** marks them,
-  in a **Style** (Solid, Hatched, Cross), **Color** (magenta by default), **Line Color** and **Opacity** you set.
+  in a **Style** (Solid, Hatched, Cross), **Color** (red by default), **Line Color** and **Opacity** you set.
   Hatched and Cross use the hatching's Spacing and Line Width, so the lines match the cut faces around them. Below
   full opacity, the blended overlap shows through.
 - **Print Preview**: see below.
 
-**Red means inside out.** An inside-out part's cut faces are red, whatever the colour settings, and the readout
-names it. Nothing else in Crosscut is red by default, so a red cut face is always a part to fix (unless you choose
-red yourself, say for overlaps). The red is the theme's Face Orientation back colour. Parts with **flipped faces**
+**Inside-out parts** the plane goes through are painted red wherever they aren't clipped, in the theme's Face
+Orientation back colour, as Face Orientation would show them, and the readout names them. Their cut faces keep
+their colour, so a red cut face is an overlap and a red, shaded surface is a part to fix. Parts with **flipped faces**
 (some faces one way, some the other) are named in amber: overlapping shells inside them may show as holes.
 
 In X-ray (Alt+Z) cut faces follow the viewport's X-ray opacity, and nothing hides them or their

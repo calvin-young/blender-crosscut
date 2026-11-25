@@ -386,11 +386,11 @@ class CrosscutSettings(bpy.types.PropertyGroup):
         ],
     )
     interference_color: FloatVectorProperty(
-        name="Color", subtype='COLOR_GAMMA', size=3, min=0.0, max=1.0, default=(0.78, 0.16, 0.85),
-        description="Fill colour of overlapping areas (red marks inside-out parts, so it's best kept for that)", update=tag_redraw,
+        name="Color", subtype='COLOR_GAMMA', size=3, min=0.0, max=1.0, default=(0.86, 0.10, 0.08),
+        description="Fill colour of overlapping areas", update=tag_redraw,
     )
     interference_line_color: FloatVectorProperty(
-        name="Line Color", subtype='COLOR_GAMMA', size=3, min=0.0, max=1.0, default=(1.0, 0.90, 1.0),
+        name="Line Color", subtype='COLOR_GAMMA', size=3, min=0.0, max=1.0, default=(1.0, 0.85, 0.80),
         description="Hatch line colour of overlapping areas", update=tag_redraw,
     )
     interference_opacity: FloatProperty(

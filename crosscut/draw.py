@@ -184,6 +184,28 @@ void main() {
 """
 
 
+_SURFACE_VS = """
+void main() {
+    vPos = pos;
+    gl_Position = viewProj * vec4(pos, 1.0);
+    gl_Position.z -= depthBias * gl_Position.w;
+}
+"""
+_SURFACE_FS = """
+void main() {
+    // Blender clips the scene, not our overlay: do it here
+    if (dot(p0.xyz, vPos) + p0.w < 0.0 || dot(p1.xyz, vPos) + p1.w < 0.0 || dot(p2.xyz, vPos) + p2.w < 0.0 ||
+        dot(p3.xyz, vPos) + p3.w < 0.0 || dot(p4.xyz, vPos) + p4.w < 0.0 || dot(p5.xyz, vPos) + p5.w < 0.0) {
+        discard;
+    }
+    vec3 n = normalize(cross(dFdx(vPos), dFdy(vPos)));
+    vec3 toward = (eye.w > 0.5) ? normalize(eye.xyz - vPos) : eye.xyz;
+    float lit = 0.55 + 0.45 * abs(dot(n, toward));
+    fragColor = vec4(fillColor.rgb * lit, fillColor.a);
+}
+"""
+
+
 # Coverage count per pixel, accumulated additively in an 8-bit texture: each
 # cap adds COUNT_UNITS/255, so up to 15 overlapping objects are counted exactly.
 COUNT_UNITS = 16.0
@@ -245,6 +267,10 @@ def _shader(kind):
                           [('VEC3', "pos"), ('VEC3', "inward"), ('FLOAT', "side"), ('VEC2', "uv")],
                           [('MAT4', "viewProj"), ('VEC4', "lift"), ('VEC4', "band"), ('VEC4', "tint")],
                           samplers=["surface"], varyings=[('VEC2', "vUV")])
+    elif kind == "surface":
+        sh = _make_shader("crosscut_surface", _SURFACE_VS, _SURFACE_FS, [('VEC3', "pos")],
+                          [('MAT4', "viewProj"), ('VEC4', "fillColor"), ('VEC4', "eye"), ('FLOAT', "depthBias")]
+                          + [('VEC4', f"p{i}") for i in range(6)], varyings=[('VEC3', "vPos")])
     elif kind == "line":
         sh = gpu.shader.from_builtin('POLYLINE_UNIFORM_COLOR')
     _shaders[kind] = sh
@@ -878,8 +904,8 @@ def auto_uses_cap_color(context, s):
 
 
 def inside_out_color():
-    """The red that marks an inside-out part's cut faces: the theme's Face Orientation back colour (red by
-    default), linear. Nothing else in Crosscut uses red by default, so red always means this (D-049)."""
+    """The red an inside-out part's surface is painted: the theme's Face Orientation back colour (red by
+    default), linear (D-049)."""
     try:
         c = bpy.context.preferences.themes[0].view_3d.face_back
     except (AttributeError, IndexError):
@@ -1086,6 +1112,7 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style, fill_override=None, out
 
     info = {"count": 0, "open": [], "open_mesh": [], "inside_out": [], "mixed_normals": []}
     live = set()
+    inside_out = {}  # target key -> target, for every inside-out part a plane goes through
     colors = {}
     lines = []
     selection = _selection_colors(context)
@@ -1104,7 +1131,6 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style, fill_override=None, out
     for ci, (plane, bounds) in enumerate(caps):
         hits = []
         oriented = {}
-        inside_out = set()
         for t in targets:
             live.add(t.key)
             res = engine.section(t, ci, plane, depsgraph, bounds, crossings=shell)
@@ -1121,7 +1147,7 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style, fill_override=None, out
             hits.append((engine.hatch_index(context, t), t, segs, n_open, serial, mesh_open))
             oriented[t.key] = engine.is_oriented(t, depsgraph)
             if _note_issues(info, t, depsgraph, n_open, mesh_open, oriented[t.key]):
-                inside_out.add(t.key)
+                inside_out[t.key] = t
         if not hits:
             continue
         info["count"] = max(info["count"], len(hits))
@@ -1151,9 +1177,7 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style, fill_override=None, out
                 # 3) composite the cap into the viewport
                 capb = _cap_batch((t.key, ci, "cap"), serial, segs, plane, bounds)
                 if capb is not None:
-                    if t.key in inside_out:
-                        col = inside_out_color()  # red, over any other colour: the part needs fixing
-                    elif fill_override is not None:
+                    if fill_override is not None:
                         col = fill_override
                     else:
                         col = colors.get(t.key)
@@ -1240,6 +1264,7 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style, fill_override=None, out
             line_sh.uniform_float("color", c)
             b.draw(line_sh)
 
+    _draw_inside_out(context, rv3d, inside_out.values(), depsgraph, depth_test, xray_alpha)
     engine.prune(live)
     for k in [k for k in _batches if k[0] not in live and k[0] != "__interference__"]:
         del _batches[k]
@@ -1268,10 +1293,51 @@ def _tidy_issues(info):
     info["mixed_normals"] = sorted(set(info["mixed_normals"]))
 
 
-def _scan_issues(context, s, caps):
+def _surface_batch(t, depsgraph):
+    """The part's whole surface in world space, for showing it inside out."""
+    e = engine._mesh(t, depsgraph)
+    if e is None:
+        return None
+
+    def build():
+        return _vbatch('TRIS', {"pos": (sm.transform_points(e["v"], t.matrix)[e["t"]].reshape(-1, 3), 3)})
+    return _cached((t.key, "surface"), (e["ver"], t.matrix.tobytes()), build)
+
+
+def _draw_inside_out(context, rv3d, targets, depsgraph, depth_test, alpha=1.0):
+    """Paint inside-out parts' surfaces red where they aren't clipped (D-049): what's seen through
+    the cut is the part's inside, as Face Orientation would show it."""
+    targets = list(targets)
+    if not targets or context.space_data.shading.type != 'SOLID':
+        return
+    sh = _shader("surface")
+    planes = [tuple(float(x) for x in p) for p in rv3d.clip_planes] if rv3d.use_clip_planes else []
+    planes = (planes + [tuple(sm.CLIP_NONE)] * 6)[:6]
+    vi = np.array(rv3d.view_matrix.inverted())
+    eye = tuple(vi[:3, 3]) + (1.0,) if rv3d.is_perspective else tuple(vi[:3, 2]) + (0.0,)
+    gpu.state.depth_test_set(depth_test)
+    gpu.state.depth_mask_set(False)
+    gpu.state.blend_set('ALPHA')
+    gpu.state.face_culling_set('NONE')
+    sh.bind()
+    sh.uniform_float("viewProj", rv3d.perspective_matrix)
+    col = inside_out_color()
+    sh.uniform_float("fillColor", (col[0], col[1], col[2], alpha))
+    sh.uniform_float("eye", eye)
+    sh.uniform_float("depthBias", CAP_DEPTH_BIAS)
+    for i, p in enumerate(planes):
+        sh.uniform_float(f"p{i}", p)
+    for t in targets:
+        b = _surface_batch(t, depsgraph)
+        if b is not None:
+            b.draw(sh)
+
+
+def _scan_issues(context, s, caps, rv3d=None):
     """The readout's problem lists for parts the planes go through, when no cut faces are drawn
-    (Backfaces, Wireframe): it warns about them whatever the fill."""
+    (Backfaces, Wireframe): it warns about them whatever the fill, and still shows inside-out parts red."""
     info = {"count": 0, "open": [], "open_mesh": [], "inside_out": [], "mixed_normals": []}
+    bad = {}
     try:
         depsgraph = context.evaluated_depsgraph_get()
     except (RuntimeError, AttributeError):
@@ -1282,8 +1348,13 @@ def _scan_issues(context, s, caps):
             if res is None:
                 continue
             _segs, n_open, _serial = res
-            _note_issues(info, t, depsgraph, n_open, n_open > 0 or engine.is_open_mesh(t, depsgraph),
-                         engine.is_oriented(t, depsgraph))
+            if _note_issues(info, t, depsgraph, n_open, n_open > 0 or engine.is_open_mesh(t, depsgraph),
+                            engine.is_oriented(t, depsgraph)):
+                bad[t.key] = t
+    if rv3d is not None:
+        xray = _xray(context.space_data.shading)
+        _draw_inside_out(context, rv3d, bad.values(), depsgraph, 'NONE' if xray else 'LESS_EQUAL',
+                         context.space_data.shading.xray_alpha if xray else 1.0)
     _tidy_issues(info)
     return info
 
@@ -1853,7 +1924,7 @@ def draw_view():
         elif clips and (ours or rv3d.use_clip_planes):
             # nothing filled (Backfaces, Wireframe), but the readout still warns about the parts being clipped
             issue_caps = caps or [c for c in engine.native_caps(rv3d) if not _edge_on(rv3d, c[0])]
-            info.update(_scan_issues(context, s, issue_caps))
+            info.update(_scan_issues(context, s, issue_caps, rv3d))
         info["no_plane_object"] = s.mode != 'OFF' and s.orientation == 'OBJECT' and s.plane_object is None
         info["uncapped"] = engine.hidden_from_caps(context, s) if (ours or native) and solid else []
         if quads:
@@ -1926,7 +1997,7 @@ def readout_lines(scene, s, info):
     if info.get("mixed_normals"):
         warn.append("Flipped faces, overlaps may show as holes: " + _names(info["mixed_normals"]))
     if info.get("inside_out"):
-        severe.append("Inside out, its cut faces are red: " + _names(info["inside_out"]))
+        severe.append("Inside out (shown red): " + _names(info["inside_out"]))
     if info.get("open"):
         severe.append("Open section, gaps filled in by guesswork: " + _names(info["open"]))
     return warn, severe

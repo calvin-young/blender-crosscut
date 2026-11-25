@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.21.0 (2026-11-25)
+
+- **Inside-out parts**: instead of a red cut face, the part's own surface is painted red wherever it isn't clipped,
+  as Face Orientation would show it, so you see its inside is the wrong way out. It works with Backfaces too. The cut
+  face keeps its normal colour.
+- The overlap highlight is **red** again (cross-hatched by default), at the maintainer's choice: a flat 2D overlap and
+  a shaded 3D surface read apart.
+
 ## 0.20.0 (2026-11-23)
 
 - **Print Preview counts layers**: the Scrub slider becomes **Layer 0 / N**, and the step buttons and
