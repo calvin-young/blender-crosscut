@@ -2949,6 +2949,51 @@ def print_preview(view):
 
 
 @test
+def zz_draw_order(view):
+    """An annotation add-on's overlay stays over the cut faces, whichever add-on loads first (#17)."""
+    T = "draw_order"
+    import sys
+    scene = new_scene("cc-order")
+    box("part-001", (40, 40, 20))
+    s = scene.crosscut
+    view.look((0, 0, 0), 120, (0, 0, 0), ortho=True)
+    settings(s, mode='SECTION', orientation='Z', offset=0.0, cap_style='SOLID')
+    sh = gpu.shader.from_builtin('UNIFORM_COLOR')
+    from gpu_extras.batch import batch_for_shader
+    line = batch_for_shader(sh, 'TRIS', {"pos": [(-15, -1, 0), (15, -1, 0), (15, 1, 0), (-15, -1, 0), (15, 1, 0), (-15, 1, 0)]})
+
+    def annotate():  # a stand-in for Bucket Builder's overlay: no depth test, no depth write
+        gpu.state.depth_test_set('NONE')
+        sh.bind()
+        sh.uniform_float("color", (0.0, 0.0, 1.0, 1.0))
+        line.draw(sh)
+
+    handle = [bpy.types.SpaceView3D.draw_handler_add(annotate, (), 'WINDOW', 'POST_VIEW')]
+
+    def readd():
+        bpy.types.SpaceView3D.draw_handler_remove(handle[0], 'WINDOW')
+        handle[0] = bpy.types.SpaceView3D.draw_handler_add(annotate, (), 'WINDOW', 'POST_VIEW')
+
+    sys.modules[cc("draw").DRAW_ORDER].layers["stand-in"] = (100, readd)
+    # Crosscut loads after the stand-in: without the registry its cut faces would paint over the overlay
+    bpy.ops.preferences.addon_disable(module=MODULE)
+    bpy.ops.preferences.addon_enable(module=MODULE)
+    _cc.clear()
+    s = bpy.context.scene.crosscut
+    settings(s, mode='SECTION', orientation='Z', offset=0.0, cap_style='SOLID')
+    yield 0.2
+    yield from settle()
+    shot = Shot(view, "draw_order")
+    c = shot.at(view.px((5, 0, 0)))
+    check(T, "the overlay is drawn over the cut face", c[2] > 200 and c[0] < 60 and c[1] < 60, str(c))
+    c = shot.at(view.px((5, 8, 0)))
+    check(T, "and the cut face is there around it", is_green(c), str(c))
+    bpy.types.SpaceView3D.draw_handler_remove(handle[0], 'WINDOW')
+    sys.modules[cc("draw").DRAW_ORDER].layers.pop("stand-in", None)
+    check(T, "no draw errors", not errors(), str(errors()))
+
+
+@test
 def zz_pie(view):
     # last: an open pie menu (or the popover above) would swallow the following tests' events
     T = "pie"

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.23.0 (2026-11-26)
+
+- **Draw order with other add-ons**: Crosscut takes part in a shared draw order, so an add-on that marks or measures
+  (Bucket Builder's overlay, once it joins) draws over the cut faces whichever add-on loaded first.
+
 ## 0.22.0 (2026-11-26)
 
 - **Where the panel is**, in the add-on's preferences: **Panel Location** puts it in the 3D view's sidebar (the

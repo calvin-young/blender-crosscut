@@ -2085,12 +2085,57 @@ def last_info(region):
     return _last_info.get(region.as_pointer()) if region else None
 
 
+# Draw order between add-ons (#17, portfolio decision D4). Blender runs POST_VIEW handlers in the order they were
+# added, which follows whichever add-on happened to load first. Each add-on that draws in the 3D view enters itself
+# here with its layer and a function that removes and re-adds its POST_VIEW handler; on register it re-adds every
+# add-on above it, so handlers run in layer order whatever the load order. Scene layer (solid material, writes
+# depth): 0. Annotation layer (markers, bounds, measurements; never writes depth): 100. The registry lives in
+# sys.modules so it survives file loads and needs no add-on to import another. The same lines go in each add-on.
+DRAW_ORDER = "_print_addons_draw_order"
+DRAW_LAYER = 0  # cut faces stand for solid material
+
+
+def _draw_order():
+    import sys
+    import types
+    reg = sys.modules.get(DRAW_ORDER)
+    if reg is None:
+        reg = types.ModuleType(DRAW_ORDER)
+        reg.layers = {}  # add-on name -> (layer, re-add function)
+        sys.modules[DRAW_ORDER] = reg
+    return reg.layers
+
+
+def _readd_view_handler():
+    """Remove and re-add the POST_VIEW handler, putting it last: for an add-on below this one that loads later."""
+    if _handles:
+        try:
+            bpy.types.SpaceView3D.draw_handler_remove(_handles[0], 'WINDOW')
+        except ValueError:
+            pass
+        _handles[0] = bpy.types.SpaceView3D.draw_handler_add(draw_view, (), 'WINDOW', 'POST_VIEW')
+
+
+def _enter_draw_order():
+    layers = _draw_order()
+    layers["crosscut"] = (DRAW_LAYER, _readd_view_handler)
+    for name, (layer, readd) in sorted(layers.items(), key=lambda kv: kv[1][0]):
+        if layer > DRAW_LAYER:
+            try:
+                readd()
+            except Exception as ex:  # noqa: BLE001 - another add-on's leftover; drop it, don't fail to load
+                print(f"Crosscut: dropping {name} from the draw order:", ex)
+                layers.pop(name, None)
+
+
 def register():
     _handles.append(bpy.types.SpaceView3D.draw_handler_add(draw_view, (), 'WINDOW', 'POST_VIEW'))
     _handles.append(bpy.types.SpaceView3D.draw_handler_add(draw_readout, (), 'WINDOW', 'POST_PIXEL'))
+    _enter_draw_order()
 
 
 def unregister():
+    _draw_order().pop("crosscut", None)
     try:
         release_all_views()
     except Exception:  # noqa: BLE001 - best effort during shutdown

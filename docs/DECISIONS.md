@@ -37,6 +37,18 @@ this list is an assumption, tracked in the table at the end.
 
 ## Decisions
 
+### D-053: A shared draw order between add-ons (2026-11-26)
+
+#17: when Crosscut's draw handler ran after Bucket Builder's, its cut faces painted over Bucket Builder's overlay.
+Blender runs POST_VIEW handlers in the order they were added, which is load order. Portfolio decision D4 set the
+rule (scene layer writes depth, annotations draw after and never write depth) but its remedy, POST_PIXEL for
+always-visible marks, doesn't cover depth-tested annotations such as the bucket bounds. So: a registry in
+`sys.modules["_print_addons_draw_order"]` (`.layers`: add-on name -> (layer, a function that removes and re-adds
+its POST_VIEW handler)). On register, an add-on enters itself and calls the re-add of every add-on above it, lowest
+first; on unregister it leaves. Scene layer 0 (Crosscut), annotation layer 100. About 20 lines, copied, not shared
+code (portfolio D1). Crosscut's half is in `draw.py`; Bucket Builder needs the same lines with layer 100 (asked on
+bucket-builder#28). A test with a stand-in overlay fails without the registry and passes with it.
+
 ### D-052: Panel location, as the portfolio review's D3 (2026-11-26)
 
 Two preferences, worded the same in every add-on: Panel Location (Sidebar, the default, or Scene Properties) and

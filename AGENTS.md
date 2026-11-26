@@ -8,7 +8,7 @@ The human-facing overview is in [README.md](README.md).
 - **What it is:** a Blender add-on that adds filled (solid or hatched) caps to viewport
   clipping, plus section and slice views with a scrub slider. It drives the same
   `RegionView3D.clip_planes` that Alt+B uses and draws the caps with the `gpu` module.
-- **Status:** in development (0.22.0, 2026-11-26), used on real work, not close to 1.0; tested in Blender (4.2.23 and 5.2.3,
+- **Status:** in development (0.23.0, 2026-11-26), used on real work, not close to 1.0; tested in Blender (4.2.23 and 5.2.3,
   OpenGL; 5.2 on Vulkan too) with the in-viewport suite below. Waiting for the maintainer's
   test on real work. See "State and next steps".
 - **Runs in:** Blender 4.2+ as an extension (`crosscut/blender_manifest.toml`); Python 3.11
@@ -70,6 +70,7 @@ docs/                     DECISIONS.md, PROMPT_STATS.md, images (concepts + main
 - `section_math.py` stays free of `bpy` so it can be tested anywhere.
 - SPDX `GPL-3.0-or-later` header on every source file.
 - Wording (D-045): "clip" for what's hidden, "cut face(s)" for the filled surface; not "cut" alone as a noun, not "cap".
+- Draw order with other add-ons (D-053): Crosscut is layer 0 in `sys.modules["_print_addons_draw_order"]`; keep its POST_VIEW handler first in `_handles`.
 - Don't replace or wrap Blender's own UI functions (D-044, reversed): add-ons add to header ends, not the middle.
 - UI/UX matters more to the maintainer than code style: keep labels short, tooltips useful,
   and defaults sensible for modelling parts.
@@ -131,6 +132,7 @@ this file, the reasons behind decisions and the approaches that were dropped go 
 - 0.21.0: inside-out parts painted red in 3D, cut faces keep their colour; overlaps red again (D-049 revised).
 - 0.21.1: audit findings 1, 3, 6, 7, 8, 9, 10 fixed (shared mesh cache, offscreens per size, faster shell_inward, open-contour cap, cache sweeps, stale view state, undo keeps lines). 0.21.2: cuts shared in mesh coordinates between copies (200-copy scrub ~110 ms, was 180; the rest is per-part Python and GPU passes). Next from the audit: 2 (bound per-part GPU passes), 4, 5, then #17/#18.
 - 0.22.0: Panel Location and Sidebar Tab preferences (#18, D-052); controls find the 3D view from the Properties editor.
+- 0.23.0: Crosscut's half of the shared draw order (#17, D-053); Bucket Builder's half (layer 100) is asked on its #28.
 - **Audit (2026-11-12, review only): [docs/AUDIT.md](docs/AUDIT.md).** Ranked findings with file:line and fixes, the build order, and how to build #17 and #18. Nothing in it is implemented yet. Start there.
 - **Vision (2026-11-12, proposal): [docs/VISION.md](docs/VISION.md).** What a measurement is (two points attached to parts, plus its plane), Gap as a third kind, saving (#12), the link to Bucket Builder, and releases 0.17 to 1.0. Items marked "Your call" wait on the maintainer; build nothing from it that he hasn't agreed.
 - Next: [save lines with the file and follow moved parts](https://github.com/calvin-young/blender-crosscut/issues/12): a design is with the maintainer, don't build until it's agreed.
