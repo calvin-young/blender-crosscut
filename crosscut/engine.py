@@ -176,6 +176,28 @@ def native_caps(rv3d):
     return out
 
 
+# ---------------------------------------------------------------- the view
+
+def view3d(context):
+    """(area, window region, space) of the 3D view a control acts on: the context's own, or, for the panel in
+    the Properties editor, the largest 3D view on the screen. (None, None, None) if there's none."""
+    area = getattr(context, "area", None)
+    if area is None or area.type != 'VIEW_3D':
+        screen = getattr(context, "screen", None)
+        views = [a for a in screen.areas if a.type == 'VIEW_3D'] if screen is not None else []
+        area = max(views, key=lambda a: a.width * a.height) if views else None
+    if area is None:
+        return None, None, None
+    region = next((r for r in area.regions if r.type == 'WINDOW'), None)
+    return area, region, area.spaces.active
+
+
+def view_rv3d(context):
+    """The RegionView3D of view3d(context), or None."""
+    space = view3d(context)[2]
+    return getattr(space, "region_3d", None)
+
+
 # ---------------------------------------------------------------- targets
 
 def is_flat(ob):

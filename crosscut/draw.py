@@ -914,7 +914,7 @@ def _add_coverage(off, sh, mask_off):
 def auto_uses_cap_color(context, s):
     """Whether Auto colours currently give any target the Cap Color (a white
     or grey part under Object / Material shading), so the UI can hide it."""
-    space = context.space_data
+    space = engine.view3d(context)[2]
     shading = getattr(space, "shading", None)
     ct = getattr(shading, "color_type", 'MATERIAL')
     if ct not in {'OBJECT', 'MATERIAL'}:

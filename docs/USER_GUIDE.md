@@ -9,7 +9,7 @@ Units below assume 1 Blender unit = 1 mm, but Crosscut works in any unit.
 
 ## Quick start
 
-1. Open the sidebar (N) and pick the **Crosscut** tab.
+1. Open the sidebar (N) and pick the **Crosscut** tab. (The panel can live elsewhere: see Where the panel is.)
 2. Click **Section**. The plane starts in the middle of your parts and clips away the half
    facing you.
 3. Drag **Scrub** to sweep the plane through the parts.
@@ -213,6 +213,17 @@ clipped geometry behind the cut face, which can be another part, say one with a 
 zero-thickness slice it can't pick anything at all.) Shift+click adds or removes the part, and clicking again where
 parts overlap cycles through them. Clicks anywhere else go to Blender as usual. Selected parts show their contour in
 the selection colour. Box select in a zero-thickness slice doesn't work.
+
+## Where the panel is
+
+Edit > Preferences > Add-ons > Crosscut:
+
+- **Panel Location**: **Sidebar** (the 3D view's sidebar, N; the default) or **Scene Properties** (the Properties
+  editor's Scene tab). From the Properties editor, the buttons act on the largest 3D view on the screen.
+- **Sidebar Tab**: the sidebar tab the panel is on, "Crosscut" by default. Give several add-ons the same tab name to
+  put them on one tab.
+
+The header button and the pie stay where they are either way.
 
 ## Pie menu (Shift+Alt+B)
 

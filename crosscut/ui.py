@@ -13,7 +13,7 @@ def _draw_main(layout, context):
     col = layout.column()
     # Clip / Section / Slice: one or none (Clip is Blender's own clipping region)
     row = col.row(align=True)
-    rv3d = getattr(context.space_data, "region_3d", None)
+    rv3d = engine.view_rv3d(context)
     row.operator("crosscut.clip", text="Clip", icon='SHADING_BBOX',
                  depress=s.mode == 'OFF' and rv3d is not None and rv3d.use_clip_planes)
     row.operator("crosscut.set_mode", text="Section", icon='MOD_BOOLEAN',
@@ -86,13 +86,7 @@ def _draw_main(layout, context):
 
 
 def _window_region(context):
-    area = context.area
-    if area is None:
-        return None
-    for r in area.regions:
-        if r.type == 'WINDOW':
-            return r
-    return None
+    return engine.view3d(context)[1]
 
 
 def _split(layout):
@@ -279,28 +273,25 @@ def _draw_sections(layout, context):
             fn(body, context)
 
 
-class CROSSCUT_PT_main(bpy.types.Panel):
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'UI'
-    bl_category = "Crosscut"
-    bl_label = "Crosscut"
-
-    def draw(self, context):
-        _draw_main(self.layout, context)
-        _draw_sections(self.layout, context)
-        info = draw.last_info(_window_region(context))
-        if info:
-            col = self.layout.column(align=True)
-            if info.get("error"):
-                col.label(text="Draw error (see console)", icon='ERROR')
-            for name in info.get("open", [])[:5]:
-                col.label(text=f"Open section: {name}", icon='ERROR')
-            for name in info.get("open_mesh", [])[:5]:
-                col.label(text=f"Open mesh: {name}", icon='INFO')
-            for name in info.get("inside_out", [])[:5]:
-                col.label(text=f"Inside out: {name}", icon='ERROR')
-            for name in info.get("mixed_normals", [])[:5]:
-                col.label(text=f"Flipped faces: {name}", icon='INFO')
+def _draw_panel(self, context):
+    if engine.view3d(context)[0] is None:
+        self.layout.label(text="Open a 3D view to use Crosscut", icon='INFO')
+        return
+    _draw_main(self.layout, context)
+    _draw_sections(self.layout, context)
+    info = draw.last_info(_window_region(context))
+    if info:
+        col = self.layout.column(align=True)
+        if info.get("error"):
+            col.label(text="Draw error (see console)", icon='ERROR')
+        for name in info.get("open", [])[:5]:
+            col.label(text=f"Open section: {name}", icon='ERROR')
+        for name in info.get("open_mesh", [])[:5]:
+            col.label(text=f"Open mesh: {name}", icon='INFO')
+        for name in info.get("inside_out", [])[:5]:
+            col.label(text=f"Inside out: {name}", icon='ERROR')
+        for name in info.get("mixed_normals", [])[:5]:
+            col.label(text=f"Flipped faces: {name}", icon='INFO')
 
 
 class CROSSCUT_PT_popover(bpy.types.Panel):
@@ -344,11 +335,62 @@ def _header_button(self, context):
     row.popover(panel="CROSSCUT_PT_popover", text="")
 
 
-classes = (
-    CROSSCUT_PT_main,
+def _prefs():
+    addon = bpy.context.preferences.addons.get(__package__)
+    return addon.preferences if addon is not None else None
+
+
+def _main_panel():
+    """The main panel's class, where the preferences put it: the sidebar (on a tab of its own name) or the
+    Properties editor's Scene tab (D3 in the portfolio review)."""
+    p = _prefs()
+    attrs = {"bl_label": "Crosscut", "bl_idname": "CROSSCUT_PT_main", "draw": _draw_panel}
+    if p is not None and p.panel_location == 'SCENE':
+        attrs.update(bl_space_type='PROPERTIES', bl_region_type='WINDOW', bl_context="scene")
+    else:
+        attrs.update(bl_space_type='VIEW_3D', bl_region_type='UI',
+                     bl_category=(p.sidebar_tab.strip() if p is not None else "") or "Crosscut")
+    return type("CROSSCUT_PT_main", (bpy.types.Panel,), attrs)
+
+
+def _relocate(_self=None, _context=None):
+    """Move the panel after a preference change: Blender only reads where a panel goes when it's registered."""
+    old = classes[0]
+    if getattr(old, "is_registered", False):
+        bpy.utils.unregister_class(old)
+    classes[0] = _main_panel()
+    bpy.utils.register_class(classes[0])
+
+
+class CROSSCUT_Preferences(bpy.types.AddonPreferences):
+    bl_idname = __package__
+
+    panel_location: bpy.props.EnumProperty(
+        name="Panel Location", default='SIDEBAR', update=_relocate,
+        description="Where Crosscut's panel is: the 3D view's sidebar (N) or the Properties editor's Scene tab. "
+                    "The header button and the pie (Shift+Alt+B) stay where they are",
+        items=[('SIDEBAR', "Sidebar", "The 3D view's sidebar (N), on a tab of its own"),
+               ('SCENE', "Scene Properties", "The Properties editor's Scene tab")],
+    )
+    sidebar_tab: bpy.props.StringProperty(
+        name="Sidebar Tab", default="Crosscut", update=_relocate,
+        description="The sidebar tab the panel is on. Give several add-ons the same name to put them on one tab",
+    )
+
+    def draw(self, _context):
+        col = self.layout.column()
+        col.use_property_split = True
+        col.prop(self, "panel_location")
+        sub = col.row()
+        sub.active = self.panel_location == 'SIDEBAR'
+        sub.prop(self, "sidebar_tab")
+
+
+classes = [
+    None,  # the main panel: _main_panel() makes it at register
     CROSSCUT_PT_popover,
     CROSSCUT_MT_pie,
-)
+]
 
 
 def kc_active_select_mouse():
@@ -390,6 +432,8 @@ def _add_keymaps():
 
 
 def register():
+    bpy.utils.register_class(CROSSCUT_Preferences)
+    classes[0] = _main_panel()
     for c in classes:
         bpy.utils.register_class(c)
     bpy.types.VIEW3D_HT_header.append(_header_button)
@@ -405,4 +449,6 @@ def unregister():
     _keymaps.clear()
     bpy.types.VIEW3D_HT_header.remove(_header_button)
     for c in reversed(classes):
-        bpy.utils.unregister_class(c)
+        if c is not None and getattr(c, "is_registered", False):
+            bpy.utils.unregister_class(c)
+    bpy.utils.unregister_class(CROSSCUT_Preferences)

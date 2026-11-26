@@ -21,7 +21,7 @@ def _center_offset(_context, s):
 def _face_viewer(context, s):
     """Flip the plane so the side towards the viewer is the one clipped away: a new
     section then shows its cut face instead of the unclipped outside of the part."""
-    rv3d = context.region_data
+    rv3d = context.region_data or engine.view_rv3d(context)
     f = engine.plane_frame(s)
     if rv3d is None or f is None or not hasattr(rv3d, "view_rotation"):
         return
@@ -74,10 +74,7 @@ class CROSSCUT_OT_set_mode(bpy.types.Operator):
 
 
 def _view_window_region(context):
-    area = context.area
-    if area is None or area.type != 'VIEW_3D':
-        return None
-    return next((r for r in area.regions if r.type == 'WINDOW'), None)
+    return engine.view3d(context)[1]
 
 
 class CROSSCUT_OT_clip(bpy.types.Operator):
@@ -93,12 +90,13 @@ class CROSSCUT_OT_clip(bpy.types.Operator):
     def invoke(self, context, _event):
         from . import draw
         s = _s(context)
-        rv3d = context.space_data.region_3d
+        area, region, space = engine.view3d(context)
+        rv3d = space.region_3d
         if s.mode != 'OFF':
             s.last_mode = s.mode
             s.mode = 'OFF'  # this releases the view, so the operator below starts a new box
-        # Needs the viewport region: the button lives in the sidebar or header.
-        with context.temp_override(region=_view_window_region(context)):
+        # Needs the viewport region: the button lives in the sidebar, the header or the Properties editor.
+        with context.temp_override(area=area, region=region):
             if rv3d.use_clip_planes or not draw.restore_clip(context, rv3d):
                 # Blender's operator toggles: removes a box, otherwise waits for one to be drawn.
                 bpy.ops.view3d.clip_border('INVOKE_DEFAULT')
@@ -196,7 +194,7 @@ class CROSSCUT_OT_from_view(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return getattr(context.space_data, "region_3d", None) is not None
+        return engine.view_rv3d(context) is not None
 
     def execute(self, context):
         s = _s(context)
@@ -205,7 +203,7 @@ class CROSSCUT_OT_from_view(bpy.types.Operator):
             s.mode = 'OFF'
             tag_redraw()
             return {'FINISHED'}
-        rv3d = context.space_data.region_3d
+        rv3d = engine.view_rv3d(context)
         # view-local +Z points at the viewer; Section keeps the side opposite
         # the normal, so the half nearest the viewer is the one cut away
         n = np.array(rv3d.view_rotation @ Vector((0.0, 0.0, 1.0)))
@@ -431,7 +429,7 @@ class CROSSCUT_OT_step(bpy.types.Operator):
     def poll(cls, context):
         if context.scene is None:
             return False
-        rv3d = getattr(context.space_data, "region_3d", None)
+        rv3d = engine.view_rv3d(context)
         return context.scene.crosscut.mode != 'OFF' or (rv3d is not None and rv3d.use_clip_planes)
 
     def execute(self, context):
@@ -440,7 +438,7 @@ class CROSSCUT_OT_step(bpy.types.Operator):
         delta = size * self.multiplier * (1 if self.direction >= 0 else -1)
         if s.mode == 'OFF':  # a clipping region
             from . import draw
-            rv3d = context.space_data.region_3d
+            rv3d = engine.view_rv3d(context)
             axes = engine.clip_axes(rv3d)
             if self.clip_axis >= 0 and self.clip_axis < len(axes):
                 axis = axes[self.clip_axis][0]
@@ -540,7 +538,7 @@ class CROSSCUT_OT_add_plane(bpy.types.Operator):
 
     def execute(self, context):
         s = _s(context)
-        rv3d = context.region_data
+        rv3d = context.region_data or engine.view_rv3d(context)
         loc = context.scene.cursor.location.copy()
         if self.align == 'VIEW' and rv3d is not None:
             # view-local +Z points at the viewer; Section keeps the side opposite

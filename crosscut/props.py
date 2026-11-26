@@ -107,7 +107,7 @@ def _print_preview_changed(self, context):
 
 def _clip_view(index):
     """A wall pair of the current view's clipping region: (rv3d, axis, centre, half), or None."""
-    rv3d = getattr(bpy.context.space_data, "region_3d", None)
+    rv3d = engine.view_rv3d(bpy.context)
     if rv3d is None or not rv3d.use_clip_planes:
         return None
     axes = engine.clip_axes(rv3d)

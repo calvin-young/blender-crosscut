@@ -2650,6 +2650,60 @@ def ui_panels(view):
 
 
 @test
+def panel_location(view):
+    """The panel goes to the sidebar on a tab of its own name, or to the Properties editor's Scene tab (#18)."""
+    T = "panel_location"
+    ui = cc("ui")
+    prefs = bpy.context.preferences.addons[MODULE].preferences
+    scene = new_scene("cc-panel")
+    box("part-001", (30, 30, 30))
+    s = scene.crosscut
+    view.look((0, 0, 0), 150, (55, 0, 30))
+    settings(s, mode='OFF')
+    yield 0.1
+    prefs.sidebar_tab = "Print"
+    check(T, "a sidebar tab of your choosing", bpy.types.CROSSCUT_PT_main.bl_category == "Print",
+          bpy.types.CROSSCUT_PT_main.bl_category)
+    prefs.panel_location = 'SCENE'
+    p = bpy.types.CROSSCUT_PT_main
+    check(T, "Scene Properties: in the Properties editor's Scene tab",
+          p.bl_space_type == 'PROPERTIES' and p.bl_context == "scene", f"{p.bl_space_type} {getattr(p, 'bl_context', '')}")
+    # the default layout has a Properties editor: leave the full-screen 3D view for it
+    with view.override():
+        bpy.ops.screen.back_to_previous()
+    yield 0.3
+    view.__init__()
+    props_area = max((a for a in view.window.screen.areas if a.type == 'PROPERTIES'), key=lambda a: a.height)
+    props_area.spaces.active.context = 'SCENE'
+    yield 0.2
+    yield from settle()
+    region = next(r for r in props_area.regions if r.type == 'WINDOW')
+    with bpy.context.temp_override(window=view.window, area=props_area, region=region):
+        bpy.ops.crosscut.set_mode(mode='SECTION')
+        bpy.ops.crosscut.step(direction=1)
+        bpy.ops.crosscut.from_view()
+    yield from settle()
+    rv3d = view.rv3d
+    check(T, "buttons in the Properties editor act on the 3D view", s.mode == 'SECTION' and s.orientation == 'VIEW'
+          and rv3d.use_clip_planes, f"{s.mode} {s.orientation} {rv3d.use_clip_planes}")
+    os.makedirs(OUT, exist_ok=True)
+    with bpy.context.temp_override(window=view.window, area=props_area, region=region):
+        bpy.ops.screen.screenshot_area(filepath=os.path.join(OUT, "panel_scene_properties.png"))
+    check(T, "no draw errors", not errors(), str(errors()))
+    settings(s, mode='OFF')
+    yield 0.1
+    with view.override():
+        bpy.ops.screen.screen_full_area()
+    yield 0.3
+    view.__init__()
+    prefs.panel_location = 'SIDEBAR'
+    prefs.sidebar_tab = "Crosscut"
+    check(T, "back in the sidebar", bpy.types.CROSSCUT_PT_main.bl_space_type == 'VIEW_3D'
+          and bpy.types.CROSSCUT_PT_main.bl_category == "Crosscut")
+    settings(s, mode='OFF')
+
+
+@test
 def edit_mode_material_preview(view):
     # Blender 5.2 crashed here: Edit Mode under Material Preview, Crosscut turned on. Alt+B can't make a
     # clipping box in that shading, and Edit Mode's drawing reads the box whenever clipping is on (D-043).

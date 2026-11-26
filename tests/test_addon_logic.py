@@ -27,7 +27,7 @@ def _install_stubs():
         pass
 
     bpy.types = types.SimpleNamespace(
-        Operator=_Base, Panel=_Base, Menu=_Base, PropertyGroup=_Base,
+        Operator=_Base, Panel=_Base, Menu=_Base, PropertyGroup=_Base, AddonPreferences=_Base,
         Object=type("Object", (), {}), Collection=type("Collection", (), {}),
         Mesh=type("Mesh", (), {}), Curve=type("Curve", (), {}), MetaBall=type("MetaBall", (), {}),
         Scene=type("Scene", (), {}), SpaceView3D=_Base, VIEW3D_HT_header=_Base,

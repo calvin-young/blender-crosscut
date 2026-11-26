@@ -37,6 +37,16 @@ this list is an assumption, tracked in the table at the end.
 
 ## Decisions
 
+### D-052: Panel location, as the portfolio review's D3 (2026-11-26)
+
+Two preferences, worded the same in every add-on: Panel Location (Sidebar, the default, or Scene Properties) and
+Sidebar Tab (text, "Crosscut" by default; the same name in several add-ons gives them one tab). The panel class is
+made from them at register and remade when they change, since Blender reads a panel's place only when it's
+registered. Controls that need a 3D view find one (engine.view3d): the context's own, or else the largest 3D view on
+the screen, which the Properties editor's buttons then act on; with none, the panel says to open one (audit finding
+13). The panel starts open in the Scene tab: it's one panel, and closed it hides the reason it's there. D3's pushback
+stands: Panel Location is for trying both, and could go once the maintainer has chosen.
+
 ### D-051: Print Preview counts layers (2026-11-23)
 
 The maintainer asked for the layer counter back, in the scrub itself: in Print Preview the Scrub slider reads

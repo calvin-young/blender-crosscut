@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.22.0 (2026-11-26)
+
+- **Where the panel is**, in the add-on's preferences: **Panel Location** puts it in the 3D view's sidebar (the
+  default) or the Properties editor's **Scene** tab, and **Sidebar Tab** names its sidebar tab, so several add-ons
+  can share one. From the Properties editor, the buttons act on the 3D view.
+
 ## 0.21.2 (2026-11-26)
 
 - Faster scrubbing through builds that repeat a part: copies standing the same way at the same height share one cut
