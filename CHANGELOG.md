@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.21.2 (2026-11-26)
+
+- Faster scrubbing through builds that repeat a part: copies standing the same way at the same height share one cut
+  instead of each making its own. 200 copies of a part: about 110 ms a frame, was 180.
+
 ## 0.21.1 (2026-11-25)
 
 - Copies of one mesh are read and stored once: a build of 200 copies draws first in half the time (180 ms, was 384)

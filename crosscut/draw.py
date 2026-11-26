@@ -801,9 +801,9 @@ def _quad_batch(poly, uv):
     return _vbatch('TRIS', {"pos": (tri, 3), "uv": (tuv, 2)})
 
 
-def _cap_batch(key, sig, segs, plane, bounds):
+def _cap_batch(key, sig, segs, plane, bounds, frame=None):
     def build():
-        poly, uv = sm.cap_polygon(segs, plane, bounds)
+        poly, uv = sm.cap_polygon(segs, plane, bounds, frame=frame)
         return _quad_batch(poly, uv) if len(poly) >= 3 else None
     return _cached(key, sig, build)
 
@@ -1158,6 +1158,7 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style, fill_override=None, out
     for ci, (plane, bounds) in enumerate(caps):
         hits = []
         oriented = {}
+        frame = sm.plane_frame_2d(plane)
         for t in targets:
             live.add(t.key)
             res = engine.section(t, ci, plane, depsgraph, bounds, crossings=shell)
@@ -1202,7 +1203,7 @@ def _draw_caps(context, s, rv3d, caps, show_fill, style, fill_override=None, out
                 if several:
                     _add_coverage(accum_off, accum_sh, mask_off)
                 # 3) composite the cap into the viewport
-                capb = _cap_batch((t.key, ci, "cap"), serial, segs, plane, bounds)
+                capb = _cap_batch((t.key, ci, "cap"), serial, segs, plane, bounds, frame)
                 if capb is not None:
                     if fill_override is not None:
                         col = fill_override

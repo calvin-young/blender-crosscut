@@ -374,27 +374,31 @@ def box_section_polygon(plane, lo, hi):
     return clip_convex_polygon(sq, faces)
 
 
-def cap_polygon(segments, plane, bound_planes=(), margin=0.02):
-    """Convex polygon on the plane that covers all segments, clipped by the
-    other active clip planes. Returns (poly (P,3), uv (P,2)); uv are plane-local
-    coordinates (scene units) used for model-space hatching."""
+def plane_frame_2d(plane):
+    """(u, v, origin) of a plane: its in-plane axes and the world origin projected onto it."""
     n = normalize(plane[:3])
     u, v = plane_basis(n)
-    pts = segments.reshape(-1, 3)
-    pu = pts @ u
-    pv = pts @ v
-    pad = max(pu.max() - pu.min(), pv.max() - pv.min(), 1e-6) * margin
-    u0, u1 = pu.min() - pad, pu.max() + pad
-    v0, v1 = pv.min() - pad, pv.max() + pad
-    # origin = projection of the world origin onto the plane
-    origin = -n * (float(plane[3]) / float(np.dot(plane[:3], plane[:3])) ** 0.5)
+    return u, v, -n * (float(plane[3]) / float(np.dot(plane[:3], plane[:3])) ** 0.5)
+
+
+def cap_polygon(segments, plane, bound_planes=(), margin=0.02, frame=None):
+    """Convex polygon on the plane that covers all segments, clipped by the
+    other active clip planes. Returns (poly (P,3), uv (P,2)); uv are plane-local
+    coordinates (scene units) used for model-space hatching. `frame`: plane_frame_2d(plane),
+    if the caller has it already (it's the same for every part on a plane)."""
+    u, v, origin = frame if frame is not None else plane_frame_2d(plane)
+    puv = segments.reshape(-1, 3) @ np.stack([u, v]).T
+    lo, hi = puv.min(axis=0), puv.max(axis=0)
+    pad = max(float((hi - lo).max()), 1e-6) * margin
+    u0, v0 = lo - pad
+    u1, v1 = hi + pad
     corners = np.array([
         origin + u * u0 + v * v0,
         origin + u * u1 + v * v0,
         origin + u * u1 + v * v1,
         origin + u * u0 + v * v1,
     ])
-    poly = clip_convex_polygon(corners, bound_planes)
+    poly = clip_convex_polygon(corners, bound_planes) if len(bound_planes) else corners
     if len(poly) == 0:
         return poly, np.zeros((0, 2))
     rel = poly - origin

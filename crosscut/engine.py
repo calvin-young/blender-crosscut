@@ -491,20 +491,40 @@ def section(target, cap_index, plane, depsgraph, bounds=(), crossings=False):
     if not sm.bbox_crosses_plane(e["bbmin"], e["bbmax"], local) or _cap_misses(e, m, plane, bounds):
         res = None
     else:
-        seg = sm.section_segments(e["v"], e["t"], local, e["cols"], crossings=crossings)
-        info = None
-        if crossings:
-            seg, info = seg
-        if len(seg) == 0:
+        seg, n_open, info = _local_section(e, local, crossings)
+        if seg is None:
             res = None
         else:
             seg_w = sm.transform_points(seg.reshape(-1, 3), m).reshape(-1, 2, 3)
             _version[0] += 1
-            res = (seg_w, sm.open_endpoint_count(seg), _version[0])
+            res = (seg_w, n_open, _version[0])
             if crossings:
                 _crossings[ck] = (_version[0], info)
     _sections[ck] = (sig, res)
     return res
+
+
+LOCAL_SECTIONS = 64  # cuts kept per mesh, in its own coordinates
+
+
+def _local_section(e, local, crossings):
+    """(segments in mesh coordinates, open endpoint count, crossings info or None) for the mesh cut by `local`,
+    or (None, 0, None). Kept per mesh and plane in the mesh's own coordinates, so copies of a part standing the
+    same way at the same height, as a build is full of, share one cut instead of each making its own."""
+    n = float(np.linalg.norm(local[:3]))
+    key = (np.round(np.asarray(local) / max(n, 1e-300), 12).tobytes(), crossings)
+    cache = e.setdefault("cuts", {})
+    hit = cache.get(key)
+    if hit is None:
+        seg = sm.section_segments(e["v"], e["t"], local, e["cols"], crossings=crossings)
+        info = None
+        if crossings:
+            seg, info = seg
+        hit = (seg, sm.open_endpoint_count(seg), info) if len(seg) else (None, 0, None)
+        if len(cache) >= LOCAL_SECTIONS:
+            cache.clear()
+        cache[key] = hit
+    return hit
 
 
 def section_crossings(target, cap_index, serial):
