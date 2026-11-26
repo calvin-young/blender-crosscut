@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.23.1 (2026-11-26)
+
+- Fixed: Measure's width at the mouse could read longer than the "max" beside it. The max is found on a coarser grid;
+  when the line at the mouse is longer, it is the max.
+
 ## 0.23.0 (2026-11-26)
 
 - **Draw order with other add-ons**: Crosscut takes part in a shared draw order, so an add-on that marks or measures

@@ -501,6 +501,14 @@ def test_palette_is_never_red():
         assert 0.05 < h < 0.95, (i, h)
 
 
+
+def test_max_is_never_shorter_than_the_local_width():
+    a, b = np.zeros(2), np.ones(2)
+    g, l = (5.0, a, b), (5.4, b, a)
+    assert sm.reconcile_max(g, l) is l
+    assert sm.reconcile_max(g, (4.0, a, b)) is g
+    assert sm.reconcile_max(None, l) is None and sm.reconcile_max(g, None) is g
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

@@ -1653,6 +1653,8 @@ def _measure_at(context, region, x, y):
                 contours.append(seg @ basis.T)
                 oriented.append(engine.is_oriented(t, depsgraph))
         near = sm.local_chord(np.concatenate(contours), q, half) if s.measure_local and contours else None
+        # the line at the mouse lies inside the region "max" measures, so "max" can't be shorter (#15)
+        res = sm.reconcile_max(res, near)
         lift = n * float(p @ n)
         world = [(m[1][0] * u + m[1][1] * v + lift, m[2][0] * u + m[2][1] * v + lift, m[0])
                  if m is not None else None for m in (res, near)]

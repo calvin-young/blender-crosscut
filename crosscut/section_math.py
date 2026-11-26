@@ -859,6 +859,14 @@ def local_chord(seg, point, half=1.0):
         h = min(h * 2.0, most)
 
 
+def reconcile_max(greatest, local):
+    """The greatest width can't be less than a width measured: if the line at the mouse is longer (the grid
+    the greatest is found on is coarser than the line search), it's the greatest. Each (distance, end, end) or None."""
+    if greatest is not None and local is not None and local[0] > greatest[0]:
+        return local
+    return greatest
+
+
 def section_measures(seg, point, oriented=True, half=1.0, cells=160, local=True, greatest=False):
     """How thick one part's section is at `point` (all 2D, in the plane): (greatest,
     local), each (distance, end, end) or None. `local` is the shortest line through
