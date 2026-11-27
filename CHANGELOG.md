@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.24.0 (2026-11-26)
+
+- **For other add-ons**: a small public API, found through `bpy.app.driver_namespace["crosscut"]`, to place, move
+  and clear a section or slab (for Bucket Builder's dense-layer stepping). It never touches a section the user made,
+  and clearing puts the user's settings back. See docs/API.md.
+
 ## 0.23.1 (2026-11-26)
 
 - Fixed: Measure's width at the mouse could read longer than the "max" beside it. The max is found on a coarser grid;

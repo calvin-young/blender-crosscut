@@ -8,7 +8,7 @@ The human-facing overview is in [README.md](README.md).
 - **What it is:** a Blender add-on that adds filled (solid or hatched) caps to viewport
   clipping, plus section and slice views with a scrub slider. It drives the same
   `RegionView3D.clip_planes` that Alt+B uses and draws the caps with the `gpu` module.
-- **Status:** in development (0.23.1, 2026-11-26), used on real work, not close to 1.0; tested in Blender (4.2.23 and 5.2.3,
+- **Status:** in development (0.24.0, 2026-11-26), used on real work, not close to 1.0; tested in Blender (4.2.23 and 5.2.3,
   OpenGL; 5.2 on Vulkan too) with the in-viewport suite below. Waiting for the maintainer's
   test on real work. See "State and next steps".
 - **Runs in:** Blender 4.2+ as an extension (`crosscut/blender_manifest.toml`); Python 3.11
@@ -46,6 +46,7 @@ crosscut/                 the extension package
   engine.py               plane definitions, target collection, mesh + section caches, depsgraph handlers
   draw.py                 clip-plane sync with RegionView3D, GPU cap rendering, viewport readout
   props.py ops.py ui.py   scene settings, operators, one panel / pie / header popover / keymaps
+  api.py                  public API for other add-ons, in bpy.app.driver_namespace["crosscut"] (docs/API.md)
 tests/                    plain-Python tests; bpy/gpu are stubbed in test_addon_logic.py
 tests/blender/            in-Blender viewport tests (pixel checks + screenshots)
 tools/showcase.py         builds a demo scene in Blender and screenshots every mode
@@ -134,6 +135,7 @@ this file, the reasons behind decisions and the approaches that were dropped go 
 - 0.22.0: Panel Location and Sidebar Tab preferences (#18, D-052); controls find the 3D view from the Properties editor.
 - 0.23.0: Crosscut's half of the shared draw order (#17, D-053); Bucket Builder's half (layer 100) is asked on its #28.
 - 0.23.1: Measure's max is never shorter than the width at the mouse (#15).
+- 0.24.0: public API in `crosscut/api.py` for Bucket Builder#53 (D-054, docs/API.md): set/clear a section or slab, owner-checked.
 - **Audit (2026-11-12, review only): [docs/AUDIT.md](docs/AUDIT.md).** Ranked findings with file:line and fixes, the build order, and how to build #17 and #18. Nothing in it is implemented yet. Start there.
 - **Vision (2026-11-12, proposal): [docs/VISION.md](docs/VISION.md).** What a measurement is (two points attached to parts, plus its plane), Gap as a third kind, saving (#12), the link to Bucket Builder, and releases 0.17 to 1.0. Items marked "Your call" wait on the maintainer; build nothing from it that he hasn't agreed.
 - Next: [save lines with the file and follow moved parts](https://github.com/calvin-young/blender-crosscut/issues/12): a design is with the maintainer, don't build until it's agreed.

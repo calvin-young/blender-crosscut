@@ -2949,6 +2949,56 @@ def print_preview(view):
 
 
 @test
+def public_api(view):
+    """Another add-on places, moves and clears a section through driver_namespace (D-054)."""
+    T = "public_api"
+    scene = new_scene("cc-api")
+    box("part-001", (40, 40, 40))
+    s = scene.crosscut
+    view.look((0, 0, 0), 160, (55, 0, 30))
+    settings(s, mode='OFF', cap_style='SOLID', offset=7.0)
+    yield from settle()
+    api = bpy.app.driver_namespace.get("crosscut")
+    check(T, "found in driver_namespace", api is not None and api.API_VERSION >= 1)
+    check(T, "nothing showing", api.section_info() is None)
+    check(T, "set_section", api.set_section(5.0, owner="bucket_builder"))
+    yield from settle()
+    info = api.section_info()
+    check(T, "info: Section at 5, owned", info["mode"] == 'SECTION' and info["owner"] == "bucket_builder"
+          and abs(info["offset"] - 5.0) < 1e-6 and info["normal"] == (0.0, 0.0, 1.0), f"{info}")
+    shot = Shot(view, "api_section")
+    bg = bg_of(shot, view)
+    check(T, "top clipped", near(shot.at(view.px((0, 0, 19))), bg, BG_TOL))
+    check(T, "cut face at z=5", is_green(shot.at(view.px((0, -12, 5)))), f"{shot.at(view.px((0, -12, 5)))}")
+    check(T, "moves", api.set_section(-5.0, owner="bucket_builder") and abs(s.offset + 5.0) < 1e-6)
+    check(T, "another add-on is refused", not api.set_section(0.0, owner="other") and abs(s.offset + 5.0) < 1e-6)
+    check(T, "slab", api.set_slab(-2.0, 4.0, owner="bucket_builder") and s.mode == 'SLICE'
+          and abs(s.thickness - 6.0) < 1e-6 and abs(api.section_info()["offset"] - 1.0) < 1e-6)
+    check(T, "slanted normal", api.set_section(3.0, normal=(1, 0, 1), owner="bucket_builder")
+          and s.orientation == 'VIEW' and abs(api.section_info()["offset"] - 3.0) < 1e-6)
+    check(T, "minus Z keeps above", api.set_section(5.0, normal=(0, 0, -1), owner="bucket_builder")
+          and s.orientation == 'Z' and s.flip and abs(s.offset + 5.0) < 1e-6)
+    check(T, "clear puts the user's settings back", api.clear_section("bucket_builder") and s.mode == 'OFF'
+          and abs(s.offset - 7.0) < 1e-6 and s.orientation == 'Z' and s.api_record == "")
+    yield from settle()
+    check(T, "views released", not view.rv3d.use_clip_planes)
+    # the user's own section is never touched
+    settings(s, mode='SECTION', orientation='X', offset=2.0)
+    check(T, "user section reported as the user's", api.section_info()["owner"] == "")
+    check(T, "user section refused", not api.set_section(0.0, owner="bucket_builder") and s.orientation == 'X')
+    check(T, "clear refuses the user's", not api.clear_section("bucket_builder") and s.mode == 'SECTION')
+    # taken over: the user changes axis while the add-on's section shows
+    settings(s, mode='OFF')
+    api.set_section(1.0, owner="bucket_builder")
+    s.orientation = 'Y'
+    check(T, "taken over becomes the user's", api.section_info()["owner"] == ""
+          and not api.set_section(0.0, owner="bucket_builder"))
+    check(T, "clear leaves a taken-over section", not api.clear_section("bucket_builder") and s.orientation == 'Y')
+    settings(s, mode='OFF')
+    yield from settle()
+
+
+@test
 def zz_draw_order(view):
     """An annotation add-on's overlay stays over the cut faces, whichever add-on loads first (#17)."""
     T = "draw_order"

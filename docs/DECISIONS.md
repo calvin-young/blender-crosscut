@@ -37,6 +37,18 @@ this list is an assumption, tracked in the table at the end.
 
 ## Decisions
 
+### D-054: A public API for other add-ons (2026-11-26)
+
+Bucket Builder#53 steps through dense layers as sections. `crosscut/api.py`, put in
+`bpy.app.driver_namespace["crosscut"]` as the 3MF add-on does: `set_section`, `set_slab`, `clear_section`,
+`section_info`. Choices made here, not by the maintainer: a caller must name itself (`owner`); its first call saves the
+user's Crosscut settings in a hidden scene property (`api_record`, so save and undo carry it) and `clear_section`
+puts them back. A section is the user's unless it still has the mode, axis and normal the owner set; turning it off,
+switching mode or changing axis takes it over, while scrubbing doesn't. The user's section or Alt+B region is never
+moved (calls return False) unless the caller passes `force`. No `objects` list, as asked: Blender's clip planes clip
+everything, so a list could only limit the filled cut faces, which `collection` already does (Fill: Collection).
+Non-axis normals use the View orientation.
+
 ### D-053: A shared draw order between add-ons (2026-11-26)
 
 #17: when Crosscut's draw handler ran after Bucket Builder's, its cut faces painted over Bucket Builder's overlay.

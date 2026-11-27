@@ -225,6 +225,13 @@ Edit > Preferences > Add-ons > Crosscut:
 
 The header button and the pie stay where they are either way.
 
+## Sections set by other add-ons
+
+Another add-on can show a section for you, as Bucket Builder does when stepping through dense layers. It shows in the
+panel like any other, and you can scrub it. Turn it off, or change the mode or axis, and it's yours: the add-on
+leaves it alone from then on. When the add-on is done, your own settings come back. For add-on authors:
+[API.md](API.md).
+
 ## Pie menu (Shift+Alt+B)
 
 Section X / Y / Z, On/Off, Backfaces/Fill, Section/Slice, Flip, and Section from View.

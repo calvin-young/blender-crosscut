@@ -179,6 +179,8 @@ CAP_STYLES = [
 class CrosscutSettings(bpy.types.PropertyGroup):
     mode: EnumProperty(name="Mode", items=MODES, default='OFF', update=tag_redraw)
     last_mode: StringProperty(default='SECTION', options={'HIDDEN'})
+    api_record: StringProperty(options={'HIDDEN'},
+                               description="Which add-on set the section showing, and the settings to put back")
 
     orientation: EnumProperty(name="Orientation", items=ORIENTATIONS, default='Z', update=_orientation_changed)
     view_normal: FloatVectorProperty(size=3, default=(0.0, 0.0, 1.0), options={'HIDDEN'}, update=tag_redraw)

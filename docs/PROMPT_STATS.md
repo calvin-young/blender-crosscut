@@ -33,7 +33,7 @@ steering lines matters more than the count of prompts.
 
 | Date | Tool and model | Prompts | Steering lines | Notes |
 |---|---|---|---|---|
-| 2026-11-12/23 | Claude Code (workstation), Fable 5.2 then Opus 5.5 | 6 | 18 | Audit and vision (review only); 0.17.0 overlap hatch; 0.18.0 measure any edge, select by cut face; 0.19.0 panel sections, red for inside out; 0.20.0 layer scrub |
+| 2026-11-12/23 | Claude Code (workstation), Fable 5.2 then Opus 5.5 | 6 | 18 | Audit and vision (review only); 0.17.0 overlap hatch; 0.18.0 measure any edge, select by cut face; 0.19.0 panel sections, red for inside out; 0.20.0 layer scrub; 0.21 to 0.24: audit fixes, #15, #17, #18, API for Bucket Builder |
 | 2026-11-04/05 | Claude Code (workstation), Opus 5.5 | 2 | 11 | The presentation demo reel, moved here from a separate demo-reels repo |
 | 2026-11-04/09 | Claude Code (workstation), Opus 5.5 | 3 | 13 | 0.16.0: snap, 580 color first try, FDM placeholder; design for saved lines |
 | 2026-11-02 | Claude Code (workstation), Opus 5.5 | 12 | 70 | 0.9.2 to 0.15.1 from the maintainer's notes after several days of real use |
